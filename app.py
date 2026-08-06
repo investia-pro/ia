@@ -2,89 +2,117 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 
-from score import calcular_score
+from market import obter_ranking
 
 st.set_page_config(
-    page_title="InvestIA PRO",
-    page_icon="📈",
-    layout="wide"
+    page_title='InvestIA PRO',
+    page_icon='📈',
+    layout='wide'
 )
 
-# --------------------------
-# Funções
-# --------------------------
+st.title('📈 InvestIA PRO')
 
-def obter_ticker(codigo):
-    codigo = codigo.upper()
+if st.button('🔄 Atualizar'):
+    st.rerun()
 
-    if codigo in ["PETR4", "VALE3", "ITUB4"]:
-        return codigo + ".SA"
+st.divider()
 
-    return codigo
+ranking = obter_ranking()
 
+if len(ranking):
 
-def obter_moeda(ticker):
-    if ticker.endswith(".SA"):
-        return "R$"
-    return "US$"
+    st.subheader('🏆 Top Oportunidades')
 
+    top = ranking.head(3)
 
-def exibir_ativo(nome, ticker):
+    c1, c2, c3 = st.columns(3)
+
+    colunas = [c1, c2, c3]
+
+    for i in range(len(top)):
+
+        linha = top.iloc[i]
+
+        with colunas[i]:
+
+            st.metric(
+                linha['Ativo'],
+                f'Score {linha["Score"]}',
+                linha['Recomendação']
+            )
+
+st.divider()
+
+st.subheader('📊 Ranking do Mercado')
+
+st.dataframe(
+    ranking,
+    use_container_width=True,
+    hide_index=True
+)
+
+st.divider()
+
+ativo = st.text_input(
+    '🔍 Pesquisar ativo',
+    placeholder='PETR4, VALE3, AAPL, NVDA, BTC-USD...'
+)
+
+if ativo:
+
+    ticker = ativo.upper()
+
+    if ticker in ['PETR4', 'VALE3', 'ITUB4']:
+        ticker += '.SA'
 
     try:
 
         dados = yf.Ticker(ticker)
 
-        hist_curto = dados.history(period="2d")
+        hist = dados.history(period='6mo')
 
-        if len(hist_curto) < 2:
-            st.warning(f"Sem dados para {nome}")
-            return
+        info = dados.info
 
-        atual = hist_curto["Close"].iloc[-1]
-        anterior = hist_curto["Close"].iloc[-2]
+        st.header(f'📈 {ativo.upper()}')
+
+        atual = hist['Close'].iloc[-1]
+        anterior = hist['Close'].iloc[-2]
 
         variacao = ((atual - anterior) / anterior) * 100
 
-        score, recomendacao = calcular_score(variacao)
+        moeda = 'R$' if ticker.endswith('.SA') else 'US$'
 
-        moeda = obter_moeda(ticker)
+        c1, c2 = st.columns(2)
 
-        st.metric(
-            nome,
-            f"{moeda} {atual:,.2f}",
-            f"{variacao:.2f}%"
-        )
+        with c1:
+            st.metric(
+                'Preço Atual',
+                f'{moeda} {atual:,.2f}'
+            )
 
-        st.progress(score / 100)
-
-        st.write(f"**Score:** {score}/100")
-
-        st.write(recomendacao)
-
-        st.divider()
-
-        st.subheader("Gráfico (6 meses)")
-
-        hist = dados.history(period="6mo")
+        with c2:
+            st.metric(
+                'Variação',
+                f'{variacao:.2f}%'
+            )
 
         fig = go.Figure()
 
         fig.add_trace(
             go.Candlestick(
                 x=hist.index,
-                open=hist["Open"],
-                high=hist["High"],
-                low=hist["Low"],
-                close=hist["Close"],
-                name=nome
+                open=hist['Open'],
+                high=hist['High'],
+                low=hist['Low'],
+                close=hist['Close'],
+                name=ativo
             )
         )
 
         fig.update_layout(
-            height=450,
+            height=500,
             xaxis_rangeslider_visible=False,
-            margin=dict(l=5, r=5, t=25, b=5)
+            margin=dict(l=5, r=5, t=20, b=5)
         )
 
         st.plotly_chart(
@@ -92,100 +120,29 @@ def exibir_ativo(nome, ticker):
             use_container_width=True
         )
 
-        info = dados.info
+        st.subheader('📋 Resumo')
 
-        st.subheader("Resumo")
+        r1, r2, r3 = st.columns(3)
 
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
+        with r1:
             st.metric(
-                "Máxima do dia",
-                f"{moeda} {info.get('dayHigh','-')}"
+                'Máxima do dia',
+                f'{moeda} {info.get("dayHigh", "-")}'
             )
 
-        with c2:
+        with r2:
             st.metric(
-                "Mínima do dia",
-                f"{moeda} {info.get('dayLow','-')}"
+                'Mínima do dia',
+                f'{moeda} {info.get("dayLow", "-")}'
             )
 
-        with c3:
-            volume = info.get("volume", "-")
+        with r3:
             st.metric(
-                "Volume",
-                volume
+                'Volume',
+                info.get('volume', '-')
             )
 
     except Exception as erro:
 
-        st.error(f"Erro ao consultar {nome}")
+        st.error('Ativo não encontrado')
         st.write(erro)
-
-
-# --------------------------
-# Interface
-# --------------------------
-
-st.title("📈 InvestIA PRO")
-
-if st.button("🔄 Atualizar"):
-    st.rerun()
-
-st.divider()
-
-ativo = st.text_input(
-    "Pesquisar ativo",
-    placeholder="PETR4, VALE3, AAPL, NVDA, BTC-USD..."
-)
-
-ativos = {
-    "PETR4": "PETR4.SA",
-    "VALE3": "VALE3.SA",
-    "ITUB4": "ITUB4.SA",
-    "AAPL": "AAPL",
-    "NVDA": "NVDA",
-    "BTC": "BTC-USD",
-    "ETH": "ETH-USD"
-}
-
-# --------------------------
-# Pesquisa
-# --------------------------
-
-if ativo:
-
-    ticker = obter_ticker(ativo)
-
-    st.header("Resultado da Pesquisa")
-
-    exibir_ativo(
-        ativo.upper(),
-        ticker
-    )
-
-st.divider()
-
-# --------------------------
-# Mercado
-# --------------------------
-
-st.header("Mercado Hoje")
-
-col1, col2, col3 = st.columns(3)
-
-lista = list(ativos.items())
-
-for indice, (nome, ticker) in enumerate(lista):
-
-    if indice % 3 == 0:
-        with col1:
-            exibir_ativo(nome, ticker)
-
-    elif indice % 3 == 1:
-        with col2:
-            exibir_ativo(nome, ticker)
-
-    else:
-        with col3:
-            exibir_ativo(nome, ticker)
