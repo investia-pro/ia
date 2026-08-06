@@ -1,148 +1,168 @@
 import streamlit as st
-import yfinance as yf
-import plotly.graph_objects as go
 
-from market import obter_ranking
-
-st.set_page_config(
-    page_title='InvestIA PRO',
-    page_icon='📈',
-    layout='wide'
+from market import (
+    buscar_ativo,
+    ranking_b3,
+    ranking_usa,
+    ranking_crypto
 )
 
-st.title('📈 InvestIA PRO')
+from charts import (
+    grafico_medias,
+    grafico_volume
+)
 
-if st.button('🔄 Atualizar'):
+st.set_page_config(
+    page_title="InvestIA PRO",
+    page_icon="📈",
+    layout="wide"
+)
+
+# =====================================
+# Cabeçalho
+# =====================================
+
+st.title("📈 InvestIA PRO")
+
+st.caption("Scanner Inteligente de Investimentos")
+
+if st.button("🔄 Atualizar"):
     st.rerun()
 
 st.divider()
 
-ranking = obter_ranking()
-
-if len(ranking):
-
-    st.subheader('🏆 Top Oportunidades')
-
-    top = ranking.head(3)
-
-    c1, c2, c3 = st.columns(3)
-
-    colunas = [c1, c2, c3]
-
-    for i in range(len(top)):
-
-        linha = top.iloc[i]
-
-        with colunas[i]:
-
-            st.metric(
-                linha['Ativo'],
-                f'Score {linha["Score"]}',
-                linha['Recomendação']
-            )
-
-st.divider()
-
-st.subheader('📊 Ranking do Mercado')
-
-st.dataframe(
-    ranking,
-    use_container_width=True,
-    hide_index=True
-)
-
-st.divider()
+# =====================================
+# Pesquisa
+# =====================================
 
 ativo = st.text_input(
-    '🔍 Pesquisar ativo',
-    placeholder='PETR4, VALE3, AAPL, NVDA, BTC-USD...'
+    "Pesquisar ativo",
+    placeholder="PETR4, VALE3, AAPL, BTC-USD..."
 )
 
 if ativo:
 
     ticker = ativo.upper()
 
-    if ticker in ['PETR4', 'VALE3', 'ITUB4']:
-        ticker += '.SA'
+    if ticker in ["PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "RENT3", "PRIO3", "SUZB3"]:
+        ticker += ".SA"
 
-    try:
+    ativo_dados = buscar_ativo(ticker)
 
-        dados = yf.Ticker(ticker)
+    if ativo_dados:
 
-        hist = dados.history(period='6mo')
+        st.header(f"Análise - {ticker}")
 
-        info = dados.info
+        historico = ativo_dados["historico"]
 
-        st.header(f'📈 {ativo.upper()}')
+        indicadores = ativo_dados["indicadores"]
 
-        atual = hist['Close'].iloc[-1]
-        anterior = hist['Close'].iloc[-2]
+        score = ativo_dados["score"]
 
-        variacao = ((atual - anterior) / anterior) * 100
+        recomendacao = ativo_dados["recomendacao"]
 
-        moeda = 'R$' if ticker.endswith('.SA') else 'US$'
+        motivos = ativo_dados["motivos"]
 
-        c1, c2 = st.columns(2)
+        preco = historico["Close"].iloc[-1]
 
-        with c1:
-            st.metric(
-                'Preço Atual',
-                f'{moeda} {atual:,.2f}'
-            )
+        anterior = historico["Close"].iloc[-2]
 
-        with c2:
-            st.metric(
-                'Variação',
-                f'{variacao:.2f}%'
-            )
+        variacao = ((preco - anterior) / anterior) * 100
 
-        fig = go.Figure()
+        moeda = "R$" if ticker.endswith(".SA") else "US$"
 
-        fig.add_trace(
-            go.Candlestick(
-                x=hist.index,
-                open=hist['Open'],
-                high=hist['High'],
-                low=hist['Low'],
-                close=hist['Close'],
-                name=ativo
-            )
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Preço",
+            f"{moeda} {preco:,.2f}",
+            f"{variacao:.2f}%"
         )
 
-        fig.update_layout(
-            height=500,
-            xaxis_rangeslider_visible=False,
-            margin=dict(l=5, r=5, t=20, b=5)
+        c2.metric(
+            "Score",
+            score
         )
+
+        c3.metric(
+            "Recomendação",
+            recomendacao
+        )
+
+        st.progress(score / 100)
+
+        st.subheader("Motivos")
+
+        for motivo in motivos:
+
+            st.write(f"✅ {motivo}")
+
+        st.divider()
+
+        st.subheader("Gráfico")
 
         st.plotly_chart(
-            fig,
+            grafico_medias(
+                historico,
+                ticker
+            ),
             use_container_width=True
         )
 
-        st.subheader('📋 Resumo')
+        st.plotly_chart(
+            grafico_volume(
+                historico
+            ),
+            use_container_width=True
+        )
 
-        r1, r2, r3 = st.columns(3)
+        st.divider()
 
-        with r1:
-            st.metric(
-                'Máxima do dia',
-                f'{moeda} {info.get("dayHigh", "-")}'
-            )
+        st.subheader("Indicadores")
 
-        with r2:
-            st.metric(
-                'Mínima do dia',
-                f'{moeda} {info.get("dayLow", "-")}'
-            )
+        st.dataframe(indicadores)
 
-        with r3:
-            st.metric(
-                'Volume',
-                info.get('volume', '-')
-            )
+else:
 
-    except Exception as erro:
+    st.info("Pesquise um ativo para iniciar a análise.")
 
-        st.error('Ativo não encontrado')
-        st.write(erro)
+st.divider()
+
+# =====================================
+# Scanner
+# =====================================
+
+aba1, aba2, aba3 = st.tabs(
+    [
+        "🇧🇷 B3",
+        "🇺🇸 EUA",
+        "₿ Criptos"
+    ]
+)
+
+with aba1:
+
+    st.subheader("Ranking B3")
+
+    st.dataframe(
+        ranking_b3(),
+        use_container_width=True
+    )
+
+with aba2:
+
+    st.subheader("Ranking EUA")
+
+    st.dataframe(
+        ranking_usa(),
+        use_container_width=True
+    )
+
+with aba3:
+
+    st.subheader("Ranking Criptomoedas")
+
+    st.dataframe(
+        ranking_crypto(),
+        use_container_width=True
+    )
