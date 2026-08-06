@@ -1,3 +1,6 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
 import yfinance as yf
 import pandas as pd
 
@@ -16,38 +19,29 @@ from score import calcular_score
 # Busca um ativo
 # ==========================================
 
+@st.cache_data(ttl=300, show_spinner=False)
 def buscar_ativo(ticker):
 
-    dados = yf.Ticker(ticker)
+    @st.cache_data(ttl=300, show_spinner=False)
+def buscar_varios_ativos(lista_tickers):
 
-    df = dados.history(period=DEFAULT_PERIOD)
+    resultado = {}
 
-    if df.empty:
-        return None
+    for ticker in lista_tickers:
 
-    indicadores = calcular_indicadores(df)
+        try:
 
-    score, recomendacao, motivos = calcular_score(indicadores)
+            dados = buscar_ativo(ticker)
 
-    return {
+            if dados:
 
-        "ticker": ticker,
+                resultado[ticker] = dados
 
-        "dados": dados,
+        except Exception:
 
-        "historico": df,
+            pass
 
-        "indicadores": indicadores,
-
-        "score": score,
-
-        "recomendacao": recomendacao,
-
-        "motivos": motivos
-
-    }
-
-
+    return resultado
 # ==========================================
 # Scanner
 # ==========================================
