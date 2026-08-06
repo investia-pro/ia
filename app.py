@@ -25,6 +25,11 @@ for nome, ticker in ativos.items():
     try:
         ativo = yf.Ticker(ticker)
         preco = ativo.history(period="1d")["Close"].iloc[-1]
-        st.metric(nome, f"{preco:.2f}")
+if ticker.endswith(".SA"):
+    valor = f"R$ {preco:,.2f}"
+else:
+    valor = f"US$ {preco:,.2f}"
+
+st.metric(nome, valor)
     except:
         st.metric(nome, "Indisponível")
