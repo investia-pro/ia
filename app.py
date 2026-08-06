@@ -1,5 +1,7 @@
 import streamlit as st
 import yfinance as yf
+import plotly.graph_objects as go
+
 from score import calcular_score
 
 st.set_page_config(
@@ -8,27 +10,23 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📈 InvestIA PRO")
+# --------------------------
+# Funções
+# --------------------------
 
-if st.button("🔄 Atualizar"):
-    st.rerun()
+def obter_ticker(codigo):
+    codigo = codigo.upper()
 
-st.divider()
+    if codigo in ["PETR4", "VALE3", "ITUB4"]:
+        return codigo + ".SA"
 
-ativo_digitado = st.text_input(
-    "🔍 Pesquisar ativo",
-    placeholder="Ex: PETR4, VALE3, AAPL, BTC-USD"
-)
+    return codigo
 
-ativos = {
-    "PETR4": "PETR4.SA",
-    "VALE3": "VALE3.SA",
-    "ITUB4": "ITUB4.SA",
-    "AAPL": "AAPL",
-    "NVDA": "NVDA",
-    "BTC": "BTC-USD",
-    "ETH": "ETH-USD"
-}
+
+def obter_moeda(ticker):
+    if ticker.endswith(".SA"):
+        return "R$"
+    return "US$"
 
 
 def exibir_ativo(nome, ticker):
@@ -36,20 +34,21 @@ def exibir_ativo(nome, ticker):
     try:
 
         dados = yf.Ticker(ticker)
-        hist = dados.history(period="2d")
 
-        if len(hist) < 2:
+        hist_curto = dados.history(period="2d")
+
+        if len(hist_curto) < 2:
             st.warning(f"Sem dados para {nome}")
             return
 
-        atual = hist["Close"].iloc[-1]
-        anterior = hist["Close"].iloc[-2]
+        atual = hist_curto["Close"].iloc[-1]
+        anterior = hist_curto["Close"].iloc[-2]
 
         variacao = ((atual - anterior) / anterior) * 100
 
         score, recomendacao = calcular_score(variacao)
 
-        moeda = "R$" if ticker.endswith(".SA") else "US$"
+        moeda = obter_moeda(ticker)
 
         st.metric(
             nome,
@@ -63,43 +62,127 @@ def exibir_ativo(nome, ticker):
 
         st.write(recomendacao)
 
-    except Exception as e:
+        st.divider()
+
+        st.subheader("Gráfico (6 meses)")
+
+        hist = dados.history(period="6mo")
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Candlestick(
+                x=hist.index,
+                open=hist["Open"],
+                high=hist["High"],
+                low=hist["Low"],
+                close=hist["Close"],
+                name=nome
+            )
+        )
+
+        fig.update_layout(
+            height=450,
+            xaxis_rangeslider_visible=False,
+            margin=dict(l=5, r=5, t=25, b=5)
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+        info = dados.info
+
+        st.subheader("Resumo")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.metric(
+                "Máxima do dia",
+                f"{moeda} {info.get('dayHigh','-')}"
+            )
+
+        with c2:
+            st.metric(
+                "Mínima do dia",
+                f"{moeda} {info.get('dayLow','-')}"
+            )
+
+        with c3:
+            volume = info.get("volume", "-")
+            st.metric(
+                "Volume",
+                volume
+            )
+
+    except Exception as erro:
+
         st.error(f"Erro ao consultar {nome}")
+        st.write(erro)
 
 
-# ---------------------------
+# --------------------------
+# Interface
+# --------------------------
+
+st.title("📈 InvestIA PRO")
+
+if st.button("🔄 Atualizar"):
+    st.rerun()
+
+st.divider()
+
+ativo = st.text_input(
+    "Pesquisar ativo",
+    placeholder="PETR4, VALE3, AAPL, NVDA, BTC-USD..."
+)
+
+ativos = {
+    "PETR4": "PETR4.SA",
+    "VALE3": "VALE3.SA",
+    "ITUB4": "ITUB4.SA",
+    "AAPL": "AAPL",
+    "NVDA": "NVDA",
+    "BTC": "BTC-USD",
+    "ETH": "ETH-USD"
+}
+
+# --------------------------
 # Pesquisa
-# ---------------------------
+# --------------------------
 
-if ativo_digitado:
+if ativo:
 
-    ticker = ativo_digitado.upper()
+    ticker = obter_ticker(ativo)
 
-    if ticker in ["PETR4", "VALE3", "ITUB4"]:
-        ticker += ".SA"
-
-    st.subheader("Resultado da Pesquisa")
+    st.header("Resultado da Pesquisa")
 
     exibir_ativo(
-        ticker.replace(".SA", ""),
+        ativo.upper(),
         ticker
     )
 
 st.divider()
 
-st.subheader("Mercado Hoje")
+# --------------------------
+# Mercado
+# --------------------------
+
+st.header("Mercado Hoje")
 
 col1, col2, col3 = st.columns(3)
 
 lista = list(ativos.items())
 
-for i, (nome, ticker) in enumerate(lista):
+for indice, (nome, ticker) in enumerate(lista):
 
-    if i % 3 == 0:
+    if indice % 3 == 0:
         with col1:
             exibir_ativo(nome, ticker)
 
-    elif i % 3 == 1:
+    elif indice % 3 == 1:
         with col2:
             exibir_ativo(nome, ticker)
 
