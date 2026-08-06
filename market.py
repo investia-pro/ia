@@ -1,56 +1,122 @@
-import pandas as pd
 import yfinance as yf
+import pandas as pd
+
+from config import (
+    ATIVOS_B3,
+    ACOES_USA,
+    CRIPTOS,
+    DEFAULT_PERIOD
+)
+
+from indicators import calcular_indicadores
 from score import calcular_score
 
-ATIVOS = {
-    'PETR4': 'PETR4.SA',
-    'VALE3': 'VALE3.SA',
-    'ITUB4': 'ITUB4.SA',
-    'AAPL': 'AAPL',
-    'NVDA': 'NVDA',
-    'BTC': 'BTC-USD',
-    'ETH': 'ETH-USD'
-}
 
-def obter_ranking():
+# ==========================================
+# Busca um ativo
+# ==========================================
 
-    lista = []
+def buscar_ativo(ticker):
 
-    for nome, ticker in ATIVOS.items():
+    dados = yf.Ticker(ticker)
+
+    df = dados.history(period=DEFAULT_PERIOD)
+
+    if df.empty:
+        return None
+
+    indicadores = calcular_indicadores(df)
+
+    score, recomendacao, motivos = calcular_score(indicadores)
+
+    return {
+
+        "ticker": ticker,
+
+        "dados": dados,
+
+        "historico": df,
+
+        "indicadores": indicadores,
+
+        "score": score,
+
+        "recomendacao": recomendacao,
+
+        "motivos": motivos
+
+    }
+
+
+# ==========================================
+# Scanner
+# ==========================================
+
+def scanner(lista):
+
+    resultado = []
+
+    for nome, ticker in lista.items():
 
         try:
 
-            dados = yf.Ticker(ticker)
-            hist = dados.history(period='2d')
+            ativo = buscar_ativo(ticker)
 
-            if len(hist) < 2:
+            if ativo is None:
                 continue
 
-            atual = hist['Close'].iloc[-1]
-            anterior = hist['Close'].iloc[-2]
+            ultimo = ativo["historico"]["Close"].iloc[-1]
 
-            variacao = ((atual - anterior) / anterior) * 100
+            anterior = ativo["historico"]["Close"].iloc[-2]
 
-            score, recomendacao = calcular_score(variacao)
+            variacao = ((ultimo - anterior) / anterior) * 100
 
-            lista.append({
-                'Ativo': nome,
-                'Preço': round(atual, 2),
-                'Variação (%)': round(variacao, 2),
-                'Score': score,
-                'Recomendação': recomendacao
+            resultado.append({
+
+                "Ativo": nome,
+
+                "Ticker": ticker,
+
+                "Preço": round(ultimo, 2),
+
+                "Variação": round(variacao, 2),
+
+                "Score": ativo["score"],
+
+                "Recomendação": ativo["recomendacao"]
+
             })
 
-        except:
-            pass
+        except Exception:
 
-    df = pd.DataFrame(lista)
+            continue
+
+    df = pd.DataFrame(resultado)
 
     if len(df):
 
         df = df.sort_values(
-            by='Score',
+            by="Score",
             ascending=False
         )
 
     return df
+
+
+# ==========================================
+# Rankings
+# ==========================================
+
+def ranking_b3():
+
+    return scanner(ATIVOS_B3)
+
+
+def ranking_usa():
+
+    return scanner(ACOES_USA)
+
+
+def ranking_crypto():
+
+    return scanner(CRIPTOS)
