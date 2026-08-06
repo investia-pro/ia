@@ -1,4 +1,5 @@
 import streamlit as st
+import yfinance as yf
 
 st.set_page_config(
     page_title="InvestIA PRO",
@@ -8,14 +9,22 @@ st.set_page_config(
 
 st.title("📈 InvestIA PRO")
 
-st.success("Sistema iniciado com sucesso!")
+ativos = {
+    "PETR4": "PETR4.SA",
+    "VALE3": "VALE3.SA",
+    "ITUB4": "ITUB4.SA",
+    "BTC": "BTC-USD",
+    "ETH": "ETH-USD",
+    "AAPL": "AAPL",
+    "NVDA": "NVDA"
+}
 
-st.write("Bem-vindo ao InvestIA PRO.")
+st.subheader("Mercado em tempo real")
 
-st.subheader("Mercados monitorados")
-
-st.write("🇧🇷 B3")
-st.write("🇺🇸 EUA")
-st.write("🏢 FIIs")
-st.write("📊 ETFs")
-st.write("₿ Criptomoedas")
+for nome, ticker in ativos.items():
+    try:
+        ativo = yf.Ticker(ticker)
+        preco = ativo.history(period="1d")["Close"].iloc[-1]
+        st.metric(nome, f"{preco:.2f}")
+    except:
+        st.metric(nome, "Indisponível")
