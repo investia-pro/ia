@@ -1,22 +1,40 @@
+"""
+InvestIA PRO
+Aplicação principal
+
+Versão: v0.5.3
+"""
+
 import streamlit as st
 
-from market import (
-    buscar_ativo,
-    ranking_b3,
-    ranking_usa,
-    ranking_crypto
+from market import get_market_data
+from indicators import calculate_indicators
+from analysis import analyze_asset
+from charts import create_price_chart
+
+from utils import (
+    validate_data,
+    format_currency,
+    risk_color
 )
 
-from charts import (
-    grafico_medias,
-    grafico_volume
-)
+
+
+# =====================================
+# Configuração da página
+# =====================================
 
 st.set_page_config(
+
     page_title="InvestIA PRO",
+
     page_icon="📈",
+
     layout="wide"
+
 )
+
+
 
 # =====================================
 # Cabeçalho
@@ -24,145 +42,304 @@ st.set_page_config(
 
 st.title("📈 InvestIA PRO")
 
-st.caption("Scanner Inteligente de Investimentos")
-
-if st.button("🔄 Atualizar"):
-    st.rerun()
-
-st.divider()
-
-# =====================================
-# Pesquisa
-# =====================================
-
-ativo = st.text_input(
-    "Pesquisar ativo",
-    placeholder="PETR4, VALE3, AAPL, BTC-USD..."
+st.caption(
+    "Análise inteligente de ativos financeiros"
 )
 
-if ativo:
 
-    ticker = ativo.upper()
 
-    if ticker in ["PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "RENT3", "PRIO3", "SUZB3"]:
-        ticker += ".SA"
+# =====================================
+# Entrada do usuário
+# =====================================
 
-    ativo_dados = buscar_ativo(ticker)
 
-    if ativo_dados:
+asset = st.text_input(
 
-        st.header(f"Análise - {ticker}")
+    "Digite o código do ativo",
 
-        historico = ativo_dados["historico"]
+    value="PETR4"
 
-        indicadores = ativo_dados["indicadores"]
+)
 
-        score = ativo_dados["score"]
 
-        recomendacao = ativo_dados["recomendacao"]
 
-        motivos = ativo_dados["motivos"]
+period = st.selectbox(
 
-        preco = historico["Close"].iloc[-1]
+    "Período de análise",
 
-        anterior = historico["Close"].iloc[-2]
+    [
 
-        variacao = ((preco - anterior) / anterior) * 100
+        "6mo",
 
-        moeda = "R$" if ticker.endswith(".SA") else "US$"
+        "1y",
 
-        c1, c2, c3 = st.columns(3)
+        "2y",
 
-        c1.metric(
-            "Preço",
-            f"{moeda} {preco:,.2f}",
-            f"{variacao:.2f}%"
+        "5y"
+
+    ],
+
+    index=1
+
+)
+
+
+
+analyze_button = st.button(
+    "🔎 Analisar ativo"
+)
+
+
+
+# =====================================
+# Execução principal
+# =====================================
+
+
+if analyze_button:
+
+
+    try:
+
+
+        with st.spinner(
+            "Buscando dados do mercado..."
+        ):
+
+
+            # -----------------------------
+            # Mercado
+            # -----------------------------
+
+            market_data = get_market_data(
+
+                asset,
+
+                period
+
+            )
+
+
+            if market_data is None:
+
+                st.error(
+                    "Não foi possível obter dados do ativo."
+                )
+
+                st.stop()
+
+
+
+            # -----------------------------
+            # Indicadores
+            # -----------------------------
+
+
+            indicators = calculate_indicators(
+
+                market_data
+
+            )
+
+
+
+            # Junta os dados
+
+            analysis_data = {
+
+                **indicators
+
+            }
+
+
+
+            if not validate_data(
+                analysis_data
+            ):
+
+                st.warning(
+                    "Dados insuficientes para análise."
+                )
+
+                st.stop()
+
+
+
+            # -----------------------------
+            # IA de análise
+            # -----------------------------
+
+
+            result = analyze_asset(
+
+                analysis_data
+
+            )
+
+
+
+            # -----------------------------
+            # Dashboard
+            # -----------------------------
+
+
+            st.divider()
+
+
+            col1, col2, col3 = st.columns(3)
+
+
+
+            with col1:
+
+                st.metric(
+
+                    "Preço atual",
+
+                    format_currency(
+
+                        analysis_data["price"]
+
+                    )
+
+                )
+
+
+
+            with col2:
+
+                st.metric(
+
+                    "Tendência",
+
+                    result["tendencia"]
+
+                )
+
+
+
+            with col3:
+
+                st.metric(
+
+                    "Recomendação",
+
+                    result["recomendacao"]
+
+                )
+
+
+
+            st.divider()
+
+
+
+            # -----------------------------
+            # Gráfico
+            # -----------------------------
+
+
+            st.subheader(
+                "📊 Evolução do preço"
+            )
+
+
+            fig = create_price_chart(
+
+                market_data
+
+            )
+
+
+            st.plotly_chart(
+
+                fig,
+
+                use_container_width=True
+
+            )
+
+
+
+            # -----------------------------
+            # Análise
+            # -----------------------------
+
+
+            st.subheader(
+                "🤖 Análise InvestIA"
+            )
+
+
+
+            col1, col2 = st.columns(2)
+
+
+
+            with col1:
+
+
+                st.write(
+                    "### Indicadores"
+                )
+
+
+                for item in result["justificativas"]:
+
+                    st.write(
+                        "✔ ",
+                        item
+                    )
+
+
+
+            with col2:
+
+
+                st.write(
+                    "### Gestão de risco"
+                )
+
+
+                st.write(
+
+                    risk_color(
+                        result["risco"]
+                    ),
+
+                    result["risco"]
+
+                )
+
+
+
+                st.write(
+
+                    "Score InvestIA:",
+
+                    result["score"]
+
+                )
+
+
+
+    except Exception as error:
+
+
+        st.error(
+            "Erro inesperado na análise."
         )
 
-        c2.metric(
-            "Score",
-            score
-        )
 
-        c3.metric(
-            "Recomendação",
-            recomendacao
-        )
+        st.exception(error)
 
-        st.progress(score / 100)
 
-        st.subheader("Motivos")
-
-        for motivo in motivos:
-
-            st.write(f"✅ {motivo}")
-
-        st.divider()
-
-        st.subheader("Gráfico")
-
-        st.plotly_chart(
-            grafico_medias(
-                historico,
-                ticker
-            ),
-            use_container_width=True
-        )
-
-        st.plotly_chart(
-            grafico_volume(
-                historico
-            ),
-            use_container_width=True
-        )
-
-        st.divider()
-
-        st.subheader("Indicadores")
-
-        st.dataframe(indicadores)
 
 else:
 
-    st.info("Pesquise um ativo para iniciar a análise.")
 
-st.divider()
+    st.info(
 
-# =====================================
-# Scanner
-# =====================================
+        "Digite um ativo e clique em Analisar."
 
-aba1, aba2, aba3 = st.tabs(
-    [
-        "🇧🇷 B3",
-        "🇺🇸 EUA",
-        "₿ Criptos"
-    ]
-)
-
-with aba1:
-
-    st.subheader("Ranking B3")
-
-    st.dataframe(
-        ranking_b3(),
-        use_container_width=True
-    )
-
-with aba2:
-
-    st.subheader("Ranking EUA")
-
-    st.dataframe(
-        ranking_usa(),
-        use_container_width=True
-    )
-
-with aba3:
-
-    st.subheader("Ranking Criptomoedas")
-
-    st.dataframe(
-        ranking_crypto(),
-        use_container_width=True
     )
