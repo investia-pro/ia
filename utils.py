@@ -1,100 +1,97 @@
 """
 InvestIA PRO
-Utilidades gerais
+Funções auxiliares
 
-Versão: v0.5.3
+Versão: 0.5.3 Stable
 """
 
+from numbers import Number
 
-def validate_data(data):
 
+def validate_market_data(data):
     """
-    Verifica se os dados recebidos
-    possuem informações suficientes.
+    Verifica se o DataFrame retornado possui dados.
+    """
+    return data is not None and not data.empty
+
+
+def validate_analysis_data(data):
+    """
+    Valida os campos necessários para análise.
     """
 
-    required_fields = [
+    required = [
         "price",
         "rsi",
         "ma21",
-        "ma200"
+        "ma200",
+        "volatility",
     ]
 
-
-    for field in required_fields:
-
-        if field not in data:
-
-            return False
+    return all(
+        field in data and data[field] is not None
+        for field in required
+    )
 
 
-        if data[field] is None:
-
-            return False
-
-
-    return True
-
+def safe_float(value, default=0.0):
+    """
+    Converte um valor para float de forma segura.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def format_currency(value):
-
     """
-    Formata valores monetários.
+    Formata um número no padrão monetário brasileiro.
     """
 
     if value is None:
-
         return "N/A"
 
+    value = safe_float(value)
 
-    return f"R$ {value:,.2f}".replace(
-        ",",
-        "X"
-    ).replace(
-        ".",
-        ","
-    ).replace(
-        "X",
-        "."
+    return (
+        f"R$ {value:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
     )
 
 
-
-def safe_number(value):
-
+def format_percent(value):
     """
-    Evita erros com valores vazios.
+    Formata percentual.
     """
 
-    try:
+    if value is None:
+        return "N/A"
 
-        return float(value)
+    value = safe_float(value)
 
-    except:
-
-        return 0
-
+    return f"{value:.2f}%"
 
 
-def risk_color(risk):
-
+def risk_icon(risk):
     """
-    Retorna indicador visual de risco.
+    Ícone correspondente ao risco.
     """
 
-    mapping = {
-
+    icons = {
         "Baixo": "🟢",
-
         "Moderado": "🟡",
-
-        "Alto": "🔴"
-
+        "Alto": "🔴",
     }
 
+    return icons.get(risk, "⚪")
 
-    return mapping.get(
-        risk,
-        "⚪"
-    )
+
+def is_number(value):
+    """
+    Verifica se o valor é numérico.
+    """
+
+    return isinstance(value, Number)
