@@ -1,27 +1,38 @@
+"""
+===========================================
+InvestIA PRO
+indicators.py
+Indicadores Técnicos
+===========================================
+"""
+
 import pandas as pd
 
 
-def media_movel(df, periodo):
-    return df["Close"].rolling(window=periodo).mean()
-
-
 def calcular_rsi(df, periodo=14):
-
     delta = df["Close"].diff()
 
-    ganho = delta.where(delta > 0, 0)
+    ganho = delta.where(delta > 0, 0).rolling(periodo).mean()
+    perda = (-delta.where(delta < 0, 0)).rolling(periodo).mean()
 
-    perda = -delta.where(delta < 0, 0)
-
-    media_ganho = ganho.rolling(periodo).mean()
-
-    media_perda = perda.rolling(periodo).mean()
-
-    rs = media_ganho / media_perda
+    rs = ganho / perda
 
     rsi = 100 - (100 / (1 + rs))
 
     return rsi
+
+
+def calcular_medias(df):
+
+    df["MM9"] = df["Close"].rolling(9).mean()
+
+    df["MM21"] = df["Close"].rolling(21).mean()
+
+    df["MM72"] = df["Close"].rolling(72).mean()
+
+    df["MM200"] = df["Close"].rolling(200).mean()
+
+    return df
 
 
 def calcular_macd(df):
@@ -39,7 +50,7 @@ def calcular_macd(df):
     return macd, sinal, histograma
 
 
-def bandas_bollinger(df, periodo=20):
+def calcular_bollinger(df, periodo=20):
 
     media = df["Close"].rolling(periodo).mean()
 
@@ -52,69 +63,56 @@ def bandas_bollinger(df, periodo=20):
     return superior, media, inferior
 
 
-def tendencia(df):
-
-    mm21 = media_movel(df, 21)
-
-    mm72 = media_movel(df, 72)
-
-    mm200 = media_movel(df, 200)
-
-    preco = df["Close"].iloc[-1]
-
-    score = 0
-
-    if preco > mm21.iloc[-1]:
-        score += 1
-
-    if preco > mm72.iloc[-1]:
-        score += 1
-
-    if preco > mm200.iloc[-1]:
-        score += 1
-
-    return score
-
-
-def volume_medio(df):
-
-    return df["Volume"].rolling(20).mean().iloc[-1]
-
-
 def calcular_indicadores(df):
 
-    rsi = calcular_rsi(df).iloc[-1]
+    df = df.copy()
+
+    df = calcular_medias(df)
+
+    df["RSI"] = calcular_rsi(df)
 
     macd, sinal, hist = calcular_macd(df)
 
-    bb_sup, bb_med, bb_inf = bandas_bollinger(df)
+    df["MACD"] = macd
 
-    return {
+    df["MACD_SINAL"] = sinal
 
-        "RSI": round(rsi,2),
+    df["MACD_HIST"] = hist
 
-        "MACD": round(macd.iloc[-1],4),
+    sup, med, inf = calcular_bollinger(df)
 
-        "SINAL": round(sinal.iloc[-1],4),
+    df["BB_SUP"] = sup
 
-        "HIST": round(hist.iloc[-1],4),
+    df["BB_MED"] = med
 
-        "MM9": round(media_movel(df,9).iloc[-1],2),
+    df["BB_INF"] = inf
 
-        "MM21": round(media_movel(df,21).iloc[-1],2),
+    ultimo = df.iloc[-1]
 
-        "MM72": round(media_movel(df,72).iloc[-1],2),
+    indicadores = {
 
-        "MM200": round(media_movel(df,200).iloc[-1],2),
+        "Preço": round(ultimo["Close"], 2),
 
-        "BB_SUP": round(bb_sup.iloc[-1],2),
+        "RSI": round(ultimo["RSI"], 2),
 
-        "BB_MED": round(bb_med.iloc[-1],2),
+        "MM9": round(ultimo["MM9"], 2),
 
-        "BB_INF": round(bb_inf.iloc[-1],2),
+        "MM21": round(ultimo["MM21"], 2),
 
-        "TENDENCIA": tendencia(df),
+        "MM72": round(ultimo["MM72"], 2),
 
-        "VOLUME_MEDIO": round(volume_medio(df),0)
+        "MM200": round(ultimo["MM200"], 2),
+
+        "MACD": round(ultimo["MACD"], 4),
+
+        "MACD_SINAL": round(ultimo["MACD_SINAL"], 4),
+
+        "BB_SUP": round(ultimo["BB_SUP"], 2),
+
+        "BB_MED": round(ultimo["BB_MED"], 2),
+
+        "BB_INF": round(ultimo["BB_INF"], 2)
 
     }
+
+    return indicadores
