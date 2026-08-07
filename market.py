@@ -1,14 +1,24 @@
+"""
+===========================================
+InvestIA PRO
+market.py
+Motor de dados do sistema
+Versão 0.5.2
+===========================================
+"""
+
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import yfinance as yf
-import pandas as pd
 
 from config import (
+    DEFAULT_PERIOD,
+    DEFAULT_INTERVAL,
     ATIVOS_B3,
     ACOES_USA,
-    CRIPTOS,
-    DEFAULT_PERIOD
+    ETFS,
+    FIIS,
+    CRIPTOS
 )
 
 from indicators import calcular_indicadores
@@ -16,32 +26,49 @@ from score import calcular_score
 
 
 # ==========================================
-# Busca um ativo
+# Busca de um ativo
 # ==========================================
 
 @st.cache_data(ttl=300, show_spinner=False)
 def buscar_ativo(ticker):
 
-    @st.cache_data(ttl=300, show_spinner=False)
-def buscar_varios_ativos(lista_tickers):
+    try:
 
-    resultado = {}
+        ativo = yf.Ticker(ticker)
 
-    for ticker in lista_tickers:
+        historico = ativo.history(
+            period=DEFAULT_PERIOD,
+            interval=DEFAULT_INTERVAL
+        )
 
-        try:
+        if historico.empty:
+            return None
 
-            dados = buscar_ativo(ticker)
+        indicadores = calcular_indicadores(historico)
 
-            if dados:
+        score, recomendacao, motivos = calcular_score(indicadores)
 
-                resultado[ticker] = dados
+        return {
 
-        except Exception:
+            "ticker": ticker,
 
-            pass
+            "historico": historico,
 
-    return resultado
+            "indicadores": indicadores,
+
+            "score": score,
+
+            "recomendacao": recomendacao,
+
+            "motivos": motivos
+
+        }
+
+    except Exception:
+
+        return None
+
+
 # ==========================================
 # Scanner
 # ==========================================
@@ -52,38 +79,26 @@ def scanner(lista):
 
     for nome, ticker in lista.items():
 
-        try:
+        ativo = buscar_ativo(ticker)
 
-            ativo = buscar_ativo(ticker)
-
-            if ativo is None:
-                continue
-
-            ultimo = ativo["historico"]["Close"].iloc[-1]
-
-            anterior = ativo["historico"]["Close"].iloc[-2]
-
-            variacao = ((ultimo - anterior) / anterior) * 100
-
-            resultado.append({
-
-                "Ativo": nome,
-
-                "Ticker": ticker,
-
-                "Preço": round(ultimo, 2),
-
-                "Variação": round(variacao, 2),
-
-                "Score": ativo["score"],
-
-                "Recomendação": ativo["recomendacao"]
-
-            })
-
-        except Exception:
-
+        if ativo is None:
             continue
+
+        preco = ativo["indicadores"]["Preço"]
+
+        resultado.append({
+
+            "Ativo": nome,
+
+            "Ticker": ticker,
+
+            "Preço": preco,
+
+            "Score": ativo["score"],
+
+            "Recomendação": ativo["recomendacao"]
+
+        })
 
     df = pd.DataFrame(resultado)
 
@@ -94,7 +109,7 @@ def scanner(lista):
             ascending=False
         )
 
-    return df
+    return df.reset_index(drop=True)
 
 
 # ==========================================
@@ -109,6 +124,16 @@ def ranking_b3():
 def ranking_usa():
 
     return scanner(ACOES_USA)
+
+
+def ranking_etfs():
+
+    return scanner(ETFS)
+
+
+def ranking_fiis():
+
+    return scanner(FIIS)
 
 
 def ranking_crypto():
