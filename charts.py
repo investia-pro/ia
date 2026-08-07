@@ -1,42 +1,13 @@
+"""
+===========================================
+InvestIA PRO
+charts.py
+Gráficos do Sistema
+Versão 0.5.2
+===========================================
+"""
+
 import plotly.graph_objects as go
-
-
-# ==========================================
-# Candlestick
-# ==========================================
-
-def grafico_candlestick(df, ticker):
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
-            name=ticker
-        )
-    )
-
-    fig.update_layout(
-
-        title=ticker,
-
-        height=500,
-
-        xaxis_rangeslider_visible=False,
-
-        margin=dict(
-            l=5,
-            r=5,
-            t=40,
-            b=5
-        )
-    )
-
-    return fig
 
 
 # ==========================================
@@ -47,97 +18,69 @@ def grafico_medias(df, ticker):
 
     fig = go.Figure()
 
+    # Candlestick
     fig.add_trace(
-
         go.Candlestick(
-
             x=df.index,
-
             open=df["Open"],
-
             high=df["High"],
-
             low=df["Low"],
-
             close=df["Close"],
-
             name="Preço"
-
         )
-
     )
 
-    fig.add_trace(
+    # Médias
+    medias = [
+        ("MM9", "MM9"),
+        ("MM21", "MM21"),
+        ("MM72", "MM72"),
+        ("MM200", "MM200")
+    ]
 
-        go.Scatter(
+    for coluna, nome in medias:
 
-            x=df.index,
+        if coluna in df.columns:
 
-            y=df["Close"].rolling(9).mean(),
+            fig.add_trace(
 
-            mode="lines",
+                go.Scatter(
 
-            name="MM9"
+                    x=df.index,
 
-        )
+                    y=df[coluna],
 
-    )
+                    mode="lines",
 
-    fig.add_trace(
+                    name=nome
 
-        go.Scatter(
+                )
 
-            x=df.index,
-
-            y=df["Close"].rolling(21).mean(),
-
-            mode="lines",
-
-            name="MM21"
-
-        )
-
-    )
-
-    fig.add_trace(
-
-        go.Scatter(
-
-            x=df.index,
-
-            y=df["Close"].rolling(72).mean(),
-
-            mode="lines",
-
-            name="MM72"
-
-        )
-
-    )
-
-    fig.add_trace(
-
-        go.Scatter(
-
-            x=df.index,
-
-            y=df["Close"].rolling(200).mean(),
-
-            mode="lines",
-
-            name="MM200"
-
-        )
-
-    )
+            )
 
     fig.update_layout(
 
-        title=f"{ticker} - Médias Móveis",
+        title=f"{ticker}",
 
-        height=550,
+        height=600,
 
-        xaxis_rangeslider_visible=False
+        template="plotly_white",
+
+        xaxis_rangeslider_visible=False,
+
+        legend=dict(
+
+            orientation="h",
+
+            yanchor="bottom",
+
+            y=1.02,
+
+            xanchor="left",
+
+            x=0
+
+        )
 
     )
 
@@ -170,7 +113,9 @@ def grafico_volume(df):
 
         title="Volume",
 
-        height=250
+        height=250,
+
+        template="plotly_white"
 
     )
 
@@ -181,7 +126,11 @@ def grafico_volume(df):
 # RSI
 # ==========================================
 
-def grafico_rsi(df, rsi):
+def grafico_rsi(df):
+
+    if "RSI" not in df.columns:
+
+        return go.Figure()
 
     fig = go.Figure()
 
@@ -191,7 +140,7 @@ def grafico_rsi(df, rsi):
 
             x=df.index,
 
-            y=rsi,
+            y=df["RSI"],
 
             mode="lines",
 
@@ -209,7 +158,68 @@ def grafico_rsi(df, rsi):
 
         title="RSI",
 
-        height=250
+        height=250,
+
+        template="plotly_white"
+
+    )
+
+    return fig
+
+
+# ==========================================
+# MACD
+# ==========================================
+
+def grafico_macd(df):
+
+    if "MACD" not in df.columns:
+
+        return go.Figure()
+
+    fig = go.Figure()
+
+    fig.add_trace(
+
+        go.Scatter(
+
+            x=df.index,
+
+            y=df["MACD"],
+
+            mode="lines",
+
+            name="MACD"
+
+        )
+
+    )
+
+    if "MACD_SINAL" in df.columns:
+
+        fig.add_trace(
+
+            go.Scatter(
+
+                x=df.index,
+
+                y=df["MACD_SINAL"],
+
+                mode="lines",
+
+                name="Sinal"
+
+            )
+
+        )
+
+    fig.update_layout(
+
+        title="MACD",
+
+        height=250,
+
+        template="plotly_white"
 
     )
 
