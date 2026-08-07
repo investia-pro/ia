@@ -1,103 +1,68 @@
 """
-===========================================
 InvestIA PRO
-config.py
-Configurações gerais do sistema
-===========================================
+Configurações globais
+
+Versão: 0.5.3 Stable
 """
 
-# ==========================================
-# Dados do Sistema
-# ==========================================
+# ======================================
+# Aplicação
+# ======================================
 
 APP_NAME = "InvestIA PRO"
-VERSION = "0.5.2"
+VERSION = "0.5.3 Stable"
 
-# ==========================================
-# Configuração do Yahoo Finance
-# ==========================================
+PAGE_TITLE = "InvestIA PRO"
+PAGE_ICON = "📈"
+
+LAYOUT = "wide"
+
+# ======================================
+# Mercado
+# ======================================
 
 DEFAULT_PERIOD = "1y"
-DEFAULT_INTERVAL = "1d"
 
-# ==========================================
-# Ativos B3
-# ==========================================
+CACHE_TTL = 300
 
-ATIVOS_B3 = {
-    "PETR4": "PETR4.SA",
-    "VALE3": "VALE3.SA",
-    "ITUB4": "ITUB4.SA",
-    "BBAS3": "BBAS3.SA",
-    "BBDC4": "BBDC4.SA",
-    "ABEV3": "ABEV3.SA",
-    "WEGE3": "WEGE3.SA",
-    "RENT3": "RENT3.SA",
-    "PRIO3": "PRIO3.SA",
-    "SUZB3": "SUZB3.SA"
-}
+MARKET_SUFFIX = ".SA"
 
-# ==========================================
-# Ações Americanas
-# ==========================================
+# ======================================
+# Indicadores
+# ======================================
 
-ACOES_USA = {
-    "AAPL": "AAPL",
-    "MSFT": "MSFT",
-    "NVDA": "NVDA",
-    "AMZN": "AMZN",
-    "META": "META",
-    "GOOGL": "GOOGL",
-    "TSLA": "TSLA",
-    "AMD": "AMD"
-}
+RSI_PERIOD = 14
 
-# ==========================================
-# ETFs
-# ==========================================
+SHORT_MA = 21
 
-ETFS = {
-    "SPY": "SPY",
-    "QQQ": "QQQ",
-    "DIA": "DIA",
-    "IVV": "IVV",
-    "VOO": "VOO"
-}
+LONG_MA = 200
 
-# ==========================================
-# FIIs
-# ==========================================
+VOLATILITY_WINDOW = 21
 
-FIIS = {
-    "MXRF11": "MXRF11.SA",
-    "HGLG11": "HGLG11.SA",
-    "KNRI11": "KNRI11.SA",
-    "XPLG11": "XPLG11.SA",
-    "VISC11": "VISC11.SA"
-}
+# ======================================
+# Classificação
+# ======================================
 
-# ==========================================
-# Criptomoedas
-# ==========================================
+BUY_SCORE = 3
 
-CRIPTOS = {
-    "BTC": "BTC-USD",
-    "ETH": "ETH-USD",
-    "SOL": "SOL-USD",
-    "BNB": "BNB-USD",
-    "XRP": "XRP-USD"
-}
+SELL_SCORE = -3
 
-# ==========================================
-# Score
-# ==========================================
+# ======================================
+# RSI
+# ======================================
 
-SCORE_COMPRA_FORTE = 80
-SCORE_COMPRA = 60
-SCORE_NEUTRO = 40
+RSI_OVERSOLD = 30
 
-# ==========================================
-# Cache
-# ==========================================
+RSI_OVERBOUGHT = 70
 
-CACHE_MINUTES = 5
+# ======================================
+# Interface
+# ======================================
+
+MAX_HISTORY = 500
+
+SHOW_VOLUME = True
+
+SHOW_GRID = True
+
+THEME = "plotly_white"
