@@ -1,117 +1,108 @@
-# ==========================================
-# InvestIA PRO
-# Score Inteligente
-# ==========================================
+"""
+===========================================
+InvestIA PRO
+score.py
+Algoritmo de Score
+===========================================
+"""
 
-from config import PESOS
+from config import (
+    SCORE_COMPRA_FORTE,
+    SCORE_COMPRA,
+    SCORE_NEUTRO
+)
 
 
 def calcular_score(indicadores):
 
-    score = 0
+    score = 50
+
     motivos = []
 
-    # ----------------------------------
+    # ==========================
     # RSI
-    # ----------------------------------
+    # ==========================
 
     rsi = indicadores["RSI"]
 
     if 45 <= rsi <= 65:
-        score += PESOS["rsi"]
-        motivos.append("RSI saudável")
-
-    elif 30 <= rsi < 45:
-        score += 15
-        motivos.append("RSI em recuperação")
+        score += 10
+        motivos.append("RSI em região saudável")
 
     elif rsi < 30:
-        score += 10
-        motivos.append("RSI sobrevendido")
+        score += 15
+        motivos.append("RSI indica sobrevenda")
 
     elif rsi > 70:
-        motivos.append("RSI sobrecomprado")
+        score -= 15
+        motivos.append("RSI indica sobrecompra")
 
-    # ----------------------------------
-    # Tendência
-    # ----------------------------------
-
-    tendencia = indicadores["TENDENCIA"]
-
-    score += tendencia * (PESOS["tendencia"] / 3)
-
-    if tendencia == 3:
-        motivos.append("Tendência forte de alta")
-
-    elif tendencia == 2:
-        motivos.append("Tendência positiva")
-
-    elif tendencia == 1:
-        motivos.append("Tendência fraca")
-
-    else:
-        motivos.append("Sem tendência")
-
-    # ----------------------------------
-    # MACD
-    # ----------------------------------
-
-    if indicadores["MACD"] > indicadores["SINAL"]:
-
-        score += PESOS["macd"]
-
-        motivos.append("MACD positivo")
-
-    # ----------------------------------
-    # Médias móveis
-    # ----------------------------------
-
-    mm = 0
+    # ==========================
+    # Médias
+    # ==========================
 
     if indicadores["MM9"] > indicadores["MM21"]:
-        mm += 1
+        score += 10
+        motivos.append("MM9 acima da MM21")
 
     if indicadores["MM21"] > indicadores["MM72"]:
-        mm += 1
+        score += 10
+        motivos.append("MM21 acima da MM72")
 
     if indicadores["MM72"] > indicadores["MM200"]:
-        mm += 1
+        score += 10
+        motivos.append("MM72 acima da MM200")
 
-    score += mm * (PESOS["medias"] / 3)
+    # ==========================
+    # MACD
+    # ==========================
 
-    if mm == 3:
-        motivos.append("Médias alinhadas")
+    if indicadores["MACD"] > indicadores["MACD_SINAL"]:
+        score += 15
+        motivos.append("MACD acima da linha de sinal")
 
-    # ----------------------------------
-    # Volume
-    # ----------------------------------
+    else:
+        score -= 10
+        motivos.append("MACD abaixo da linha de sinal")
 
-    if indicadores["VOLUME_MEDIO"] > 0:
+    # ==========================
+    # Bollinger
+    # ==========================
 
-        score += PESOS["volume"]
+    preco = indicadores["Preço"]
 
-        motivos.append("Volume consistente")
+    if preco < indicadores["BB_INF"]:
+        score += 10
+        motivos.append("Preço abaixo da Banda Inferior")
 
-    # ----------------------------------
+    elif preco > indicadores["BB_SUP"]:
+        score -= 10
+        motivos.append("Preço acima da Banda Superior")
+
+    # ==========================
     # Limites
-    # ----------------------------------
+    # ==========================
 
-    score = round(max(0, min(100, score)))
+    score = max(0, min(100, score))
 
-    # ----------------------------------
+    # ==========================
     # Recomendação
-    # ----------------------------------
+    # ==========================
 
-    if score >= 85:
+    if score >= SCORE_COMPRA_FORTE:
+
         recomendacao = "🟢 Compra Forte"
 
-    elif score >= 70:
+    elif score >= SCORE_COMPRA:
+
         recomendacao = "🟢 Compra"
 
-    elif score >= 50:
+    elif score >= SCORE_NEUTRO:
+
         recomendacao = "🟡 Neutro"
 
     else:
+
         recomendacao = "🔴 Venda"
 
     return score, recomendacao, motivos
