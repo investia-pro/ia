@@ -1,225 +1,157 @@
 """
-===========================================
 InvestIA PRO
-charts.py
-Gráficos do Sistema
-Versão 0.5.2
-===========================================
+Gráficos
+
+Versão: v0.5.3 Stable
 """
 
 import plotly.graph_objects as go
 
+from config import (
+    SHORT_MA,
+    LONG_MA,
+    THEME
+)
 
-# ==========================================
-# Candlestick + Médias Móveis
-# ==========================================
 
-def grafico_medias(df, ticker):
+def create_price_chart(history, indicators):
+    """
+    Cria gráfico principal do ativo.
+
+    Parameters
+    ----------
+    history : pandas.DataFrame
+
+    indicators : dict
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+
+    df = history.copy()
+
+    # ===============================
+    # Médias móveis
+    # ===============================
+
+    df["MA21"] = (
+        df["Close"]
+        .rolling(SHORT_MA)
+        .mean()
+    )
+
+    df["MA200"] = (
+        df["Close"]
+        .rolling(LONG_MA)
+        .mean()
+    )
+
+    # ===============================
+    # Figura
+    # ===============================
 
     fig = go.Figure()
 
-    # Candlestick
+    # -------------------------------
+    # Preço
+    # -------------------------------
+
     fig.add_trace(
-        go.Candlestick(
+
+        go.Scatter(
+
             x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
-            name="Preço"
+
+            y=df["Close"],
+
+            mode="lines",
+
+            name="Preço",
+
+            line=dict(
+                width=2
+            )
+
         )
+
     )
 
-    # Médias
-    medias = [
-        ("MM9", "MM9"),
-        ("MM21", "MM21"),
-        ("MM72", "MM72"),
-        ("MM200", "MM200")
-    ]
+    # -------------------------------
+    # MA21
+    # -------------------------------
 
-    for coluna, nome in medias:
+    fig.add_trace(
 
-        if coluna in df.columns:
+        go.Scatter(
 
-            fig.add_trace(
+            x=df.index,
 
-                go.Scatter(
+            y=df["MA21"],
 
-                    x=df.index,
+            mode="lines",
 
-                    y=df[coluna],
+            name=f"MA {SHORT_MA}",
 
-                    mode="lines",
-
-                    name=nome
-
-                )
-
+            line=dict(
+                dash="dot"
             )
+
+        )
+
+    )
+
+    # -------------------------------
+    # MA200
+    # -------------------------------
+
+    fig.add_trace(
+
+        go.Scatter(
+
+            x=df.index,
+
+            y=df["MA200"],
+
+            mode="lines",
+
+            name=f"MA {LONG_MA}",
+
+            line=dict(
+                dash="dash"
+            )
+
+        )
+
+    )
+
+    # ===============================
+    # Layout
+    # ===============================
 
     fig.update_layout(
 
-        title=f"{ticker}",
+        template=THEME,
 
         height=600,
 
-        template="plotly_white",
-
-        xaxis_rangeslider_visible=False,
+        hovermode="x unified",
 
         legend=dict(
-
             orientation="h",
-
-            yanchor="bottom",
-
-            y=1.02,
-
-            xanchor="left",
-
-            x=0
-
-        )
-
-    )
-
-    return fig
-
-
-# ==========================================
-# Volume
-# ==========================================
-
-def grafico_volume(df):
-
-    fig = go.Figure()
-
-    fig.add_trace(
-
-        go.Bar(
-
-            x=df.index,
-
-            y=df["Volume"],
-
-            name="Volume"
-
-        )
-
-    )
-
-    fig.update_layout(
-
-        title="Volume",
-
-        height=250,
-
-        template="plotly_white"
-
-    )
-
-    return fig
-
-
-# ==========================================
-# RSI
-# ==========================================
-
-def grafico_rsi(df):
-
-    if "RSI" not in df.columns:
-
-        return go.Figure()
-
-    fig = go.Figure()
-
-    fig.add_trace(
-
-        go.Scatter(
-
-            x=df.index,
-
-            y=df["RSI"],
-
-            mode="lines",
-
-            name="RSI"
-
-        )
-
-    )
-
-    fig.add_hline(y=70)
-
-    fig.add_hline(y=30)
-
-    fig.update_layout(
-
-        title="RSI",
-
-        height=250,
-
-        template="plotly_white"
-
-    )
-
-    return fig
-
-
-# ==========================================
-# MACD
-# ==========================================
-
-def grafico_macd(df):
-
-    if "MACD" not in df.columns:
-
-        return go.Figure()
-
-    fig = go.Figure()
-
-    fig.add_trace(
-
-        go.Scatter(
-
-            x=df.index,
-
-            y=df["MACD"],
-
-            mode="lines",
-
-            name="MACD"
-
-        )
-
-    )
-
-    if "MACD_SINAL" in df.columns:
-
-        fig.add_trace(
-
-            go.Scatter(
-
-                x=df.index,
-
-                y=df["MACD_SINAL"],
-
-                mode="lines",
-
-                name="Sinal"
-
-            )
-
-        )
-
-    fig.update_layout(
-
-        title="MACD",
-
-        height=250,
-
-        template="plotly_white"
+            y=1.05
+        ),
+
+        margin=dict(
+            l=20,
+            r=20,
+            t=40,
+            b=20
+        ),
+
+        xaxis_title="",
+
+        yaxis_title="Preço"
 
     )
 
