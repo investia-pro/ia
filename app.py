@@ -1,345 +1,258 @@
 """
 InvestIA PRO
-Aplicação principal
+Aplicação Principal
 
-Versão: v0.5.3
+Versão: v0.5.3 Stable
 """
 
 import streamlit as st
 
+from config import (
+    APP_NAME,
+    VERSION,
+    PAGE_TITLE,
+    PAGE_ICON,
+    LAYOUT,
+    DEFAULT_PERIOD,
+)
+
 from market import get_market_data
 from indicators import calculate_indicators
 from analysis import analyze_asset
-from charts import create_price_chart
 
 from utils import (
-    validate_data,
     format_currency,
-    risk_color
+    risk_icon,
 )
 
-
-
-# =====================================
-# Configuração da página
-# =====================================
+# ==========================================================
+# Configuração da Página
+# ==========================================================
 
 st.set_page_config(
-
-    page_title="InvestIA PRO",
-
-    page_icon="📈",
-
-    layout="wide"
-
+    page_title=PAGE_TITLE,
+    page_icon=PAGE_ICON,
+    layout=LAYOUT,
 )
 
-
-
-# =====================================
+# ==========================================================
 # Cabeçalho
-# =====================================
+# ==========================================================
 
 st.title("📈 InvestIA PRO")
 
-st.caption(
-    "Análise inteligente de ativos financeiros"
-)
+st.caption(f"{APP_NAME} • {VERSION}")
 
+st.divider()
 
+# ==========================================================
+# Sidebar
+# ==========================================================
 
-# =====================================
-# Entrada do usuário
-# =====================================
+st.sidebar.header("Configurações")
 
-
-asset = st.text_input(
-
-    "Digite o código do ativo",
-
+asset = st.sidebar.text_input(
+    "Ativo",
     value="PETR4"
+).upper()
 
-)
-
-
-
-period = st.selectbox(
-
-    "Período de análise",
-
+period = st.sidebar.selectbox(
+    "Período",
     [
-
         "6mo",
-
         "1y",
-
         "2y",
-
         "5y"
-
     ],
-
     index=1
-
 )
 
-
-
-analyze_button = st.button(
-    "🔎 Analisar ativo"
+analyze = st.sidebar.button(
+    "🔎 Analisar"
 )
 
-
-
-# =====================================
-# Execução principal
-# =====================================
-
-
-if analyze_button:
-
-
-    try:
-
-
-        with st.spinner(
-            "Buscando dados do mercado..."
-        ):
-
-
-            # -----------------------------
-            # Mercado
-            # -----------------------------
-
-            market_data = get_market_data(
-
-                asset,
-
-                period
-
-            )
-
-
-            if market_data is None:
-
-                st.error(
-                    "Não foi possível obter dados do ativo."
-                )
-
-                st.stop()
-
-
-
-            # -----------------------------
-            # Indicadores
-            # -----------------------------
-
-
-            indicators = calculate_indicators(
-
-                market_data
-
-            )
-
-
-
-            # Junta os dados
-
-            analysis_data = {
-
-                **indicators
-
-            }
-
-
-
-            if not validate_data(
-                analysis_data
-            ):
-
-                st.warning(
-                    "Dados insuficientes para análise."
-                )
-
-                st.stop()
-
-
-
-            # -----------------------------
-            # IA de análise
-            # -----------------------------
-
-
-            result = analyze_asset(
-
-                analysis_data
-
-            )
-
-
-
-            # -----------------------------
-            # Dashboard
-            # -----------------------------
-
-
-            st.divider()
-
-
-            col1, col2, col3 = st.columns(3)
-
-
-
-            with col1:
-
-                st.metric(
-
-                    "Preço atual",
-
-                    format_currency(
-
-                        analysis_data["price"]
-
-                    )
-
-                )
-
-
-
-            with col2:
-
-                st.metric(
-
-                    "Tendência",
-
-                    result["tendencia"]
-
-                )
-
-
-
-            with col3:
-
-                st.metric(
-
-                    "Recomendação",
-
-                    result["recomendacao"]
-
-                )
-
-
-
-            st.divider()
-
-
-
-            # -----------------------------
-            # Gráfico
-            # -----------------------------
-
-
-            st.subheader(
-                "📊 Evolução do preço"
-            )
-
-
-            fig = create_price_chart(
-
-                market_data
-
-            )
-
-
-            st.plotly_chart(
-
-                fig,
-
-                use_container_width=True
-
-            )
-
-
-
-            # -----------------------------
-            # Análise
-            # -----------------------------
-
-
-            st.subheader(
-                "🤖 Análise InvestIA"
-            )
-
-
-
-            col1, col2 = st.columns(2)
-
-
-
-            with col1:
-
-
-                st.write(
-                    "### Indicadores"
-                )
-
-
-                for item in result["justificativas"]:
-
-                    st.write(
-                        "✔ ",
-                        item
-                    )
-
-
-
-            with col2:
-
-
-                st.write(
-                    "### Gestão de risco"
-                )
-
-
-                st.write(
-
-                    risk_color(
-                        result["risco"]
-                    ),
-
-                    result["risco"]
-
-                )
-
-
-
-                st.write(
-
-                    "Score InvestIA:",
-
-                    result["score"]
-
-                )
-
-
-
-    except Exception as error:
-
-
-        st.error(
-            "Erro inesperado na análise."
-        )
-
-
-        st.exception(error)
-
-
-
-else:
-
+# ==========================================================
+# Tela Inicial
+# ==========================================================
+
+if not analyze:
 
     st.info(
-
-        "Digite um ativo e clique em Analisar."
-
+        "Informe um ativo na barra lateral e clique em **Analisar**."
     )
+
+    st.stop()
+
+# ==========================================================
+# Busca Mercado
+# ==========================================================
+
+try:
+
+    with st.spinner("Buscando dados do mercado..."):
+
+        market = get_market_data(
+            asset,
+            period
+        )
+
+    if market is None:
+
+        st.error(
+            "Não foi possível obter dados do ativo."
+        )
+
+        st.stop()
+
+except Exception as e:
+
+    st.error(
+        "Erro ao consultar o mercado."
+    )
+
+    st.exception(e)
+
+    st.stop()
+
+# ==========================================================
+# Indicadores
+# ==========================================================
+
+try:
+
+    indicators = calculate_indicators(
+        market
+    )
+
+except Exception as e:
+
+    st.error(
+        "Erro ao calcular indicadores."
+    )
+
+    st.exception(e)
+
+    st.stop()
+
+# ==========================================================
+# Análise
+# ==========================================================
+
+try:
+
+    analysis = analyze_asset(
+        indicators
+    )
+
+except Exception as e:
+
+    st.error(
+        "Erro durante a análise."
+    )
+
+    st.exception(e)
+
+    st.stop()
+
+# ==========================================================
+# Dashboard
+# ==========================================================
+
+st.subheader(f"Análise do ativo: {market['asset']}")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Preço",
+    format_currency(
+        indicators["price"]
+    )
+)
+
+col2.metric(
+    "Score",
+    analysis["score"]
+)
+
+col3.metric(
+    "Tendência",
+    analysis["trend"]
+)
+
+col4.metric(
+    "Recomendação",
+    analysis["recommendation"]
+)
+
+st.divider()
+
+# ==========================================================
+# Indicadores Técnicos
+# ==========================================================
+
+st.subheader("Indicadores")
+
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric(
+    "RSI",
+    f"{indicators['rsi']:.2f}"
+)
+
+c2.metric(
+    "MA21",
+    format_currency(
+        indicators["ma21"]
+    )
+)
+
+c3.metric(
+    "MA200",
+    format_currency(
+        indicators["ma200"]
+    )
+)
+
+c4.metric(
+    "Volatilidade",
+    f"{indicators['volatility']:.2%}"
+)
+
+st.divider()
+
+# ==========================================================
+# Análise InvestIA
+# ==========================================================
+
+st.subheader("🤖 InvestIA")
+
+st.markdown(
+    f"### {risk_icon(analysis['risk'])} Risco: {analysis['risk']}"
+)
+
+st.write("### Motivos da recomendação")
+
+for item in analysis["reasons"]:
+
+    st.success(item)
+
+# ==========================================================
+# Histórico
+# ==========================================================
+
+with st.expander("Visualizar histórico"):
+
+    st.dataframe(
+        market["history"].tail(20),
+        use_container_width=True
+    )
+
+# ==========================================================
+# Rodapé
+# ==========================================================
+
+st.divider()
+
+st.caption(
+    f"{APP_NAME} • {VERSION}"
+)
