@@ -1,118 +1,86 @@
 """
-===========================================
 InvestIA PRO
-indicators.py
 Indicadores Técnicos
-===========================================
+
+Versão: v0.5.3 Stable
 """
 
-import pandas as pd
+import numpy as np
+
+from config import (
+    RSI_PERIOD,
+    SHORT_MA,
+    LONG_MA,
+    VOLATILITY_WINDOW,
+)
 
 
-def calcular_rsi(df, periodo=14):
-    delta = df["Close"].diff()
+def calculate_indicators(market):
 
-    ganho = delta.where(delta > 0, 0).rolling(periodo).mean()
-    perda = (-delta.where(delta < 0, 0)).rolling(periodo).mean()
+    history = market["history"]
 
-    rs = ganho / perda
+    close = history["Close"]
+
+    # =====================
+    # Médias móveis
+    # =====================
+
+    ma21 = close.rolling(
+        SHORT_MA
+    ).mean().iloc[-1]
+
+    ma200 = close.rolling(
+        LONG_MA
+    ).mean().iloc[-1]
+
+    # =====================
+    # RSI
+    # =====================
+
+    delta = close.diff()
+
+    gain = delta.clip(lower=0)
+
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(
+        RSI_PERIOD
+    ).mean()
+
+    avg_loss = loss.rolling(
+        RSI_PERIOD
+    ).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
 
     rsi = 100 - (100 / (1 + rs))
 
-    return rsi
+    # =====================
+    # Volatilidade
+    # =====================
 
+    volatility = (
+        close
+        .pct_change()
+        .rolling(VOLATILITY_WINDOW)
+        .std()
+        .iloc[-1]
+    )
 
-def calcular_medias(df):
+    return {
 
-    df["MM9"] = df["Close"].rolling(9).mean()
+        "asset": market["asset"],
 
-    df["MM21"] = df["Close"].rolling(21).mean()
+        "price": market["price"],
 
-    df["MM72"] = df["Close"].rolling(72).mean()
+        "history": history,
 
-    df["MM200"] = df["Close"].rolling(200).mean()
+        "ma21": float(ma21),
 
-    return df
+        "ma200": float(ma200),
 
+        "rsi": float(rsi.iloc[-1]),
 
-def calcular_macd(df):
-
-    ema12 = df["Close"].ewm(span=12, adjust=False).mean()
-
-    ema26 = df["Close"].ewm(span=26, adjust=False).mean()
-
-    macd = ema12 - ema26
-
-    sinal = macd.ewm(span=9, adjust=False).mean()
-
-    histograma = macd - sinal
-
-    return macd, sinal, histograma
-
-
-def calcular_bollinger(df, periodo=20):
-
-    media = df["Close"].rolling(periodo).mean()
-
-    desvio = df["Close"].rolling(periodo).std()
-
-    superior = media + (desvio * 2)
-
-    inferior = media - (desvio * 2)
-
-    return superior, media, inferior
-
-
-def calcular_indicadores(df):
-
-    df = df.copy()
-
-    df = calcular_medias(df)
-
-    df["RSI"] = calcular_rsi(df)
-
-    macd, sinal, hist = calcular_macd(df)
-
-    df["MACD"] = macd
-
-    df["MACD_SINAL"] = sinal
-
-    df["MACD_HIST"] = hist
-
-    sup, med, inf = calcular_bollinger(df)
-
-    df["BB_SUP"] = sup
-
-    df["BB_MED"] = med
-
-    df["BB_INF"] = inf
-
-    ultimo = df.iloc[-1]
-
-    indicadores = {
-
-        "Preço": round(ultimo["Close"], 2),
-
-        "RSI": round(ultimo["RSI"], 2),
-
-        "MM9": round(ultimo["MM9"], 2),
-
-        "MM21": round(ultimo["MM21"], 2),
-
-        "MM72": round(ultimo["MM72"], 2),
-
-        "MM200": round(ultimo["MM200"], 2),
-
-        "MACD": round(ultimo["MACD"], 4),
-
-        "MACD_SINAL": round(ultimo["MACD_SINAL"], 4),
-
-        "BB_SUP": round(ultimo["BB_SUP"], 2),
-
-        "BB_MED": round(ultimo["BB_MED"], 2),
-
-        "BB_INF": round(ultimo["BB_INF"], 2)
+        "volatility": float(volatility)
 
     }
-
-    return indicadores
