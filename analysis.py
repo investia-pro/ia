@@ -2,108 +2,243 @@
 InvestIA PRO
 Motor de Análise
 
-Versão: v0.5.3 Stable
+Versão: v0.6
+Fase: 1.2
+
+Integração com Score InvestIA 2.0
 """
 
-from config import (
-    BUY_SCORE,
-    SELL_SCORE,
-    RSI_OVERSOLD,
-    RSI_OVERBOUGHT,
-)
+from score import calculate_investia_score
 
+
+# ==========================================================
+# ANÁLISE DO ATIVO
+# ==========================================================
 
 def analyze_asset(data):
     """
-    Recebe os indicadores técnicos e gera
-    uma avaliação do ativo.
+    Recebe os indicadores técnicos e gera uma avaliação
+    utilizando o Score InvestIA 2.0.
+
+    Mantém compatibilidade com o app.py da v0.5.3.
     """
 
-    score = 0
-    reasons = []
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
 
-    price = data["price"]
-    ma21 = data["ma21"]
-    ma200 = data["ma200"]
-    rsi = data["rsi"]
-    volatility = data["volatility"]
+    if not isinstance(data, dict):
 
-    # =====================================
-    # Tendência de curto prazo
-    # =====================================
+        raise TypeError(
+            "Os dados do ativo devem ser fornecidos "
+            "em formato de dicionário."
+        )
 
-    if price > ma21:
-        score += 1
-        reasons.append("Preço acima da média móvel de 21 períodos.")
-    else:
-        score -= 1
-        reasons.append("Preço abaixo da média móvel de 21 períodos.")
 
-    # =====================================
-    # Tendência de longo prazo
-    # =====================================
+    required_fields = [
+        "price",
+        "ma21",
+        "ma200",
+        "rsi",
+        "volatility",
+    ]
 
-    if price > ma200:
-        score += 2
-        reasons.append("Preço acima da média móvel de 200 períodos.")
-    else:
-        score -= 2
-        reasons.append("Preço abaixo da média móvel de 200 períodos.")
 
-    # =====================================
-    # RSI
-    # =====================================
+    missing_fields = [
+        field
+        for field in required_fields
+        if field not in data
+    ]
 
-    if rsi <= RSI_OVERSOLD:
-        score += 2
-        reasons.append("RSI indica possível sobrevenda.")
 
-    elif rsi >= RSI_OVERBOUGHT:
-        score -= 2
-        reasons.append("RSI indica possível sobrecompra.")
+    if missing_fields:
 
-    else:
-        reasons.append("RSI em zona neutra.")
+        raise ValueError(
+            "Indicadores ausentes: "
+            + ", ".join(missing_fields)
+        )
 
-    # =====================================
-    # Classificação
-    # =====================================
 
-    if score >= BUY_SCORE:
-        recommendation = "Compra"
+    # ======================================================
+    # SCORE INVESTIA 2.0
+    # ======================================================
+
+    score_result = calculate_investia_score(
+        data
+    )
+
+
+    score = score_result["score"]
+
+
+    classification = score_result[
+        "classification"
+    ]
+
+
+    signal = score_result[
+        "signal"
+    ]
+
+
+    # ======================================================
+    # TENDÊNCIA
+    # ======================================================
+
+    trend_score = score_result[
+        "trend"
+    ]
+
+
+    if trend_score >= 75:
+
         trend = "Positiva"
 
-    elif score <= SELL_SCORE:
-        recommendation = "Venda"
-        trend = "Negativa"
+    elif trend_score >= 60:
 
-    else:
-        recommendation = "Aguardar"
+        trend = "Moderadamente Positiva"
+
+    elif trend_score >= 40:
+
         trend = "Neutra"
 
-    # =====================================
-    # Risco
-    # =====================================
+    elif trend_score >= 25:
 
-    if volatility < 0.015:
-        risk = "Baixo"
-
-    elif volatility < 0.030:
-        risk = "Moderado"
+        trend = "Moderadamente Negativa"
 
     else:
+
+        trend = "Negativa"
+
+
+    # ======================================================
+    # RECOMENDAÇÃO
+    # ======================================================
+
+    if score >= 75:
+
+        recommendation = "Compra"
+
+    elif score >= 60:
+
+        recommendation = "Compra Moderada"
+
+    elif score >= 40:
+
+        recommendation = "Aguardar"
+
+    elif score >= 25:
+
+        recommendation = "Venda Moderada"
+
+    else:
+
+        recommendation = "Venda"
+
+
+    # ======================================================
+    # RISCO
+    # ======================================================
+
+    risk_score = score_result[
+        "risk"
+    ]
+
+
+    if risk_score >= 75:
+
+        risk = "Baixo"
+
+    elif risk_score >= 50:
+
+        risk = "Moderado"
+
+    elif risk_score >= 30:
+
         risk = "Alto"
+
+    else:
+
+        risk = "Muito Alto"
+
+
+    # ======================================================
+    # FUNDAMENTAÇÃO
+    # ======================================================
+
+    reasons = score_result.get(
+        "reasons",
+        [],
+    )
+
+
+    # ======================================================
+    # RESULTADO
+    # ======================================================
 
     return {
 
+        # ----------------------------------------------
+        # Score principal
+        # ----------------------------------------------
+
         "score": score,
+
+        "classification": classification,
+
+        "signal": signal,
+
+
+        # ----------------------------------------------
+        # Tendência
+        # ----------------------------------------------
 
         "trend": trend,
 
+
+        # ----------------------------------------------
+        # Recomendação
+        # ----------------------------------------------
+
         "recommendation": recommendation,
+
+
+        # ----------------------------------------------
+        # Risco
+        # ----------------------------------------------
 
         "risk": risk,
 
-        "reasons": reasons
+
+        # ----------------------------------------------
+        # Scores internos
+        # ----------------------------------------------
+
+        "technical": score_result[
+            "technical"
+        ],
+
+        "rsi_score": score_result[
+            "rsi"
+        ],
+
+        "ma21_score": score_result[
+            "ma21"
+        ],
+
+        "ma200_score": score_result[
+            "ma200"
+        ],
+
+        "trend_score": trend_score,
+
+        "risk_score": risk_score,
+
+
+        # ----------------------------------------------
+        # Fundamentação
+        # ----------------------------------------------
+
+        "reasons": reasons,
 
     }
