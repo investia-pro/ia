@@ -3,7 +3,7 @@ InvestIA PRO
 Motor de Score Quantitativo
 
 Versão: v0.6
-Fase: 1.1
+Fase: 1.5
 
 Responsável por transformar os indicadores técnicos
 em uma pontuação de 0 a 100.
@@ -45,9 +45,6 @@ def _clamp(
     minimum: float = MIN_SCORE,
     maximum: float = MAX_SCORE,
 ) -> float:
-    """
-    Mantém um valor dentro de um intervalo.
-    """
 
     return max(
         minimum,
@@ -61,11 +58,6 @@ def _clamp(
 def _safe_float(
     value: Any,
 ) -> float | None:
-    """
-    Converte um valor para float de forma segura.
-
-    Retorna None quando o valor não pode ser convertido.
-    """
 
     try:
 
@@ -89,29 +81,6 @@ def _safe_float(
 def calculate_rsi_score(
     rsi: float,
 ) -> float:
-    """
-    Calcula a pontuação do RSI.
-
-    A lógica considera o contexto técnico:
-
-    RSI < 30
-        Sobrevenda.
-
-    30–40
-        Região de recuperação.
-
-    40–60
-        Região neutra.
-
-    60–70
-        Força compradora.
-
-    > 70
-        Sobrecompra.
-
-    O objetivo não é tratar RSI baixo como
-    compra automática.
-    """
 
     rsi = _safe_float(rsi)
 
@@ -152,9 +121,6 @@ def calculate_ma21_score(
     price: float,
     ma21: float,
 ) -> float:
-    """
-    Calcula a pontuação da relação entre preço e MA21.
-    """
 
     price = _safe_float(price)
     ma21 = _safe_float(ma21)
@@ -201,12 +167,6 @@ def calculate_ma200_score(
     price: float,
     ma200: float,
 ) -> float:
-    """
-    Calcula a pontuação da relação entre preço e MA200.
-
-    A MA200 possui maior importância estrutural
-    no modelo.
-    """
 
     price = _safe_float(price)
     ma200 = _safe_float(ma200)
@@ -254,15 +214,6 @@ def calculate_trend_score(
     ma21: float,
     ma200: float,
 ) -> float:
-    """
-    Calcula a força da tendência.
-
-    Considera a posição relativa entre:
-
-    Preço
-    MA21
-    MA200
-    """
 
     price = _safe_float(price)
     ma21 = _safe_float(ma21)
@@ -277,9 +228,9 @@ def calculate_trend_score(
 
     score = 50.0
 
-    # ------------------------------------------
-    # Relação preço / MA21
-    # ------------------------------------------
+    # ------------------------------------------------------
+    # Preço x MA21
+    # ------------------------------------------------------
 
     if price > ma21:
 
@@ -289,9 +240,9 @@ def calculate_trend_score(
 
         score -= 15
 
-    # ------------------------------------------
-    # Relação preço / MA200
-    # ------------------------------------------
+    # ------------------------------------------------------
+    # Preço x MA200
+    # ------------------------------------------------------
 
     if price > ma200:
 
@@ -301,9 +252,9 @@ def calculate_trend_score(
 
         score -= 20
 
-    # ------------------------------------------
-    # Relação MA21 / MA200
-    # ------------------------------------------
+    # ------------------------------------------------------
+    # MA21 x MA200
+    # ------------------------------------------------------
 
     if ma21 > ma200:
 
@@ -325,16 +276,6 @@ def calculate_trend_score(
 def calculate_risk_score(
     volatility: float,
 ) -> float:
-    """
-    Converte volatilidade diária em score de risco.
-
-    Quanto menor a volatilidade, maior a pontuação.
-
-    Observação:
-    Este modelo inicial é uma aproximação.
-    A v0.6 futura poderá utilizar volatilidade
-    histórica normalizada por ativo e setor.
-    """
 
     volatility = _safe_float(
         volatility
@@ -343,31 +284,40 @@ def calculate_risk_score(
     if volatility is None:
         return 50.0
 
-    # Aceita tanto:
+    # Aceita:
+    #
     # 0.0169 = 1,69%
-    # quanto
-    # 1.69   = 1,69%
+    #
+    # ou
+    #
+    # 1.69 = 1,69%
 
     if volatility > 1:
 
         volatility = volatility / 100
 
     if volatility <= 0.01:
+
         score = 90
 
     elif volatility <= 0.02:
+
         score = 75
 
     elif volatility <= 0.03:
+
         score = 60
 
     elif volatility <= 0.04:
+
         score = 45
 
     elif volatility <= 0.06:
+
         score = 30
 
     else:
+
         score = 15
 
     return float(
@@ -376,31 +326,47 @@ def calculate_risk_score(
 
 
 # ==========================================================
-# CLASSIFICAÇÃO
+# CLASSIFICAÇÃO DO SCORE
 # ==========================================================
 
 def classify_score(
     score: float,
 ) -> str:
     """
-    Classifica o Score InvestIA.
+    Classificação oficial do Score InvestIA 2.0.
+
+    80–100  = MUITO FORTE
+    70–79   = FORTE
+    60–69   = MODERADO
+    45–59   = NEUTRO
+    30–44   = FRACO
+    0–29    = MUITO FRACO
     """
 
     score = _safe_float(score)
 
     if score is None:
+
         return "INDEFINIDO"
 
-    if score >= 90:
-        return "EXCELENTE"
+    if score >= 80:
 
-    if score >= 75:
+        return "MUITO FORTE"
+
+    if score >= 70:
+
         return "FORTE"
 
     if score >= 60:
+
         return "MODERADO"
 
-    if score >= 40:
+    if score >= 45:
+
+        return "NEUTRO"
+
+    if score >= 30:
+
         return "FRACO"
 
     return "MUITO FRACO"
@@ -414,30 +380,46 @@ def classify_signal(
     score: float,
 ) -> str:
     """
-    Converte o Score em uma interpretação operacional.
+    Interpretação operacional do Score.
 
-    Importante:
-    Não representa recomendação financeira individual.
+    80–100  = MUITO POSITIVO
+    70–79   = POSITIVO
+    60–69   = POSITIVO MODERADO
+    45–59   = NEUTRO
+    30–44   = NEGATIVO MODERADO
+    0–29    = MUITO NEGATIVO
+
+    O sinal é uma interpretação quantitativa
+    e não representa recomendação financeira individual.
     """
 
     score = _safe_float(score)
 
     if score is None:
+
         return "INDEFINIDO"
 
-    if score >= 75:
+    if score >= 80:
+
+        return "MUITO POSITIVO"
+
+    if score >= 70:
+
         return "POSITIVO"
 
     if score >= 60:
-        return "NEUTRO-POSITIVO"
 
-    if score >= 40:
+        return "POSITIVO MODERADO"
+
+    if score >= 45:
+
         return "NEUTRO"
 
-    if score >= 25:
-        return "NEUTRO-NEGATIVO"
+    if score >= 30:
 
-    return "NEGATIVO"
+        return "NEGATIVO MODERADO"
+
+    return "MUITO NEGATIVO"
 
 
 # ==========================================================
@@ -451,9 +433,6 @@ def generate_reasons(
     rsi: float,
     volatility: float,
 ) -> list[str]:
-    """
-    Gera justificativas para o Score.
-    """
 
     reasons = []
 
@@ -463,9 +442,9 @@ def generate_reasons(
     rsi = _safe_float(rsi)
     volatility = _safe_float(volatility)
 
-    # ------------------------------------------
+    # ------------------------------------------------------
     # MA21
-    # ------------------------------------------
+    # ------------------------------------------------------
 
     if (
         price is not None
@@ -484,9 +463,9 @@ def generate_reasons(
                 "Preço abaixo da média móvel de 21 períodos."
             )
 
-    # ------------------------------------------
+    # ------------------------------------------------------
     # MA200
-    # ------------------------------------------
+    # ------------------------------------------------------
 
     if (
         price is not None
@@ -505,9 +484,9 @@ def generate_reasons(
                 "Preço abaixo da média móvel de 200 períodos."
             )
 
-    # ------------------------------------------
+    # ------------------------------------------------------
     # RSI
-    # ------------------------------------------
+    # ------------------------------------------------------
 
     if rsi is not None:
 
@@ -541,9 +520,9 @@ def generate_reasons(
                 "RSI em região de sobrecompra."
             )
 
-    # ------------------------------------------
+    # ------------------------------------------------------
     # Volatilidade
-    # ------------------------------------------
+    # ------------------------------------------------------
 
     if volatility is not None:
 
@@ -575,25 +554,6 @@ def generate_reasons(
 def calculate_investia_score(
     indicators: dict,
 ) -> dict:
-    """
-    Calcula o Score InvestIA 2.0.
-
-    Parameters
-    ----------
-    indicators : dict
-
-        Deve conter:
-
-        price
-        rsi
-        ma21
-        ma200
-        volatility
-
-    Returns
-    -------
-    dict
-    """
 
     if not isinstance(
         indicators,
@@ -653,7 +613,7 @@ def calculate_investia_score(
     )
 
     # ======================================================
-    # SCORE FINAL
+    # SCORE TÉCNICO
     # ======================================================
 
     technical_score = (
@@ -672,6 +632,10 @@ def calculate_investia_score(
             * WEIGHTS["ma200"]
         )
     )
+
+    # ======================================================
+    # SCORE FINAL
+    # ======================================================
 
     final_score = (
         technical_score
