@@ -2,7 +2,10 @@
 InvestIA PRO
 Aplicação Principal
 
-Versão: v0.5.3 Stable
+Versão: v0.6
+Fase: 1.3
+
+Painel Score InvestIA 2.0
 """
 
 import streamlit as st
@@ -13,7 +16,6 @@ from config import (
     PAGE_TITLE,
     PAGE_ICON,
     LAYOUT,
-    DEFAULT_PERIOD,
 )
 
 from market import get_market_data
@@ -45,7 +47,7 @@ st.set_page_config(
 st.title("📈 InvestIA PRO")
 
 st.caption(
-    f"{APP_NAME} • {VERSION}"
+    f"{APP_NAME} • v0.6"
 )
 
 st.divider()
@@ -96,7 +98,7 @@ if not analyze:
 
 
 # ==========================================================
-# VALIDAÇÃO DO ATIVO
+# VALIDAÇÃO
 # ==========================================================
 
 if not asset:
@@ -109,7 +111,7 @@ if not asset:
 
 
 # ==========================================================
-# BUSCA DOS DADOS DE MERCADO
+# DADOS DE MERCADO
 # ==========================================================
 
 try:
@@ -186,7 +188,7 @@ except Exception as error:
 
 
 # ==========================================================
-# DASHBOARD PRINCIPAL
+# CABEÇALHO DO ATIVO
 # ==========================================================
 
 st.subheader(
@@ -194,12 +196,12 @@ st.subheader(
 )
 
 
+# ==========================================================
+# RESUMO PRINCIPAL
+# ==========================================================
+
 col1, col2, col3, col4 = st.columns(4)
 
-
-# ----------------------------------------------------------
-# PREÇO
-# ----------------------------------------------------------
 
 with col1:
 
@@ -211,21 +213,13 @@ with col1:
     )
 
 
-# ----------------------------------------------------------
-# SCORE
-# ----------------------------------------------------------
-
 with col2:
 
     st.metric(
         "Score InvestIA",
-        analysis["score"],
+        f"{analysis['score']:.0f}/100",
     )
 
-
-# ----------------------------------------------------------
-# TENDÊNCIA
-# ----------------------------------------------------------
 
 with col3:
 
@@ -235,16 +229,113 @@ with col3:
     )
 
 
-# ----------------------------------------------------------
-# RECOMENDAÇÃO
-# ----------------------------------------------------------
-
 with col4:
 
     st.metric(
         "Recomendação",
         analysis["recommendation"],
     )
+
+
+# ==========================================================
+# SCORE INVESTIA 2.0
+# ==========================================================
+
+st.divider()
+
+st.subheader(
+    "🤖 InvestIA Score 2.0"
+)
+
+
+score_col1, score_col2 = st.columns(
+    [1, 2]
+)
+
+
+# ==========================================================
+# SCORE PRINCIPAL
+# ==========================================================
+
+with score_col1:
+
+    st.metric(
+        "Score",
+        f"{analysis['score']:.0f}/100",
+    )
+
+    st.write(
+        f"**Classificação:** "
+        f"{analysis.get('classification', 'N/A')}"
+    )
+
+    st.write(
+        f"**Sinal:** "
+        f"{analysis.get('signal', 'N/A')}"
+    )
+
+
+# ==========================================================
+# COMPOSIÇÃO DO SCORE
+# ==========================================================
+
+with score_col2:
+
+    st.write(
+        "### Composição do Score"
+    )
+
+    metric1, metric2 = st.columns(2)
+
+    with metric1:
+
+        st.metric(
+            "RSI",
+            f"{analysis['rsi_score']:.0f}/100",
+        )
+
+        st.metric(
+            "MA21",
+            f"{analysis['ma21_score']:.0f}/100",
+        )
+
+        st.metric(
+            "MA200",
+            f"{analysis['ma200_score']:.0f}/100",
+        )
+
+    with metric2:
+
+        st.metric(
+            "Tendência",
+            f"{analysis['trend_score']:.0f}/100",
+        )
+
+        st.metric(
+            "Risco",
+            f"{analysis['risk_score']:.0f}/100",
+        )
+
+        st.metric(
+            "Técnico",
+            f"{analysis['technical']:.0f}/100",
+        )
+
+
+# ==========================================================
+# BARRA DO SCORE
+# ==========================================================
+
+st.progress(
+    min(
+        max(
+            int(analysis["score"]),
+            0,
+        ),
+        100,
+    )
+    / 100
+)
 
 
 # ==========================================================
@@ -261,10 +352,6 @@ st.subheader(
 ind1, ind2, ind3, ind4 = st.columns(4)
 
 
-# ----------------------------------------------------------
-# RSI
-# ----------------------------------------------------------
-
 with ind1:
 
     st.metric(
@@ -272,10 +359,6 @@ with ind1:
         f"{indicators['rsi']:.2f}",
     )
 
-
-# ----------------------------------------------------------
-# MA21
-# ----------------------------------------------------------
 
 with ind2:
 
@@ -287,10 +370,6 @@ with ind2:
     )
 
 
-# ----------------------------------------------------------
-# MA200
-# ----------------------------------------------------------
-
 with ind3:
 
     st.metric(
@@ -300,10 +379,6 @@ with ind3:
         ),
     )
 
-
-# ----------------------------------------------------------
-# VOLATILIDADE
-# ----------------------------------------------------------
 
 with ind4:
 
@@ -352,40 +427,7 @@ except Exception as error:
 st.divider()
 
 st.subheader(
-    "🤖 Análise InvestIA"
-)
-
-
-# ----------------------------------------------------------
-# RISCO
-# ----------------------------------------------------------
-
-risk = analysis.get(
-    "risk",
-    "N/A",
-)
-
-
-st.markdown(
-    f"### {risk_icon(risk)} Risco: {risk}"
-)
-
-
-# ----------------------------------------------------------
-# SCORE
-# ----------------------------------------------------------
-
-st.write(
-    f"**Score InvestIA:** {analysis['score']}"
-)
-
-
-# ----------------------------------------------------------
-# FUNDAMENTAÇÃO
-# ----------------------------------------------------------
-
-st.write(
-    "### Fundamentação da análise"
+    "🧠 Fundamentação da análise"
 )
 
 
@@ -412,6 +454,34 @@ else:
 
 
 # ==========================================================
+# GESTÃO DE RISCO
+# ==========================================================
+
+st.divider()
+
+st.subheader(
+    "⚠️ Gestão de risco"
+)
+
+
+risk = analysis.get(
+    "risk",
+    "N/A",
+)
+
+
+st.markdown(
+    f"### {risk_icon(risk)} {risk}"
+)
+
+
+st.write(
+    f"Score de risco: "
+    f"**{analysis['risk_score']:.0f}/100**"
+)
+
+
+# ==========================================================
 # HISTÓRICO
 # ==========================================================
 
@@ -434,5 +504,5 @@ with st.expander(
 st.divider()
 
 st.caption(
-    f"{APP_NAME} • {VERSION}"
+    f"{APP_NAME} • v0.6"
 )
