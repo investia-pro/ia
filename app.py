@@ -123,11 +123,10 @@ try:
             period,
         )
 
-
 except Exception as error:
 
     st.error(
-        "Erro ao consultar os dados do mercado."
+        "Não foi possível obter os dados do ativo."
     )
 
     st.exception(error)
@@ -166,64 +165,6 @@ except Exception as error:
 
 
 # ==========================================================
-# DIAGNÓSTICO DOS INDICADORES
-# ==========================================================
-
-with st.expander(
-    "🔧 Diagnóstico dos indicadores",
-    expanded=True,
-):
-
-    st.write(
-        "Ativo:",
-        indicators.get(
-            "asset",
-            "N/A",
-        ),
-    )
-
-    st.write(
-        "Preço:",
-        indicators.get(
-            "price",
-            "N/A",
-        ),
-    )
-
-    st.write(
-        "MA21:",
-        indicators.get(
-            "ma21",
-            "N/A",
-        ),
-    )
-
-    st.write(
-        "MA200:",
-        indicators.get(
-            "ma200",
-            "N/A",
-        ),
-    )
-
-    st.write(
-        "RSI:",
-        indicators.get(
-            "rsi",
-            "N/A",
-        ),
-    )
-
-    st.write(
-        "Volatilidade:",
-        indicators.get(
-            "volatility",
-            "N/A",
-        ),
-    )
-
-
-# ==========================================================
 # ANÁLISE
 # ==========================================================
 
@@ -247,8 +188,6 @@ except Exception as error:
 # ==========================================================
 # DASHBOARD PRINCIPAL
 # ==========================================================
-
-st.divider()
 
 st.subheader(
     f"📊 Análise do ativo: {market['asset']}"
@@ -442,7 +381,7 @@ st.write(
 
 
 # ----------------------------------------------------------
-# MOTIVOS
+# FUNDAMENTAÇÃO
 # ----------------------------------------------------------
 
 st.write(
@@ -450,13 +389,25 @@ st.write(
 )
 
 
-for reason in analysis.get(
+reasons = analysis.get(
     "reasons",
     [],
-):
+)
 
-    st.write(
-        f"✔️ {reason}"
+
+if reasons:
+
+    for reason in reasons:
+
+        st.write(
+            f"✔️ {reason}"
+        )
+
+else:
+
+    st.info(
+        "Não foram encontradas justificativas "
+        "adicionais para esta análise."
     )
 
 
