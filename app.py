@@ -3,20 +3,10 @@ InvestIA PRO
 Aplicação Principal
 
 Versão: v0.6
-Fase: 1.7
-
-Integração da validação completa dos dados.
+Fase: 1.7 - Validação e Qualidade dos Dados
 """
 
 import streamlit as st
-
-from config import (
-    APP_NAME,
-    VERSION,
-    PAGE_TITLE,
-    PAGE_ICON,
-    LAYOUT,
-)
 
 from market import get_market_data
 from indicators import calculate_indicators
@@ -31,13 +21,19 @@ from utils import (
 
 
 # ==========================================================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO
 # ==========================================================
+
+APP_NAME = "InvestIA PRO"
+VERSION = "v0.6"
+PAGE_TITLE = "InvestIA PRO"
+PAGE_ICON = "📈"
+
 
 st.set_page_config(
     page_title=PAGE_TITLE,
     page_icon=PAGE_ICON,
-    layout=LAYOUT,
+    layout="wide",
 )
 
 
@@ -48,10 +44,8 @@ st.set_page_config(
 st.title("📈 InvestIA PRO")
 
 st.caption(
-    f"{APP_NAME} • v0.6"
+    f"{APP_NAME} • {VERSION}"
 )
-
-st.divider()
 
 
 # ==========================================================
@@ -81,7 +75,7 @@ period = st.sidebar.selectbox(
 )
 
 
-analyze = st.sidebar.button(
+analyze_button = st.sidebar.button(
     "🔎 Analisar",
     use_container_width=True,
 )
@@ -91,7 +85,7 @@ analyze = st.sidebar.button(
 # TELA INICIAL
 # ==========================================================
 
-if not analyze:
+if not analyze_button:
 
     st.info(
         "Informe um ativo e clique em **Analisar**."
@@ -114,7 +108,7 @@ if not asset:
 
 
 # ==========================================================
-# DADOS DE MERCADO
+# BUSCA DOS DADOS
 # ==========================================================
 
 try:
@@ -131,7 +125,7 @@ try:
 except Exception as error:
 
     st.error(
-        "Não foi possível obter os dados do mercado."
+        "Erro ao buscar os dados do mercado."
     )
 
     st.exception(error)
@@ -140,8 +134,25 @@ except Exception as error:
 
 
 # ==========================================================
-# VALIDAÇÃO DOS DADOS DE MERCADO
+# NORMALIZAÇÃO DO HISTÓRICO
 # ==========================================================
+
+"""
+O market.py pode retornar:
+
+1. DataFrame diretamente
+
+ou
+
+2. Dicionário contendo:
+   {
+       "price": ...,
+       "history": DataFrame
+   }
+
+Por isso normalizamos o histórico antes
+de executar as validações.
+"""
 
 if market is None:
 
@@ -157,14 +168,60 @@ if market is None:
     st.stop()
 
 
+if isinstance(
+    market,
+    dict,
+):
+
+    history = market.get(
+        "history"
+    )
+
+else:
+
+    history = market
+
+
 # ==========================================================
-# INDICADORES
+# VALIDAÇÃO DO HISTÓRICO
+# ==========================================================
+
+if history is None:
+
+    st.error(
+        "O histórico do ativo não está disponível."
+    )
+
+    st.stop()
+
+
+try:
+
+    if history.empty:
+
+        st.error(
+            "O histórico retornado está vazio."
+        )
+
+        st.stop()
+
+except AttributeError:
+
+    st.error(
+        "Formato de dados de mercado inválido."
+    )
+
+    st.stop()
+
+
+# ==========================================================
+# CÁLCULO DOS INDICADORES
 # ==========================================================
 
 try:
 
     indicators = calculate_indicators(
-        market
+        history
     )
 
 except Exception as error:
@@ -182,15 +239,24 @@ except Exception as error:
 # VALIDAÇÃO COMPLETA
 # ==========================================================
 
+"""
+IMPORTANTE:
+
+A validação recebe o DataFrame 'history',
+e não o objeto 'market'.
+
+Essa é a correção principal da Fase 1.7.
+"""
+
 validation = validate_complete_analysis(
-    market_data=market,
+    market_data=history,
     indicators=indicators,
     minimum_rows=200,
 )
 
 
 # ==========================================================
-# TRATAMENTO DE DADOS INVÁLIDOS
+# TRATAMENTO DE DADOS INSUFICIENTES
 # ==========================================================
 
 if not validation["valid"]:
@@ -204,10 +270,15 @@ if not validation["valid"]:
         "Diagnóstico dos dados"
     )
 
-    validation_col1, validation_col2 = st.columns(2)
+
+    col1, col2 = st.columns(2)
 
 
-    with validation_col1:
+    # ======================================================
+    # MERCADO
+    # ======================================================
+
+    with col1:
 
         st.write(
             "### Mercado"
@@ -243,7 +314,11 @@ if not validation["valid"]:
             )
 
 
-    with validation_col2:
+    # ======================================================
+    # ESTRUTURA
+    # ======================================================
+
+    with col2:
 
         st.write(
             "### Estrutura"
@@ -279,9 +354,9 @@ if not validation["valid"]:
             )
 
 
-    # ------------------------------------------------------
-    # ERROS DETALHADOS
-    # ------------------------------------------------------
+    # ======================================================
+    # PROBLEMAS IDENTIFICADOS
+    # ======================================================
 
     if validation["errors"]:
 
@@ -289,10 +364,10 @@ if not validation["valid"]:
             "Problemas identificados"
         )
 
-        for error_message in validation["errors"]:
+        for message in validation["errors"]:
 
             st.write(
-                f"• {error_message}"
+                f"• {message}"
             )
 
 
@@ -300,7 +375,7 @@ if not validation["valid"]:
 
 
 # ==========================================================
-# ANÁLISE
+# ANÁLISE DO ATIVO
 # ==========================================================
 
 try:
@@ -321,8 +396,10 @@ except Exception as error:
 
 
 # ==========================================================
-# CABEÇALHO DO ATIVO
+# TÍTULO DA ANÁLISE
 # ==========================================================
+
+st.divider()
 
 st.subheader(
     f"📊 Análise do ativo: {asset}"
@@ -418,10 +495,10 @@ with score_col2:
         "### Composição do Score"
     )
 
-    metric1, metric2 = st.columns(2)
+    metric_col1, metric_col2 = st.columns(2)
 
 
-    with metric1:
+    with metric_col1:
 
         st.metric(
             "RSI",
@@ -439,7 +516,7 @@ with score_col2:
         )
 
 
-    with metric2:
+    with metric_col2:
 
         st.metric(
             "Tendência",
@@ -461,19 +538,22 @@ with score_col2:
 # BARRA DO SCORE
 # ==========================================================
 
-score_percentage = min(
-    max(
-        float(
-            analysis["score"]
-        ),
-        0,
+score_value = float(
+    analysis["score"]
+)
+
+
+score_value = max(
+    0,
+    min(
+        100,
+        score_value,
     ),
-    100,
-) / 100
+)
 
 
 st.progress(
-    score_percentage
+    score_value / 100
 )
 
 
@@ -488,10 +568,10 @@ st.subheader(
 )
 
 
-ind1, ind2, ind3, ind4 = st.columns(4)
+ind_col1, ind_col2, ind_col3, ind_col4 = st.columns(4)
 
 
-with ind1:
+with ind_col1:
 
     st.metric(
         "RSI (14)",
@@ -499,7 +579,7 @@ with ind1:
     )
 
 
-with ind2:
+with ind_col2:
 
     st.metric(
         "Média Móvel 21",
@@ -509,7 +589,7 @@ with ind2:
     )
 
 
-with ind3:
+with ind_col3:
 
     st.metric(
         "Média Móvel 200",
@@ -519,7 +599,7 @@ with ind3:
     )
 
 
-with ind4:
+with ind_col4:
 
     st.metric(
         "Volatilidade",
@@ -541,8 +621,7 @@ st.subheader(
 try:
 
     fig = create_price_chart(
-        market["history"],
-        indicators,
+        history
     )
 
     st.plotly_chart(
@@ -637,13 +716,13 @@ with st.expander(
 ):
 
     st.dataframe(
-        market["history"].tail(20),
+        history.tail(20),
         use_container_width=True,
     )
 
 
 # ==========================================================
-# STATUS DA ANÁLISE
+# STATUS FINAL
 # ==========================================================
 
 st.divider()
@@ -658,5 +737,5 @@ st.success(
 # ==========================================================
 
 st.caption(
-    f"{APP_NAME} • v0.6 • Fase 1.7"
+    f"{APP_NAME} • {VERSION} • Fase 1.7"
 )
