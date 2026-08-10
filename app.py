@@ -3,9 +3,9 @@ InvestIA PRO
 Aplicação Principal
 
 Versão: v0.6
-Fase: 1.3
+Fase: 1.7
 
-Painel Score InvestIA 2.0
+Integração da validação completa dos dados.
 """
 
 import streamlit as st
@@ -26,6 +26,7 @@ from charts import create_price_chart
 from utils import (
     format_currency,
     risk_icon,
+    validate_complete_analysis,
 )
 
 
@@ -57,7 +58,9 @@ st.divider()
 # SIDEBAR
 # ==========================================================
 
-st.sidebar.header("Configurações")
+st.sidebar.header(
+    "Configurações"
+)
 
 
 asset = st.sidebar.text_input(
@@ -98,7 +101,7 @@ if not analyze:
 
 
 # ==========================================================
-# VALIDAÇÃO
+# VALIDAÇÃO DO ATIVO
 # ==========================================================
 
 if not asset:
@@ -128,7 +131,7 @@ try:
 except Exception as error:
 
     st.error(
-        "Não foi possível obter os dados do ativo."
+        "Não foi possível obter os dados do mercado."
     )
 
     st.exception(error)
@@ -136,10 +139,19 @@ except Exception as error:
     st.stop()
 
 
+# ==========================================================
+# VALIDAÇÃO DOS DADOS DE MERCADO
+# ==========================================================
+
 if market is None:
 
     st.error(
-        "Não foi possível obter dados do ativo."
+        f"Não foram encontrados dados para o ativo "
+        f"**{asset}**."
+    )
+
+    st.info(
+        "Verifique o código do ativo e tente novamente."
     )
 
     st.stop()
@@ -162,6 +174,127 @@ except Exception as error:
     )
 
     st.exception(error)
+
+    st.stop()
+
+
+# ==========================================================
+# VALIDAÇÃO COMPLETA
+# ==========================================================
+
+validation = validate_complete_analysis(
+    market_data=market,
+    indicators=indicators,
+    minimum_rows=200,
+)
+
+
+# ==========================================================
+# TRATAMENTO DE DADOS INVÁLIDOS
+# ==========================================================
+
+if not validation["valid"]:
+
+    st.error(
+        "⚠️ Os dados disponíveis não são suficientes "
+        "para realizar uma análise confiável."
+    )
+
+    st.subheader(
+        "Diagnóstico dos dados"
+    )
+
+    validation_col1, validation_col2 = st.columns(2)
+
+
+    with validation_col1:
+
+        st.write(
+            "### Mercado"
+        )
+
+        if validation["market_data"]:
+
+            st.success(
+                "✓ Dados de mercado encontrados."
+            )
+
+        else:
+
+            st.error(
+                "✗ Dados de mercado indisponíveis."
+            )
+
+
+        st.write(
+            "### Histórico"
+        )
+
+        if validation["history"]:
+
+            st.success(
+                "✓ Histórico suficiente."
+            )
+
+        else:
+
+            st.warning(
+                "⚠ Histórico insuficiente."
+            )
+
+
+    with validation_col2:
+
+        st.write(
+            "### Estrutura"
+        )
+
+        if validation["columns"]:
+
+            st.success(
+                "✓ Estrutura de mercado válida."
+            )
+
+        else:
+
+            st.error(
+                "✗ Colunas necessárias ausentes."
+            )
+
+
+        st.write(
+            "### Indicadores"
+        )
+
+        if validation["indicators"]:
+
+            st.success(
+                "✓ Indicadores válidos."
+            )
+
+        else:
+
+            st.error(
+                "✗ Indicadores inválidos ou incompletos."
+            )
+
+
+    # ------------------------------------------------------
+    # ERROS DETALHADOS
+    # ------------------------------------------------------
+
+    if validation["errors"]:
+
+        st.subheader(
+            "Problemas identificados"
+        )
+
+        for error_message in validation["errors"]:
+
+            st.write(
+                f"• {error_message}"
+            )
+
 
     st.stop()
 
@@ -192,7 +325,7 @@ except Exception as error:
 # ==========================================================
 
 st.subheader(
-    f"📊 Análise do ativo: {market['asset']}"
+    f"📊 Análise do ativo: {asset}"
 )
 
 
@@ -287,6 +420,7 @@ with score_col2:
 
     metric1, metric2 = st.columns(2)
 
+
     with metric1:
 
         st.metric(
@@ -304,6 +438,7 @@ with score_col2:
             f"{analysis['ma200_score']:.0f}/100",
         )
 
+
     with metric2:
 
         st.metric(
@@ -318,7 +453,7 @@ with score_col2:
 
         st.metric(
             "Técnico",
-            f"{analysis['technical']:.0f}/100",
+            f"{analysis['technical_score']:.0f}/100",
         )
 
 
@@ -326,15 +461,19 @@ with score_col2:
 # BARRA DO SCORE
 # ==========================================================
 
-st.progress(
-    min(
-        max(
-            int(analysis["score"]),
-            0,
+score_percentage = min(
+    max(
+        float(
+            analysis["score"]
         ),
-        100,
-    )
-    / 100
+        0,
+    ),
+    100,
+) / 100
+
+
+st.progress(
+    score_percentage
 )
 
 
@@ -413,7 +552,7 @@ try:
 
 except Exception as error:
 
-    st.error(
+    st.warning(
         "Não foi possível gerar o gráfico."
     )
 
@@ -421,7 +560,7 @@ except Exception as error:
 
 
 # ==========================================================
-# ANÁLISE INVESTIA
+# FUNDAMENTAÇÃO
 # ==========================================================
 
 st.divider()
@@ -476,8 +615,14 @@ st.markdown(
 
 
 st.write(
-    f"Score de risco: "
+    f"Score de controle de risco: "
     f"**{analysis['risk_score']:.0f}/100**"
+)
+
+
+st.caption(
+    "Quanto maior o Score de risco, melhor o controle "
+    "da volatilidade observada."
 )
 
 
@@ -498,11 +643,20 @@ with st.expander(
 
 
 # ==========================================================
-# RODAPÉ
+# STATUS DA ANÁLISE
 # ==========================================================
 
 st.divider()
 
+st.success(
+    "✅ Análise concluída com dados validados."
+)
+
+
+# ==========================================================
+# RODAPÉ
+# ==========================================================
+
 st.caption(
-    f"{APP_NAME} • v0.6"
+    f"{APP_NAME} • v0.6 • Fase 1.7"
 )
