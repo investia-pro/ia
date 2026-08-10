@@ -19,14 +19,16 @@ from config import (
 from market import get_market_data
 from indicators import calculate_indicators
 from analysis import analyze_asset
+from charts import create_price_chart
 
 from utils import (
     format_currency,
     risk_icon,
 )
 
+
 # ==========================================================
-# Configuração da Página
+# CONFIGURAÇÃO DA PÁGINA
 # ==========================================================
 
 st.set_page_config(
@@ -35,26 +37,32 @@ st.set_page_config(
     layout=LAYOUT,
 )
 
+
 # ==========================================================
-# Cabeçalho
+# CABEÇALHO
 # ==========================================================
 
 st.title("📈 InvestIA PRO")
 
-st.caption(f"{APP_NAME} • {VERSION}")
+st.caption(
+    f"{APP_NAME} • {VERSION}"
+)
 
 st.divider()
 
+
 # ==========================================================
-# Sidebar
+# SIDEBAR
 # ==========================================================
 
 st.sidebar.header("Configurações")
 
+
 asset = st.sidebar.text_input(
     "Ativo",
-    value="PETR4"
-).upper()
+    value="PETR4",
+).strip().upper()
+
 
 period = st.sidebar.selectbox(
     "Período",
@@ -62,60 +70,82 @@ period = st.sidebar.selectbox(
         "6mo",
         "1y",
         "2y",
-        "5y"
+        "5y",
     ],
-    index=1
+    index=1,
 )
+
 
 analyze = st.sidebar.button(
-    "🔎 Analisar"
+    "🔎 Analisar",
+    use_container_width=True,
 )
 
+
 # ==========================================================
-# Tela Inicial
+# TELA INICIAL
 # ==========================================================
 
 if not analyze:
 
     st.info(
-        "Informe um ativo na barra lateral e clique em **Analisar**."
+        "Informe um ativo e clique em **Analisar**."
     )
 
     st.stop()
 
+
 # ==========================================================
-# Busca Mercado
+# VALIDAÇÃO DO ATIVO
+# ==========================================================
+
+if not asset:
+
+    st.warning(
+        "Digite o código de um ativo."
+    )
+
+    st.stop()
+
+
+# ==========================================================
+# BUSCA DOS DADOS DE MERCADO
 # ==========================================================
 
 try:
 
-    with st.spinner("Buscando dados do mercado..."):
+    with st.spinner(
+        "Buscando dados do mercado..."
+    ):
 
         market = get_market_data(
             asset,
-            period
+            period,
         )
 
-    if market is None:
 
-        st.error(
-            "Não foi possível obter dados do ativo."
-        )
-
-        st.stop()
-
-except Exception as e:
+except Exception as error:
 
     st.error(
-        "Erro ao consultar o mercado."
+        "Erro ao consultar os dados do mercado."
     )
 
-    st.exception(e)
+    st.exception(error)
 
     st.stop()
 
+
+if market is None:
+
+    st.error(
+        "Não foi possível obter dados do ativo."
+    )
+
+    st.stop()
+
+
 # ==========================================================
-# Indicadores
+# INDICADORES
 # ==========================================================
 
 try:
@@ -124,18 +154,77 @@ try:
         market
     )
 
-except Exception as e:
+except Exception as error:
 
     st.error(
-        "Erro ao calcular indicadores."
+        "Erro ao calcular os indicadores técnicos."
     )
 
-    st.exception(e)
+    st.exception(error)
 
     st.stop()
 
+
 # ==========================================================
-# Análise
+# DIAGNÓSTICO DOS INDICADORES
+# ==========================================================
+
+with st.expander(
+    "🔧 Diagnóstico dos indicadores",
+    expanded=True,
+):
+
+    st.write(
+        "Ativo:",
+        indicators.get(
+            "asset",
+            "N/A",
+        ),
+    )
+
+    st.write(
+        "Preço:",
+        indicators.get(
+            "price",
+            "N/A",
+        ),
+    )
+
+    st.write(
+        "MA21:",
+        indicators.get(
+            "ma21",
+            "N/A",
+        ),
+    )
+
+    st.write(
+        "MA200:",
+        indicators.get(
+            "ma200",
+            "N/A",
+        ),
+    )
+
+    st.write(
+        "RSI:",
+        indicators.get(
+            "rsi",
+            "N/A",
+        ),
+    )
+
+    st.write(
+        "Volatilidade:",
+        indicators.get(
+            "volatility",
+            "N/A",
+        ),
+    )
+
+
+# ==========================================================
+# ANÁLISE
 # ==========================================================
 
 try:
@@ -144,111 +233,251 @@ try:
         indicators
     )
 
-except Exception as e:
+except Exception as error:
 
     st.error(
-        "Erro durante a análise."
+        "Erro durante a análise do ativo."
     )
 
-    st.exception(e)
+    st.exception(error)
 
     st.stop()
 
+
 # ==========================================================
-# Dashboard
+# DASHBOARD PRINCIPAL
 # ==========================================================
 
-st.subheader(f"Análise do ativo: {market['asset']}")
+st.divider()
+
+st.subheader(
+    f"📊 Análise do ativo: {market['asset']}"
+)
+
 
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric(
-    "Preço",
-    format_currency(
-        indicators["price"]
+
+# ----------------------------------------------------------
+# PREÇO
+# ----------------------------------------------------------
+
+with col1:
+
+    st.metric(
+        "Preço atual",
+        format_currency(
+            indicators["price"]
+        ),
     )
-)
 
-col2.metric(
-    "Score",
-    analysis["score"]
-)
 
-col3.metric(
-    "Tendência",
-    analysis["trend"]
-)
+# ----------------------------------------------------------
+# SCORE
+# ----------------------------------------------------------
 
-col4.metric(
-    "Recomendação",
-    analysis["recommendation"]
-)
+with col2:
+
+    st.metric(
+        "Score InvestIA",
+        analysis["score"],
+    )
+
+
+# ----------------------------------------------------------
+# TENDÊNCIA
+# ----------------------------------------------------------
+
+with col3:
+
+    st.metric(
+        "Tendência",
+        analysis["trend"],
+    )
+
+
+# ----------------------------------------------------------
+# RECOMENDAÇÃO
+# ----------------------------------------------------------
+
+with col4:
+
+    st.metric(
+        "Recomendação",
+        analysis["recommendation"],
+    )
+
+
+# ==========================================================
+# INDICADORES TÉCNICOS
+# ==========================================================
 
 st.divider()
 
-# ==========================================================
-# Indicadores Técnicos
-# ==========================================================
-
-st.subheader("Indicadores")
-
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric(
-    "RSI",
-    f"{indicators['rsi']:.2f}"
+st.subheader(
+    "📐 Indicadores Técnicos"
 )
 
-c2.metric(
-    "MA21",
-    format_currency(
-        indicators["ma21"]
+
+ind1, ind2, ind3, ind4 = st.columns(4)
+
+
+# ----------------------------------------------------------
+# RSI
+# ----------------------------------------------------------
+
+with ind1:
+
+    st.metric(
+        "RSI (14)",
+        f"{indicators['rsi']:.2f}",
     )
-)
 
-c3.metric(
-    "MA200",
-    format_currency(
-        indicators["ma200"]
+
+# ----------------------------------------------------------
+# MA21
+# ----------------------------------------------------------
+
+with ind2:
+
+    st.metric(
+        "Média Móvel 21",
+        format_currency(
+            indicators["ma21"]
+        ),
     )
-)
 
-c4.metric(
-    "Volatilidade",
-    f"{indicators['volatility']:.2%}"
-)
+
+# ----------------------------------------------------------
+# MA200
+# ----------------------------------------------------------
+
+with ind3:
+
+    st.metric(
+        "Média Móvel 200",
+        format_currency(
+            indicators["ma200"]
+        ),
+    )
+
+
+# ----------------------------------------------------------
+# VOLATILIDADE
+# ----------------------------------------------------------
+
+with ind4:
+
+    st.metric(
+        "Volatilidade",
+        f"{indicators['volatility']:.2%}",
+    )
+
+
+# ==========================================================
+# GRÁFICO
+# ==========================================================
 
 st.divider()
 
+st.subheader(
+    "📈 Evolução do Ativo"
+)
+
+
+try:
+
+    fig = create_price_chart(
+        market["history"],
+        indicators,
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+except Exception as error:
+
+    st.error(
+        "Não foi possível gerar o gráfico."
+    )
+
+    st.exception(error)
+
+
 # ==========================================================
-# Análise InvestIA
+# ANÁLISE INVESTIA
 # ==========================================================
 
-st.subheader("🤖 InvestIA")
+st.divider()
+
+st.subheader(
+    "🤖 Análise InvestIA"
+)
+
+
+# ----------------------------------------------------------
+# RISCO
+# ----------------------------------------------------------
+
+risk = analysis.get(
+    "risk",
+    "N/A",
+)
+
 
 st.markdown(
-    f"### {risk_icon(analysis['risk'])} Risco: {analysis['risk']}"
+    f"### {risk_icon(risk)} Risco: {risk}"
 )
 
-st.write("### Motivos da recomendação")
 
-for item in analysis["reasons"]:
+# ----------------------------------------------------------
+# SCORE
+# ----------------------------------------------------------
 
-    st.success(item)
+st.write(
+    f"**Score InvestIA:** {analysis['score']}"
+)
+
+
+# ----------------------------------------------------------
+# MOTIVOS
+# ----------------------------------------------------------
+
+st.write(
+    "### Fundamentação da análise"
+)
+
+
+for reason in analysis.get(
+    "reasons",
+    [],
+):
+
+    st.write(
+        f"✔️ {reason}"
+    )
+
 
 # ==========================================================
-# Histórico
+# HISTÓRICO
 # ==========================================================
 
-with st.expander("Visualizar histórico"):
+st.divider()
+
+with st.expander(
+    "📋 Visualizar histórico do ativo"
+):
 
     st.dataframe(
         market["history"].tail(20),
-        use_container_width=True
+        use_container_width=True,
     )
 
+
 # ==========================================================
-# Rodapé
+# RODAPÉ
 # ==========================================================
 
 st.divider()
