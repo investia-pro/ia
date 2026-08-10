@@ -26,13 +26,10 @@ from utils import (
 
 APP_NAME = "InvestIA PRO"
 VERSION = "v0.6"
-PAGE_TITLE = "InvestIA PRO"
-PAGE_ICON = "📈"
-
 
 st.set_page_config(
-    page_title=PAGE_TITLE,
-    page_icon=PAGE_ICON,
+    page_title=APP_NAME,
+    page_icon="📈",
     layout="wide",
 )
 
@@ -108,7 +105,7 @@ if not asset:
 
 
 # ==========================================================
-# BUSCA DOS DADOS
+# BUSCA DOS DADOS DE MERCADO
 # ==========================================================
 
 try:
@@ -134,25 +131,8 @@ except Exception as error:
 
 
 # ==========================================================
-# NORMALIZAÇÃO DO HISTÓRICO
+# VALIDAÇÃO DO RETORNO DO MARKET.PY
 # ==========================================================
-
-"""
-O market.py pode retornar:
-
-1. DataFrame diretamente
-
-ou
-
-2. Dicionário contendo:
-   {
-       "price": ...,
-       "history": DataFrame
-   }
-
-Por isso normalizamos o histórico antes
-de executar as validações.
-"""
 
 if market is None:
 
@@ -168,18 +148,40 @@ if market is None:
     st.stop()
 
 
-if isinstance(
-    market,
-    dict,
-):
+# ==========================================================
+# NORMALIZAÇÃO DOS DADOS
+# ==========================================================
+
+"""
+O market.py normalmente retorna:
+
+{
+    "price": ...,
+    "history": DataFrame
+}
+
+O indicators.py espera esse objeto completo.
+
+Por isso NÃO enviamos somente o DataFrame
+para calculate_indicators().
+"""
+
+
+if isinstance(market, dict):
 
     history = market.get(
         "history"
     )
 
+    market_for_indicators = market
+
 else:
 
     history = market
+
+    market_for_indicators = {
+        "history": market
+    }
 
 
 # ==========================================================
@@ -208,7 +210,7 @@ try:
 except AttributeError:
 
     st.error(
-        "Formato de dados de mercado inválido."
+        "Formato de histórico inválido."
     )
 
     st.stop()
@@ -221,7 +223,7 @@ except AttributeError:
 try:
 
     indicators = calculate_indicators(
-        history
+        market_for_indicators
     )
 
 except Exception as error:
@@ -239,15 +241,6 @@ except Exception as error:
 # VALIDAÇÃO COMPLETA
 # ==========================================================
 
-"""
-IMPORTANTE:
-
-A validação recebe o DataFrame 'history',
-e não o objeto 'market'.
-
-Essa é a correção principal da Fase 1.7.
-"""
-
 validation = validate_complete_analysis(
     market_data=history,
     indicators=indicators,
@@ -256,7 +249,7 @@ validation = validate_complete_analysis(
 
 
 # ==========================================================
-# TRATAMENTO DE DADOS INSUFICIENTES
+# DIAGNÓSTICO DE DADOS
 # ==========================================================
 
 if not validation["valid"]:
@@ -269,7 +262,6 @@ if not validation["valid"]:
     st.subheader(
         "Diagnóstico dos dados"
     )
-
 
     col1, col2 = st.columns(2)
 
@@ -396,7 +388,7 @@ except Exception as error:
 
 
 # ==========================================================
-# TÍTULO DA ANÁLISE
+# TÍTULO
 # ==========================================================
 
 st.divider()
@@ -541,7 +533,6 @@ with score_col2:
 score_value = float(
     analysis["score"]
 )
-
 
 score_value = max(
     0,
