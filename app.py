@@ -3,7 +3,7 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: Integração e estabilização
+Fase: 2.4 - Explicabilidade do Score
 """
 
 import streamlit as st
@@ -34,7 +34,7 @@ from utils import (
 
 
 # ==========================================================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO
 # ==========================================================
 
 st.set_page_config(
@@ -56,7 +56,7 @@ st.caption(
 
 
 # ==========================================================
-# ENTRADA DO USUÁRIO
+# ENTRADA
 # ==========================================================
 
 col_input, col_period = st.columns(
@@ -98,9 +98,6 @@ analyze_button = st.button(
 # ==========================================================
 
 def normalize_asset_input(asset):
-    """
-    Normaliza o código informado pelo usuário.
-    """
 
     if asset is None:
         return ""
@@ -118,9 +115,6 @@ def get_indicator_value(
     key,
     default=None,
 ):
-    """
-    Obtém um indicador com segurança.
-    """
 
     if not isinstance(
         indicators,
@@ -139,10 +133,6 @@ def get_analysis_value(
     *keys,
     default=None,
 ):
-    """
-    Permite trabalhar com diferentes
-    nomenclaturas de retorno do analysis.py.
-    """
 
     if not isinstance(
         result,
@@ -153,21 +143,16 @@ def get_analysis_value(
     for key in keys:
 
         if key in result:
-
             return result[key]
 
     return default
 
 
 # ==========================================================
-# EXECUÇÃO PRINCIPAL
+# EXECUÇÃO
 # ==========================================================
 
 if analyze_button:
-
-    # ======================================================
-    # VALIDAÇÃO DO ATIVO
-    # ======================================================
 
     asset = normalize_asset_input(
         asset
@@ -182,7 +167,7 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # BUSCA DOS DADOS
+    # MERCADO
     # ======================================================
 
     with st.spinner(
@@ -194,10 +179,6 @@ if analyze_button:
             period,
         )
 
-    # ======================================================
-    # VALIDAÇÃO DO RETORNO
-    # ======================================================
-
     if market_data is None:
 
         st.error(
@@ -205,15 +186,10 @@ if analyze_button:
             f"dados para {asset}."
         )
 
-        st.info(
-            "Verifique o código do ativo "
-            "e tente novamente."
-        )
-
         st.stop()
 
     # ======================================================
-    # NORMALIZAÇÃO
+    # PREPARAÇÃO
     # ======================================================
 
     prepared_data = prepare_market_data(
@@ -223,34 +199,20 @@ if analyze_button:
     if prepared_data is None:
 
         st.error(
-            "Os dados recebidos do mercado "
-            "não puderam ser preparados "
-            "para análise."
+            "Os dados do mercado "
+            "não puderam ser preparados."
         )
 
         st.stop()
-
-    # ======================================================
-    # HISTÓRICO
-    # ======================================================
 
     history = prepared_data.get(
         "history"
     )
 
-    if history is None:
+    if history is None or history.empty:
 
         st.error(
-            "O histórico do ativo não "
-            "foi encontrado."
-        )
-
-        st.stop()
-
-    if history.empty:
-
-        st.error(
-            "O histórico do ativo está vazio."
+            "Histórico do ativo não encontrado."
         )
 
         st.stop()
@@ -267,7 +229,7 @@ if analyze_button:
 
         st.error(
             "Não foi possível determinar "
-            "o preço atual do ativo."
+            "o preço atual."
         )
 
         st.stop()
@@ -282,10 +244,6 @@ if analyze_button:
 
         try:
 
-            # IMPORTANTE:
-            # indicators.py espera o objeto completo
-            # contendo "history".
-
             indicators = calculate_indicators(
                 prepared_data
             )
@@ -293,8 +251,8 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao calcular os "
-                "indicadores técnicos."
+                "Erro ao calcular "
+                "os indicadores."
             )
 
             st.exception(
@@ -303,33 +261,16 @@ if analyze_button:
 
             st.stop()
 
-    # ======================================================
-    # VALIDAÇÃO DOS INDICADORES
-    # ======================================================
-
     if indicators is None:
 
         st.error(
-            "Não foi possível calcular "
-            "os indicadores."
-        )
-
-        st.stop()
-
-    if not isinstance(
-        indicators,
-        dict,
-    ):
-
-        st.error(
-            "O módulo de indicadores "
-            "retornou um formato inválido."
+            "Os indicadores não foram calculados."
         )
 
         st.stop()
 
     # ======================================================
-    # CONSOLIDAÇÃO DOS DADOS
+    # DADOS DE ANÁLISE
     # ======================================================
 
     analysis_data = {
@@ -363,7 +304,7 @@ if analyze_button:
     }
 
     # ======================================================
-    # VALIDAÇÃO FINAL
+    # VALIDAÇÃO
     # ======================================================
 
     if not validate_analysis_data(
@@ -371,100 +312,9 @@ if analyze_button:
     ):
 
         st.warning(
-            "Os dados disponíveis não são "
-            "suficientes para realizar "
-            "uma análise confiável."
+            "Dados insuficientes "
+            "para análise."
         )
-
-        st.subheader(
-            "Diagnóstico dos dados"
-        )
-
-        diagnostic_col1, diagnostic_col2 = (
-            st.columns(2)
-        )
-
-        with diagnostic_col1:
-
-            st.write(
-                "### Mercado"
-            )
-
-            st.success(
-                "✓ Dados de mercado "
-                "disponíveis."
-            )
-
-            st.write(
-                "### Histórico"
-            )
-
-            if len(history) >= 200:
-
-                st.success(
-                    "✓ Histórico suficiente."
-                )
-
-            else:
-
-                st.warning(
-                    f"⚠ Histórico possui "
-                    f"{len(history)} períodos. "
-                    f"São recomendados pelo "
-                    f"menos 200."
-                )
-
-        with diagnostic_col2:
-
-            st.write(
-                "### Estrutura"
-            )
-
-            required_fields = [
-                "price",
-                "rsi",
-                "ma21",
-                "ma200",
-                "volatility",
-            ]
-
-            missing_fields = [
-                field
-                for field in required_fields
-                if analysis_data.get(field) is None
-            ]
-
-            if missing_fields:
-
-                st.error(
-                    "✗ Campos ausentes: "
-                    + ", ".join(
-                        missing_fields
-                    )
-                )
-
-            else:
-
-                st.success(
-                    "✓ Estrutura válida."
-                )
-
-            st.write(
-                "### Indicadores"
-            )
-
-            if missing_fields:
-
-                st.error(
-                    "✗ Indicadores "
-                    "incompletos."
-                )
-
-            else:
-
-                st.success(
-                    "✓ Indicadores válidos."
-                )
 
         st.stop()
 
@@ -485,8 +335,8 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao executar a "
-                "análise do ativo."
+                "Erro ao executar "
+                "a análise."
             )
 
             st.exception(
@@ -498,20 +348,31 @@ if analyze_button:
     if result is None:
 
         st.error(
-            "O motor de análise não "
-            "retornou um resultado."
+            "A análise não retornou resultado."
         )
 
         st.stop()
 
     # ======================================================
-    # RESULTADOS DA ANÁLISE
+    # RESULTADOS
     # ======================================================
 
     score = get_analysis_value(
         result,
         "score",
         default=0,
+    )
+
+    classification = get_analysis_value(
+        result,
+        "classification",
+        default="NEUTRO",
+    )
+
+    signal = get_analysis_value(
+        result,
+        "signal",
+        default="NEUTRO",
     )
 
     trend = get_analysis_value(
@@ -542,8 +403,14 @@ if analyze_button:
         default=[],
     )
 
+    breakdown = get_analysis_value(
+        result,
+        "breakdown",
+        default={},
+    )
+
     # ======================================================
-    # TÍTULO DA ANÁLISE
+    # TÍTULO
     # ======================================================
 
     st.divider()
@@ -553,7 +420,7 @@ if analyze_button:
     )
 
     # ======================================================
-    # CARDS PRINCIPAIS
+    # CARDS
     # ======================================================
 
     col1, col2, col3, col4 = st.columns(
@@ -589,6 +456,15 @@ if analyze_button:
             "Recomendação",
             str(recommendation),
         )
+
+    # ======================================================
+    # CLASSIFICAÇÃO
+    # ======================================================
+
+    st.info(
+        f"**Classificação:** {classification}  "
+        f"| **Sinal:** {signal}"
+    )
 
     # ======================================================
     # INDICADORES
@@ -642,6 +518,229 @@ if analyze_button:
         )
 
     # ======================================================
+    # EXPLICABILIDADE DO SCORE
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🧠 Como o Score foi calculado"
+    )
+
+    st.caption(
+        "O Score InvestIA começa em 50 pontos "
+        "e recebe ajustes conforme os indicadores técnicos."
+    )
+
+    # ======================================================
+    # BASE
+    # ======================================================
+
+    base_points = 50
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        base_points = breakdown.get(
+            "base",
+            50,
+        )
+
+    st.write(
+        f"**Base:** {base_points:+d} pontos"
+    )
+
+    # ======================================================
+    # BREAKDOWN
+    # ======================================================
+
+    bd1, bd2, bd3 = st.columns(
+        3
+    )
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    with bd1:
+
+        ma21_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma21_data = breakdown.get(
+                "ma21",
+                {},
+            )
+
+        ma21_points = ma21_data.get(
+            "points",
+            0,
+        )
+
+        ma21_signal = ma21_data.get(
+            "signal",
+            "Neutro",
+        )
+
+        ma21_reason = ma21_data.get(
+            "reason",
+            "Sem informação.",
+        )
+
+        st.markdown(
+            "### 📏 MA21"
+        )
+
+        st.metric(
+            "Contribuição",
+            f"{ma21_points:+d} pts",
+        )
+
+        st.write(
+            f"**Sinal:** {ma21_signal}"
+        )
+
+        st.caption(
+            ma21_reason
+        )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    with bd2:
+
+        ma200_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma200_data = breakdown.get(
+                "ma200",
+                {},
+            )
+
+        ma200_points = ma200_data.get(
+            "points",
+            0,
+        )
+
+        ma200_signal = ma200_data.get(
+            "signal",
+            "Neutro",
+        )
+
+        ma200_reason = ma200_data.get(
+            "reason",
+            "Sem informação.",
+        )
+
+        st.markdown(
+            "### 📐 MA200"
+        )
+
+        st.metric(
+            "Contribuição",
+            f"{ma200_points:+d} pts",
+        )
+
+        st.write(
+            f"**Sinal:** {ma200_signal}"
+        )
+
+        st.caption(
+            ma200_reason
+        )
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    with bd3:
+
+        rsi_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            rsi_data = breakdown.get(
+                "rsi",
+                {},
+            )
+
+        rsi_points = rsi_data.get(
+            "points",
+            0,
+        )
+
+        rsi_signal = rsi_data.get(
+            "signal",
+            "Neutro",
+        )
+
+        rsi_reason = rsi_data.get(
+            "reason",
+            "Sem informação.",
+        )
+
+        st.markdown(
+            "### 📊 RSI"
+        )
+
+        st.metric(
+            "Contribuição",
+            f"{rsi_points:+d} pts",
+        )
+
+        st.write(
+            f"**Sinal:** {rsi_signal}"
+        )
+
+        st.caption(
+            rsi_reason
+        )
+
+    # ======================================================
+    # SCORE FINAL
+    # ======================================================
+
+    st.write("")
+
+    raw_score = None
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        raw_score = breakdown.get(
+            "raw_score"
+        )
+
+    if raw_score is not None:
+
+        st.success(
+            f"**Score final: {score}/100** "
+            f"(cálculo bruto: {raw_score})"
+        )
+
+    else:
+
+        st.success(
+            f"**Score final: {score}/100**"
+        )
+
+    # ======================================================
     # GRÁFICO
     # ======================================================
 
@@ -674,8 +773,7 @@ if analyze_button:
     except Exception as error:
 
         st.warning(
-            "O gráfico não pôde ser "
-            "gerado."
+            "O gráfico não pôde ser gerado."
         )
 
         st.exception(
@@ -683,7 +781,7 @@ if analyze_button:
         )
 
     # ======================================================
-    # ANÁLISE INVESTIA
+    # ANÁLISE
     # ======================================================
 
     st.divider()
@@ -696,14 +794,10 @@ if analyze_button:
         st.columns(2)
     )
 
-    # ======================================================
-    # JUSTIFICATIVAS
-    # ======================================================
-
     with analysis_col1:
 
         st.write(
-            "### Indicadores"
+            "### Justificativas"
         )
 
         if reasons:
@@ -721,10 +815,6 @@ if analyze_button:
                 "foi retornada."
             )
 
-    # ======================================================
-    # RISCO
-    # ======================================================
-
     with analysis_col2:
 
         st.write(
@@ -736,8 +826,16 @@ if analyze_button:
         )
 
         st.write(
-            f"**Score InvestIA:** "
-            f"{score}/100"
+            f"**Score:** {score}/100"
+        )
+
+        st.write(
+            f"**Sinal:** {signal}"
+        )
+
+        st.write(
+            f"**Recomendação:** "
+            f"{recommendation}"
         )
 
     # ======================================================
@@ -747,7 +845,7 @@ if analyze_button:
     st.divider()
 
     st.subheader(
-        "📋 Resumo da análise"
+        "📋 Resumo"
     )
 
     summary_col1, summary_col2 = (
@@ -773,6 +871,11 @@ if analyze_button:
 
         st.write(
             f"**Score:** {score}/100"
+        )
+
+        st.write(
+            f"**Classificação:** "
+            f"{classification}"
         )
 
         st.write(
