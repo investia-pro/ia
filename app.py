@@ -131,7 +131,7 @@ except Exception as error:
 
 
 # ==========================================================
-# VALIDAÇÃO DO RETORNO DO MARKET.PY
+# VALIDAÇÃO DO RETORNO
 # ==========================================================
 
 if market is None:
@@ -151,21 +151,6 @@ if market is None:
 # ==========================================================
 # NORMALIZAÇÃO DOS DADOS
 # ==========================================================
-
-"""
-O market.py normalmente retorna:
-
-{
-    "price": ...,
-    "history": DataFrame
-}
-
-O indicators.py espera esse objeto completo.
-
-Por isso NÃO enviamos somente o DataFrame
-para calculate_indicators().
-"""
-
 
 if isinstance(market, dict):
 
@@ -249,7 +234,7 @@ validation = validate_complete_analysis(
 
 
 # ==========================================================
-# DIAGNÓSTICO DE DADOS
+# DIAGNÓSTICO
 # ==========================================================
 
 if not validation["valid"]:
@@ -265,10 +250,9 @@ if not validation["valid"]:
 
     col1, col2 = st.columns(2)
 
-
-    # ======================================================
+    # ------------------------------------------------------
     # MERCADO
-    # ======================================================
+    # ------------------------------------------------------
 
     with col1:
 
@@ -288,7 +272,6 @@ if not validation["valid"]:
                 "✗ Dados de mercado indisponíveis."
             )
 
-
         st.write(
             "### Histórico"
         )
@@ -305,10 +288,9 @@ if not validation["valid"]:
                 "⚠ Histórico insuficiente."
             )
 
-
-    # ======================================================
+    # ------------------------------------------------------
     # ESTRUTURA
-    # ======================================================
+    # ------------------------------------------------------
 
     with col2:
 
@@ -328,7 +310,6 @@ if not validation["valid"]:
                 "✗ Colunas necessárias ausentes."
             )
 
-
         st.write(
             "### Indicadores"
         )
@@ -345,10 +326,9 @@ if not validation["valid"]:
                 "✗ Indicadores inválidos ou incompletos."
             )
 
-
-    # ======================================================
-    # PROBLEMAS IDENTIFICADOS
-    # ======================================================
+    # ------------------------------------------------------
+    # PROBLEMAS
+    # ------------------------------------------------------
 
     if validation["errors"]:
 
@@ -362,12 +342,11 @@ if not validation["valid"]:
                 f"• {message}"
             )
 
-
     st.stop()
 
 
 # ==========================================================
-# ANÁLISE DO ATIVO
+# ANÁLISE
 # ==========================================================
 
 try:
@@ -388,7 +367,7 @@ except Exception as error:
 
 
 # ==========================================================
-# TÍTULO
+# TÍTULO DA ANÁLISE
 # ==========================================================
 
 st.divider()
@@ -402,7 +381,9 @@ st.subheader(
 # RESUMO PRINCIPAL
 # ==========================================================
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(
+    [1, 1, 1, 1]
+)
 
 
 with col1:
@@ -433,9 +414,13 @@ with col3:
 
 with col4:
 
+    recommendation = analysis[
+        "recommendation"
+    ]
+
     st.metric(
         "Recomendação",
-        analysis["recommendation"],
+        recommendation,
     )
 
 
@@ -489,7 +474,6 @@ with score_col2:
 
     metric_col1, metric_col2 = st.columns(2)
 
-
     with metric_col1:
 
         st.metric(
@@ -506,7 +490,6 @@ with score_col2:
             "MA200",
             f"{analysis['ma200_score']:.0f}/100",
         )
-
 
     with metric_col2:
 
@@ -541,7 +524,6 @@ score_value = max(
         score_value,
     ),
 )
-
 
 st.progress(
     score_value / 100
@@ -675,7 +657,7 @@ st.subheader(
 
 risk = analysis.get(
     "risk",
-    "N/A",
+    "N/A"
 )
 
 
