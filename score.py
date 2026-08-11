@@ -1,50 +1,50 @@
 """
 InvestIA PRO
-Motor de Score Quantitativo
+Motor de Pontuação
 
 Versão: v0.6
-Fase: 1.5
-
-Responsável por transformar os indicadores técnicos
-em uma pontuação de 0 a 100.
-
-Este módulo não acessa dados externos e não possui
-dependência do Streamlit.
+Fase: 2.1 - Consolidação do Score 2.0
 """
 
-from typing import Any
+from config import (
+    RSI_OVERSOLD,
+    RSI_OVERBOUGHT,
+)
 
 
 # ==========================================================
 # CONFIGURAÇÃO DO SCORE
 # ==========================================================
 
-WEIGHTS = {
-    "rsi": 0.25,
-    "ma21": 0.20,
-    "ma200": 0.25,
-    "trend": 0.20,
-    "risk": 0.10,
-}
-
-
-# ==========================================================
-# LIMITES
-# ==========================================================
-
 MIN_SCORE = 0
 MAX_SCORE = 100
+
+
+# Pesos da composição final
+WEIGHT_RSI = 0.15
+WEIGHT_MA21 = 0.15
+WEIGHT_MA200 = 0.20
+WEIGHT_TREND = 0.20
+WEIGHT_RISK = 0.15
+WEIGHT_TECHNICAL = 0.15
 
 
 # ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
-def _clamp(
-    value: float,
-    minimum: float = MIN_SCORE,
-    maximum: float = MAX_SCORE,
-) -> float:
+def clamp(value, minimum=0, maximum=100):
+    """
+    Mantém um valor dentro de um intervalo.
+    """
+
+    try:
+
+        value = float(value)
+
+    except (TypeError, ValueError):
+
+        return minimum
 
     return max(
         minimum,
@@ -55,107 +55,109 @@ def _clamp(
     )
 
 
-def _safe_float(
-    value: Any,
-) -> float | None:
-
-    try:
-
-        if value is None:
-            return None
-
-        return float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return None
-
-
 # ==========================================================
 # SCORE DO RSI
 # ==========================================================
 
-def calculate_rsi_score(
-    rsi: float,
-) -> float:
+def score_rsi(rsi):
+    """
+    Converte o RSI em uma pontuação de 0 a 100.
 
-    rsi = _safe_float(rsi)
+    Interpretação:
 
-    if rsi is None:
+    RSI <= sobrevenda
+        -> maior potencial técnico
+
+    RSI >= sobrecompra
+        -> menor pontuação
+
+    Zona intermediária
+        -> pontuação neutra
+    """
+
+    try:
+
+        rsi = float(rsi)
+
+    except (TypeError, ValueError):
+
         return 50.0
 
-    if rsi < 20:
-        score = 45
+    if rsi <= RSI_OVERSOLD:
 
-    elif rsi < 30:
-        score = 60
+        return 85.0
 
-    elif rsi < 40:
-        score = 65
+    if rsi >= RSI_OVERBOUGHT:
 
-    elif rsi <= 60:
-        score = 55
+        return 25.0
 
-    elif rsi <= 70:
-        score = 75
+    # Região intermediária
+    # 30 -> 85
+    # 70 -> 25
 
-    elif rsi <= 80:
-        score = 55
-
-    else:
-        score = 40
-
-    return float(
-        _clamp(score)
+    score = 85 - (
+        (rsi - RSI_OVERSOLD)
+        * 60
+        / (
+            RSI_OVERBOUGHT
+            - RSI_OVERSOLD
+        )
     )
+
+    return clamp(score)
 
 
 # ==========================================================
 # SCORE DA MA21
 # ==========================================================
 
-def calculate_ma21_score(
-    price: float,
-    ma21: float,
-) -> float:
+def score_ma21(price, ma21):
+    """
+    Avalia a posição do preço em relação à MA21.
+    """
 
-    price = _safe_float(price)
-    ma21 = _safe_float(ma21)
+    try:
 
-    if price is None or ma21 is None:
+        price = float(price)
+        ma21 = float(ma21)
+
+    except (TypeError, ValueError):
+
         return 50.0
 
     if ma21 <= 0:
+
         return 50.0
 
-    difference = (
+    distance = (
         (price - ma21)
         / ma21
     ) * 100
 
-    if difference >= 5:
-        score = 90
+    # Forte acima da média
+    if distance >= 5:
 
-    elif difference >= 2:
-        score = 80
+        return 85.0
 
-    elif difference >= 0:
-        score = 65
+    # Acima
+    if distance > 0:
 
-    elif difference >= -2:
-        score = 45
+        return clamp(
+            65 + (
+                distance * 4
+            )
+        )
 
-    elif difference >= -5:
-        score = 30
+    # Forte abaixo
+    if distance <= -5:
 
-    else:
-        score = 15
+        return 20.0
 
-    return float(
-        _clamp(score)
+    # Abaixo
+    return clamp(
+        65 + (
+            distance * 9
+        )
     )
 
 
@@ -163,45 +165,52 @@ def calculate_ma21_score(
 # SCORE DA MA200
 # ==========================================================
 
-def calculate_ma200_score(
-    price: float,
-    ma200: float,
-) -> float:
+def score_ma200(price, ma200):
+    """
+    Avalia a posição do preço em relação à MA200.
 
-    price = _safe_float(price)
-    ma200 = _safe_float(ma200)
+    A MA200 possui peso maior por representar
+    uma tendência de longo prazo.
+    """
 
-    if price is None or ma200 is None:
+    try:
+
+        price = float(price)
+        ma200 = float(ma200)
+
+    except (TypeError, ValueError):
+
         return 50.0
 
     if ma200 <= 0:
+
         return 50.0
 
-    difference = (
+    distance = (
         (price - ma200)
         / ma200
     ) * 100
 
-    if difference >= 10:
-        score = 95
+    if distance >= 10:
 
-    elif difference >= 5:
-        score = 85
+        return 95.0
 
-    elif difference >= 0:
-        score = 70
+    if distance > 0:
 
-    elif difference >= -5:
-        score = 45
+        return clamp(
+            65 + (
+                distance * 3
+            )
+        )
 
-    elif difference >= -10:
-        score = 25
+    if distance <= -10:
 
-    else:
-        score = 10
+        return 15.0
 
-    return float(
-        _clamp(score)
+    return clamp(
+        65 + (
+            distance * 5
+        )
     )
 
 
@@ -209,163 +218,220 @@ def calculate_ma200_score(
 # SCORE DE TENDÊNCIA
 # ==========================================================
 
-def calculate_trend_score(
-    price: float,
-    ma21: float,
-    ma200: float,
-) -> float:
+def score_trend(
+    price,
+    ma21,
+    ma200,
+):
+    """
+    Determina a força da tendência utilizando
+    preço, MA21 e MA200.
+    """
 
-    price = _safe_float(price)
-    ma21 = _safe_float(ma21)
-    ma200 = _safe_float(ma200)
+    try:
 
-    if (
-        price is None
-        or ma21 is None
-        or ma200 is None
-    ):
+        price = float(price)
+        ma21 = float(ma21)
+        ma200 = float(ma200)
+
+    except (TypeError, ValueError):
+
         return 50.0
 
-    score = 50.0
+    if (
+        price > ma21
+        and price > ma200
+        and ma21 > ma200
+    ):
 
-    # ------------------------------------------------------
-    # Preço x MA21
-    # ------------------------------------------------------
+        return 100.0
 
-    if price > ma21:
+    if (
+        price > ma21
+        and price > ma200
+    ):
 
-        score += 15
+        return 85.0
 
-    elif price < ma21:
+    if (
+        price < ma21
+        and price < ma200
+        and ma21 < ma200
+    ):
 
-        score -= 15
+        return 10.0
 
-    # ------------------------------------------------------
-    # Preço x MA200
-    # ------------------------------------------------------
+    if (
+        price < ma21
+        and price < ma200
+    ):
 
-    if price > ma200:
+        return 25.0
 
-        score += 20
-
-    elif price < ma200:
-
-        score -= 20
-
-    # ------------------------------------------------------
-    # MA21 x MA200
-    # ------------------------------------------------------
-
-    if ma21 > ma200:
-
-        score += 15
-
-    elif ma21 < ma200:
-
-        score -= 15
-
-    return float(
-        _clamp(score)
-    )
+    return 50.0
 
 
 # ==========================================================
 # SCORE DE RISCO
 # ==========================================================
 
-def calculate_risk_score(
-    volatility: float,
-) -> float:
+def score_risk(volatility):
+    """
+    Converte volatilidade em um score de controle de risco.
 
-    volatility = _safe_float(
-        volatility
-    )
+    Quanto menor a volatilidade,
+    maior o score de controle.
+    """
 
-    if volatility is None:
+    try:
+
+        volatility = float(
+            volatility
+        )
+
+    except (TypeError, ValueError):
+
         return 50.0
 
-    # Aceita:
+    # Volatilidade esperada em formato decimal.
     #
-    # 0.0169 = 1,69%
-    #
-    # ou
-    #
-    # 1.69 = 1,69%
-
-    if volatility > 1:
-
-        volatility = volatility / 100
+    # 0.01 = 1%
+    # 0.02 = 2%
+    # 0.03 = 3%
 
     if volatility <= 0.01:
 
-        score = 90
+        return 95.0
 
-    elif volatility <= 0.02:
+    if volatility <= 0.015:
 
-        score = 75
+        return 85.0
 
-    elif volatility <= 0.03:
+    if volatility <= 0.02:
 
-        score = 60
+        return 75.0
 
-    elif volatility <= 0.04:
+    if volatility <= 0.03:
 
-        score = 45
+        return 60.0
 
-    elif volatility <= 0.06:
+    if volatility <= 0.04:
 
-        score = 30
+        return 45.0
 
-    else:
+    if volatility <= 0.06:
 
-        score = 15
+        return 30.0
 
-    return float(
-        _clamp(score)
+    return 15.0
+
+
+# ==========================================================
+# SCORE TÉCNICO
+# ==========================================================
+
+def score_technical(
+    rsi_score,
+    ma21_score,
+    ma200_score,
+):
+    """
+    Consolida os principais indicadores técnicos.
+
+    O score técnico representa a qualidade do conjunto
+    de sinais, sem considerar diretamente o risco.
+    """
+
+    scores = [
+        clamp(rsi_score),
+        clamp(ma21_score),
+        clamp(ma200_score),
+    ]
+
+    return clamp(
+        sum(scores)
+        / len(scores)
     )
 
 
 # ==========================================================
-# CLASSIFICAÇÃO DO SCORE
+# SCORE FINAL
 # ==========================================================
 
-def classify_score(
-    score: float,
-) -> str:
+def calculate_final_score(
+    rsi_score,
+    ma21_score,
+    ma200_score,
+    trend_score,
+    risk_score,
+    technical_score,
+):
     """
-    Classificação oficial do Score InvestIA 2.0.
-
-    80–100  = MUITO FORTE
-    70–79   = FORTE
-    60–69   = MODERADO
-    45–59   = NEUTRO
-    30–44   = FRACO
-    0–29    = MUITO FRACO
+    Calcula o Score InvestIA final de 0 a 100.
     """
 
-    score = _safe_float(score)
+    score = (
 
-    if score is None:
+        rsi_score
+        * WEIGHT_RSI
 
-        return "INDEFINIDO"
+        +
+
+        ma21_score
+        * WEIGHT_MA21
+
+        +
+
+        ma200_score
+        * WEIGHT_MA200
+
+        +
+
+        trend_score
+        * WEIGHT_TREND
+
+        +
+
+        risk_score
+        * WEIGHT_RISK
+
+        +
+
+        technical_score
+        * WEIGHT_TECHNICAL
+
+    )
+
+    return round(
+        clamp(score),
+        0,
+    )
+
+
+# ==========================================================
+# CLASSIFICAÇÃO
+# ==========================================================
+
+def classify_score(score):
+    """
+    Classifica o Score InvestIA.
+    """
+
+    score = clamp(score)
 
     if score >= 80:
 
         return "MUITO FORTE"
 
-    if score >= 70:
+    if score >= 65:
 
         return "FORTE"
 
-    if score >= 60:
-
-        return "MODERADO"
-
-    if score >= 45:
+    if score >= 50:
 
         return "NEUTRO"
 
-    if score >= 30:
+    if score >= 35:
 
         return "FRACO"
 
@@ -376,184 +442,80 @@ def classify_score(
 # SINAL
 # ==========================================================
 
-def classify_signal(
-    score: float,
-) -> str:
+def generate_signal(score):
     """
-    Interpretação operacional do Score.
-
-    80–100  = MUITO POSITIVO
-    70–79   = POSITIVO
-    60–69   = POSITIVO MODERADO
-    45–59   = NEUTRO
-    30–44   = NEGATIVO MODERADO
-    0–29    = MUITO NEGATIVO
-
-    O sinal é uma interpretação quantitativa
-    e não representa recomendação financeira individual.
+    Gera o sinal operacional a partir do Score.
     """
 
-    score = _safe_float(score)
+    score = clamp(score)
 
-    if score is None:
-
-        return "INDEFINIDO"
-
-    if score >= 80:
-
-        return "MUITO POSITIVO"
-
-    if score >= 70:
+    if score >= 65:
 
         return "POSITIVO"
 
-    if score >= 60:
-
-        return "POSITIVO MODERADO"
-
-    if score >= 45:
+    if score >= 50:
 
         return "NEUTRO"
 
-    if score >= 30:
-
-        return "NEGATIVO MODERADO"
-
-    return "MUITO NEGATIVO"
+    return "NEGATIVO"
 
 
 # ==========================================================
-# FUNDAMENTAÇÃO
+# RECOMENDAÇÃO
 # ==========================================================
 
-def generate_reasons(
-    price: float,
-    ma21: float,
-    ma200: float,
-    rsi: float,
-    volatility: float,
-) -> list[str]:
+def generate_recommendation(score):
+    """
+    Gera a recomendação de investimento.
+    """
 
-    reasons = []
+    score = clamp(score)
 
-    price = _safe_float(price)
-    ma21 = _safe_float(ma21)
-    ma200 = _safe_float(ma200)
-    rsi = _safe_float(rsi)
-    volatility = _safe_float(volatility)
+    if score >= 80:
 
-    # ------------------------------------------------------
-    # MA21
-    # ------------------------------------------------------
+        return "Compra Forte"
 
-    if (
-        price is not None
-        and ma21 is not None
-    ):
+    if score >= 65:
 
-        if price > ma21:
+        return "Compra Moderada"
 
-            reasons.append(
-                "Preço acima da média móvel de 21 períodos."
-            )
+    if score >= 50:
 
-        elif price < ma21:
+        return "Aguardar"
 
-            reasons.append(
-                "Preço abaixo da média móvel de 21 períodos."
-            )
+    if score >= 35:
 
-    # ------------------------------------------------------
-    # MA200
-    # ------------------------------------------------------
+        return "Aguardar"
 
-    if (
-        price is not None
-        and ma200 is not None
-    ):
-
-        if price > ma200:
-
-            reasons.append(
-                "Preço acima da média móvel de 200 períodos."
-            )
-
-        elif price < ma200:
-
-            reasons.append(
-                "Preço abaixo da média móvel de 200 períodos."
-            )
-
-    # ------------------------------------------------------
-    # RSI
-    # ------------------------------------------------------
-
-    if rsi is not None:
-
-        if rsi < 30:
-
-            reasons.append(
-                "RSI em região de sobrevenda."
-            )
-
-        elif rsi < 40:
-
-            reasons.append(
-                "RSI indica possível recuperação."
-            )
-
-        elif rsi <= 60:
-
-            reasons.append(
-                "RSI em região neutra."
-            )
-
-        elif rsi <= 70:
-
-            reasons.append(
-                "RSI indica força compradora."
-            )
-
-        else:
-
-            reasons.append(
-                "RSI em região de sobrecompra."
-            )
-
-    # ------------------------------------------------------
-    # Volatilidade
-    # ------------------------------------------------------
-
-    if volatility is not None:
-
-        if volatility <= 0.02:
-
-            reasons.append(
-                "Volatilidade diária dentro de uma faixa moderada."
-            )
-
-        elif volatility <= 0.04:
-
-            reasons.append(
-                "Volatilidade diária relativamente elevada."
-            )
-
-        else:
-
-            reasons.append(
-                "Volatilidade diária elevada, indicando maior risco."
-            )
-
-    return reasons
+    return "Venda"
 
 
 # ==========================================================
-# SCORE PRINCIPAL
+# FUNÇÃO PRINCIPAL
 # ==========================================================
 
-def calculate_investia_score(
-    indicators: dict,
-) -> dict:
+def calculate_score(indicators):
+    """
+    Calcula o Score InvestIA 2.0 completo.
+
+    Parâmetro
+    ---------
+    indicators : dict
+
+        Deve conter:
+
+        price
+        rsi
+        ma21
+        ma200
+        volatility
+
+    Retorno
+    -------
+
+    Dicionário contendo todos os componentes
+    utilizados pelo dashboard.
+    """
 
     if not isinstance(
         indicators,
@@ -564,163 +526,144 @@ def calculate_investia_score(
             "indicators deve ser um dicionário."
         )
 
-    price = indicators.get(
-        "price"
-    )
+    required = [
+        "price",
+        "rsi",
+        "ma21",
+        "ma200",
+        "volatility",
+    ]
 
-    rsi = indicators.get(
-        "rsi"
-    )
+    missing = [
+        field
+        for field in required
+        if field not in indicators
+    ]
 
-    ma21 = indicators.get(
-        "ma21"
-    )
+    if missing:
 
-    ma200 = indicators.get(
-        "ma200"
-    )
-
-    volatility = indicators.get(
-        "volatility"
-    )
-
-    # ======================================================
-    # SCORES INDIVIDUAIS
-    # ======================================================
-
-    rsi_score = calculate_rsi_score(
-        rsi
-    )
-
-    ma21_score = calculate_ma21_score(
-        price,
-        ma21,
-    )
-
-    ma200_score = calculate_ma200_score(
-        price,
-        ma200,
-    )
-
-    trend_score = calculate_trend_score(
-        price,
-        ma21,
-        ma200,
-    )
-
-    risk_score = calculate_risk_score(
-        volatility
-    )
-
-    # ======================================================
-    # SCORE TÉCNICO
-    # ======================================================
-
-    technical_score = (
-        (
-            rsi_score
-            * WEIGHTS["rsi"]
+        raise ValueError(
+            "Indicadores ausentes: "
+            + ", ".join(missing)
         )
-        +
-        (
-            ma21_score
-            * WEIGHTS["ma21"]
-        )
-        +
-        (
-            ma200_score
-            * WEIGHTS["ma200"]
-        )
+
+
+    # ------------------------------------------------------
+    # COMPONENTES
+    # ------------------------------------------------------
+
+    rsi_score = score_rsi(
+        indicators["rsi"]
     )
 
-    # ======================================================
+    ma21_score = score_ma21(
+        indicators["price"],
+        indicators["ma21"],
+    )
+
+    ma200_score = score_ma200(
+        indicators["price"],
+        indicators["ma200"],
+    )
+
+    trend_score = score_trend(
+        indicators["price"],
+        indicators["ma21"],
+        indicators["ma200"],
+    )
+
+    risk_score = score_risk(
+        indicators["volatility"]
+    )
+
+    technical_score = score_technical(
+        rsi_score,
+        ma21_score,
+        ma200_score,
+    )
+
+
+    # ------------------------------------------------------
     # SCORE FINAL
-    # ======================================================
+    # ------------------------------------------------------
 
-    final_score = (
-        technical_score
-        +
-        (
-            trend_score
-            * WEIGHTS["trend"]
-        )
-        +
-        (
-            risk_score
-            * WEIGHTS["risk"]
-        )
+    score = calculate_final_score(
+        rsi_score,
+        ma21_score,
+        ma200_score,
+        trend_score,
+        risk_score,
+        technical_score,
     )
 
-    final_score = round(
-        _clamp(final_score),
-        2,
-    )
 
-    # ======================================================
+    # ------------------------------------------------------
     # CLASSIFICAÇÃO
-    # ======================================================
+    # ------------------------------------------------------
 
     classification = classify_score(
-        final_score
+        score
     )
 
-    signal = classify_signal(
-        final_score
+    signal = generate_signal(
+        score
     )
 
-    # ======================================================
-    # FUNDAMENTAÇÃO
-    # ======================================================
-
-    reasons = generate_reasons(
-        price,
-        ma21,
-        ma200,
-        rsi,
-        volatility,
+    recommendation = generate_recommendation(
+        score
     )
 
-    # ======================================================
-    # RESULTADO
-    # ======================================================
+
+    # ------------------------------------------------------
+    # RETORNO
+    # ------------------------------------------------------
 
     return {
 
-        "score": final_score,
+        "score": score,
 
-        "classification": classification,
+        "classification":
+            classification,
 
-        "signal": signal,
+        "signal":
+            signal,
 
-        "rsi": round(
-            rsi_score,
-            2,
-        ),
+        "recommendation":
+            recommendation,
 
-        "ma21": round(
-            ma21_score,
-            2,
-        ),
+        "rsi_score":
+            round(
+                rsi_score,
+                0,
+            ),
 
-        "ma200": round(
-            ma200_score,
-            2,
-        ),
+        "ma21_score":
+            round(
+                ma21_score,
+                0,
+            ),
 
-        "trend": round(
-            trend_score,
-            2,
-        ),
+        "ma200_score":
+            round(
+                ma200_score,
+                0,
+            ),
 
-        "risk": round(
-            risk_score,
-            2,
-        ),
+        "trend_score":
+            round(
+                trend_score,
+                0,
+            ),
 
-        "technical": round(
-            technical_score,
-            2,
-        ),
+        "risk_score":
+            round(
+                risk_score,
+                0,
+            ),
 
-        "reasons": reasons,
+        "technical_score":
+            round(
+                technical_score,
+                0,
+            ),
     }
