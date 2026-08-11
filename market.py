@@ -3,7 +3,7 @@ InvestIA PRO
 Módulo de dados de mercado
 
 Versão: v0.6
-Fase: 2.3.1 - Estabilização do Market Data
+Fase: Diagnóstico do Market Data
 """
 
 import yfinance as yf
@@ -19,9 +19,15 @@ def normalize_asset(asset):
     """
     Normaliza o código do ativo.
 
-    Exemplo:
-        PETR4 -> PETR4.SA
-        PETR4.SA -> PETR4.SA
+    Exemplos:
+
+    PETR4
+    ↓
+    PETR4.SA
+
+    PETR4.SA
+    ↓
+    PETR4.SA
     """
 
     if asset is None:
@@ -50,7 +56,7 @@ def get_market_data(
     """
     Busca dados históricos do ativo.
 
-    Retorna um dicionário no formato:
+    Retorno esperado:
 
     {
         "asset": "PETR4",
@@ -59,7 +65,8 @@ def get_market_data(
         "price": float
     }
 
-    Esse formato é utilizado pelo indicators.py.
+    O campo "history" é obrigatório para o
+    indicators.py atual.
     """
 
     ticker_symbol = normalize_asset(
@@ -67,17 +74,26 @@ def get_market_data(
     )
 
     if ticker_symbol is None:
+
+        st.error(
+            "Código do ativo inválido."
+        )
+
         return None
 
     try:
 
         # ==================================================
-        # YAHOO FINANCE
+        # INFORMAÇÕES DO ATIVO
         # ==================================================
 
         ticker = yf.Ticker(
             ticker_symbol
         )
+
+        # ==================================================
+        # HISTÓRICO
+        # ==================================================
 
         data = ticker.history(
             period=period,
@@ -85,17 +101,39 @@ def get_market_data(
         )
 
         # ==================================================
-        # VALIDAÇÃO
+        # VERIFICAÇÃO DO RETORNO
         # ==================================================
 
         if data is None:
+
+            st.error(
+                f"O Yahoo Finance não retornou "
+                f"dados para {ticker_symbol}."
+            )
+
             return None
 
         if data.empty:
+
+            st.error(
+                f"O histórico de {ticker_symbol} "
+                f"retornou vazio."
+            )
+
+            st.info(
+                "Ticker consultado: "
+                f"{ticker_symbol}"
+            )
+
+            st.info(
+                "Período solicitado: "
+                f"{period}"
+            )
+
             return None
 
         # ==================================================
-        # TRATAMENTO DE MULTIINDEX
+        # MULTIINDEX
         # ==================================================
 
         if isinstance(
@@ -114,41 +152,70 @@ def get_market_data(
             ]
 
         # ==================================================
-        # VERIFICA COLUNA CLOSE
+        # VERIFICA CLOSE
         # ==================================================
 
         if "Close" not in data.columns:
+
+            st.error(
+                "A resposta do Yahoo Finance "
+                "não contém a coluna Close."
+            )
+
+            st.write(
+                "Colunas recebidas:"
+            )
+
+            st.write(
+                list(data.columns)
+            )
+
             return None
 
         # ==================================================
-        # LIMPEZA
+        # CÓPIA DOS DADOS
         # ==================================================
 
         data = data.copy()
-
-        data = data.dropna(
-            subset=["Close"]
-        )
-
-        if data.empty:
-            return None
 
         # ==================================================
         # CONVERSÃO NUMÉRICA
         # ==================================================
 
-        for column in data.columns:
+        numeric_columns = [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+        ]
 
-            data[column] = pd.to_numeric(
-                data[column],
-                errors="coerce",
-            )
+        for column in numeric_columns:
+
+            if column in data.columns:
+
+                data[column] = pd.to_numeric(
+                    data[column],
+                    errors="coerce",
+                )
+
+        # ==================================================
+        # REMOVE LINHAS INVÁLIDAS
+        # ==================================================
 
         data = data.dropna(
-            subset=["Close"]
+            subset=[
+                "Close"
+            ]
         )
 
         if data.empty:
+
+            st.error(
+                "Após a limpeza dos dados, "
+                "não restaram preços válidos."
+            )
+
             return None
 
         # ==================================================
@@ -158,7 +225,7 @@ def get_market_data(
         data = data.sort_index()
 
         # ==================================================
-        # ÚLTIMO PREÇO
+        # PREÇO ATUAL
         # ==================================================
 
         price = data[
@@ -166,32 +233,54 @@ def get_market_data(
         ].iloc[-1]
 
         if pd.isna(price):
+
+            st.error(
+                "Não foi possível determinar "
+                "o último preço."
+            )
+
             return None
 
-        price = float(price)
+        price = float(
+            price
+        )
 
         # ==================================================
-        # RETORNO
+        # RETORNO PADRONIZADO
         # ==================================================
 
-        return {
+        result = {
 
-            "asset": str(asset)
-            .strip()
-            .upper(),
+            "asset":
+                str(asset)
+                .strip()
+                .upper(),
 
-            "ticker": ticker_symbol,
+            "ticker":
+                ticker_symbol,
 
-            "history": data,
+            "history":
+                data,
 
-            "price": price,
+            "price":
+                price,
         }
+
+        return result
 
     except Exception as error:
 
-        print(
-            f"Erro ao buscar "
-            f"{ticker_symbol}: {error}"
+        # ==================================================
+        # DIAGNÓSTICO
+        # ==================================================
+
+        st.error(
+            f"Erro ao consultar "
+            f"{ticker_symbol}"
+        )
+
+        st.exception(
+            error
         )
 
         return None
@@ -202,26 +291,27 @@ def get_market_data(
 # ==========================================================
 
 def get_current_price(
-    market_data
+    market_data,
 ):
     """
-    Retorna o último preço do ativo.
-
-    Aceita o dicionário retornado
-    por get_market_data().
+    Retorna o último preço disponível.
     """
 
     if market_data is None:
         return None
 
-    # ------------------------------------------------------
-    # Formato atual
-    # ------------------------------------------------------
+    # ======================================================
+    # DICIONÁRIO
+    # ======================================================
 
     if isinstance(
         market_data,
         dict,
     ):
+
+        # --------------------------------------------------
+        # Preço já calculado
+        # --------------------------------------------------
 
         if "price" in market_data:
 
@@ -237,6 +327,10 @@ def get_current_price(
             ):
 
                 pass
+
+        # --------------------------------------------------
+        # Histórico
+        # --------------------------------------------------
 
         if "history" in market_data:
 
@@ -266,9 +360,9 @@ def get_current_price(
 
                     return None
 
-    # ------------------------------------------------------
-    # Compatibilidade com DataFrame
-    # ------------------------------------------------------
+    # ======================================================
+    # DATAFRAME
+    # ======================================================
 
     if isinstance(
         market_data,
@@ -304,20 +398,20 @@ def get_current_price(
 # ==========================================================
 
 def prepare_market_data(
-    data
+    data,
 ):
     """
     Padroniza os dados de mercado.
 
-    Mantém o histórico no campo "history"
-    para utilização pelo indicators.py.
+    Mantém o campo history para o
+    indicators.py.
     """
 
     if data is None:
         return None
 
     # ======================================================
-    # SE JÁ FOR O FORMATO PADRONIZADO
+    # DICIONÁRIO
     # ======================================================
 
     if isinstance(
@@ -326,6 +420,7 @@ def prepare_market_data(
     ):
 
         if "history" not in data:
+
             return None
 
         history = data[
@@ -336,6 +431,10 @@ def prepare_market_data(
             return None
 
         if history.empty:
+            return None
+
+        if "Close" not in history.columns:
+
             return None
 
         price = get_current_price(
@@ -352,7 +451,7 @@ def prepare_market_data(
         return result
 
     # ======================================================
-    # COMPATIBILIDADE COM DATAFRAME
+    # DATAFRAME
     # ======================================================
 
     if isinstance(
@@ -375,9 +474,11 @@ def prepare_market_data(
 
         return {
 
-            "history": data,
+            "history":
+                data,
 
-            "price": price,
+            "price":
+                price,
         }
 
     return None
