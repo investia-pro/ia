@@ -3,86 +3,82 @@ InvestIA PRO
 Motor de Análise
 
 Versão: v0.6
-Fase: 2.2 - Integração do Score 2.0
+Fase: 2.2 - Motor de decisão
 """
 
-from score import calculate_investia_score
+from config import (
+    BUY_SCORE,
+    SELL_SCORE,
+    RSI_OVERSOLD,
+    RSI_OVERBOUGHT,
+)
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
+# CLASSIFICAÇÃO DO SCORE
 # ==========================================================
 
-def _get_trend(score_data):
+def classify_score(score):
     """
-    Determina a tendência principal do ativo.
-    """
-
-    trend_score = score_data.get(
-        "trend_score",
-        50,
-    )
-
-    if trend_score >= 80:
-        return "Positiva"
-
-    if trend_score >= 60:
-        return "Levemente Positiva"
-
-    if trend_score >= 40:
-        return "Neutra"
-
-    if trend_score >= 20:
-        return "Levemente Negativa"
-
-    return "Negativa"
-
-
-def _get_risk(score_data):
-    """
-    Determina o nível de risco.
-
-    risk_score representa controle de risco:
-    quanto maior, menor o risco observado.
+    Classifica o Score InvestIA.
     """
 
-    risk_score = score_data.get(
-        "risk_score",
-        50,
-    )
+    if score >= 80:
+        return "FORTE"
 
-    if risk_score >= 80:
-        return "Baixo"
+    if score >= 65:
+        return "BOM"
 
-    if risk_score >= 60:
-        return "Moderado"
+    if score >= 50:
+        return "NEUTRO"
 
-    if risk_score >= 40:
-        return "Alto"
+    if score >= 35:
+        return "FRACO"
 
-    return "Muito Alto"
+    return "MUITO FRACO"
 
 
-def _build_reasons(
-    indicators,
-    score_data,
+# ==========================================================
+# SINAL
+# ==========================================================
+
+def classify_signal(score):
+    """
+    Define o sinal principal da análise.
+    """
+
+    if score >= BUY_SCORE:
+        return "POSITIVO"
+
+    if score <= SELL_SCORE:
+        return "NEGATIVO"
+
+    return "NEUTRO"
+
+
+# ==========================================================
+# ANÁLISE DE TENDÊNCIA
+# ==========================================================
+
+def analyze_trend(
+    price,
+    ma21,
+    ma200,
 ):
     """
-    Gera as justificativas da análise.
+    Avalia tendência de curto e longo prazo.
     """
 
     reasons = []
 
-    price = indicators["price"]
-    ma21 = indicators["ma21"]
-    ma200 = indicators["ma200"]
-    rsi = indicators["rsi"]
+    short_term = price > ma21
+    long_term = price > ma200
 
-    # ======================================================
-    # PREÇO X MA21
-    # ======================================================
+    # ------------------------------------------------------
+    # Curto prazo
+    # ------------------------------------------------------
 
-    if price > ma21:
+    if short_term:
 
         reasons.append(
             "Preço acima da média móvel de 21 períodos."
@@ -94,11 +90,11 @@ def _build_reasons(
             "Preço abaixo da média móvel de 21 períodos."
         )
 
-    # ======================================================
-    # PREÇO X MA200
-    # ======================================================
+    # ------------------------------------------------------
+    # Longo prazo
+    # ------------------------------------------------------
 
-    if price > ma200:
+    if long_term:
 
         reasons.append(
             "Preço acima da média móvel de 200 períodos."
@@ -110,140 +106,189 @@ def _build_reasons(
             "Preço abaixo da média móvel de 200 períodos."
         )
 
-    # ======================================================
-    # RELAÇÃO MA21 X MA200
-    # ======================================================
+    # ------------------------------------------------------
+    # Classificação
+    # ------------------------------------------------------
 
-    if ma21 > ma200:
+    if short_term and long_term:
 
-        reasons.append(
-            "MA21 acima da MA200, indicando estrutura "
-            "de tendência de longo prazo favorável."
-        )
+        trend = "Positiva"
 
-    elif ma21 < ma200:
+    elif not short_term and not long_term:
 
-        reasons.append(
-            "MA21 abaixo da MA200, indicando estrutura "
-            "de tendência de longo prazo desfavorável."
-        )
+        trend = "Negativa"
 
     else:
 
-        reasons.append(
-            "MA21 e MA200 estão praticamente no mesmo nível."
-        )
+        trend = "Neutra"
 
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    if rsi <= 30:
-
-        reasons.append(
-            "RSI em região de sobrevenda."
-        )
-
-    elif rsi >= 70:
-
-        reasons.append(
-            "RSI em região de sobrecompra."
-        )
-
-    else:
-
-        reasons.append(
-            "RSI em região intermediária."
-        )
-
-    # ======================================================
-    # SCORE
-    # ======================================================
-
-    score = score_data.get(
-        "score",
-        50,
-    )
-
-    if score >= 80:
-
-        reasons.append(
-            "Score InvestIA indica forte predominância "
-            "de fatores favoráveis."
-        )
-
-    elif score >= 65:
-
-        reasons.append(
-            "Score InvestIA indica predominância "
-            "de fatores favoráveis."
-        )
-
-    elif score >= 50:
-
-        reasons.append(
-            "Score InvestIA indica equilíbrio entre "
-            "fatores positivos e negativos."
-        )
-
-    elif score >= 35:
-
-        reasons.append(
-            "Score InvestIA indica predominância "
-            "de fatores desfavoráveis."
-        )
-
-    else:
-
-        reasons.append(
-            "Score InvestIA indica forte predominância "
-            "de fatores desfavoráveis."
-        )
-
-    return reasons
+    return trend, reasons
 
 
 # ==========================================================
-# ANÁLISE PRINCIPAL
+# ANÁLISE DO RSI
+# ==========================================================
+
+def analyze_rsi(rsi):
+    """
+    Interpreta o RSI.
+    """
+
+    reasons = []
+
+    if rsi <= RSI_OVERSOLD:
+
+        reasons.append(
+            "RSI indica possível sobrevenda."
+        )
+
+        return 2, reasons
+
+    if rsi >= RSI_OVERBOUGHT:
+
+        reasons.append(
+            "RSI indica possível sobrecompra."
+        )
+
+        return -2, reasons
+
+    reasons.append(
+        "RSI em zona neutra."
+    )
+
+    return 0, reasons
+
+
+# ==========================================================
+# ANÁLISE DE RISCO
+# ==========================================================
+
+def analyze_risk(volatility):
+    """
+    Classifica o risco pela volatilidade.
+    """
+
+    if volatility < 0.015:
+
+        return "Baixo"
+
+    if volatility < 0.030:
+
+        return "Moderado"
+
+    return "Alto"
+
+
+# ==========================================================
+# RECOMENDAÇÃO
+# ==========================================================
+
+def generate_recommendation(
+    score,
+    trend,
+    risk,
+):
+    """
+    Gera recomendação combinando score,
+    tendência e risco.
+    """
+
+    # ------------------------------------------------------
+    # Score muito forte
+    # ------------------------------------------------------
+
+    if score >= 80:
+
+        if trend == "Positiva":
+
+            return "Compra"
+
+        if risk == "Alto":
+
+            return "Aguardar"
+
+        return "Compra"
+
+
+    # ------------------------------------------------------
+    # Score bom
+    # ------------------------------------------------------
+
+    if score >= 65:
+
+        if trend == "Negativa":
+
+            return "Aguardar"
+
+        if risk == "Alto":
+
+            return "Aguardar"
+
+        return "Compra"
+
+
+    # ------------------------------------------------------
+    # Score neutro
+    # ------------------------------------------------------
+
+    if score >= 50:
+
+        return "Aguardar"
+
+
+    # ------------------------------------------------------
+    # Score fraco
+    # ------------------------------------------------------
+
+    if score >= 35:
+
+        if trend == "Positiva":
+
+            return "Aguardar"
+
+        return "Venda"
+
+
+    # ------------------------------------------------------
+    # Score muito fraco
+    # ------------------------------------------------------
+
+    return "Venda"
+
+
+# ==========================================================
+# MOTOR PRINCIPAL
 # ==========================================================
 
 def analyze_asset(data):
     """
-    Analisa um ativo utilizando os indicadores técnicos
-    e o Score InvestIA 2.0.
+    Recebe os indicadores técnicos e gera
+    uma análise completa do ativo.
 
-    Parâmetro
-    ---------
-    data : dict
+    Campos esperados:
 
-        Deve conter:
-
-        price
-        rsi
-        ma21
-        ma200
-        volatility
-
-    Retorno
-    -------
-
-    Dicionário completo utilizado pelo app.py.
+    price
+    ma21
+    ma200
+    rsi
+    volatility
     """
 
-    if not isinstance(
-        data,
-        dict,
-    ):
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
 
-        raise TypeError(
-            "data deve ser um dicionário."
+    if data is None:
+
+        raise ValueError(
+            "Dados de análise não fornecidos."
         )
 
     required = [
         "price",
-        "rsi",
         "ma21",
         "ma200",
+        "rsi",
         "volatility",
     ]
 
@@ -257,62 +302,163 @@ def analyze_asset(data):
     if missing:
 
         raise ValueError(
-            "Dados necessários ausentes: "
+            "Dados ausentes para análise: "
             + ", ".join(missing)
         )
 
     # ======================================================
-    # SCORE 2.0
+    # DADOS
     # ======================================================
 
-    score_data = calculate_investia_score(
-        data
+    price = float(
+        data["price"]
+    )
+
+    ma21 = float(
+        data["ma21"]
+    )
+
+    ma200 = float(
+        data["ma200"]
+    )
+
+    rsi = float(
+        data["rsi"]
+    )
+
+    volatility = float(
+        data["volatility"]
     )
 
     # ======================================================
-    # INTERPRETAÇÃO
+    # SCORE
     # ======================================================
 
-    score = score_data[
-        "score"
-    ]
+    score = 50
 
-    classification = score_data[
-        "classification"
-    ]
-
-    signal = score_data[
-        "signal"
-    ]
-
-    recommendation = score_data[
-        "recommendation"
-    ]
+    reasons = []
 
     # ======================================================
     # TENDÊNCIA
     # ======================================================
 
-    trend = _get_trend(
-        score_data
+    trend, trend_reasons = analyze_trend(
+        price,
+        ma21,
+        ma200,
+    )
+
+    reasons.extend(
+        trend_reasons
+    )
+
+    # ------------------------------------------------------
+    # Curto prazo
+    # ------------------------------------------------------
+
+    if price > ma21:
+
+        score += 10
+
+    else:
+
+        score -= 10
+
+    # ------------------------------------------------------
+    # Longo prazo
+    # ------------------------------------------------------
+
+    if price > ma200:
+
+        score += 20
+
+    else:
+
+        score -= 20
+
+    # ======================================================
+    # RSI
+    # ======================================================
+
+    rsi_score, rsi_reasons = analyze_rsi(
+        rsi
+    )
+
+    score += (
+        rsi_score * 5
+    )
+
+    reasons.extend(
+        rsi_reasons
+    )
+
+    # ======================================================
+    # LIMITAÇÃO DO SCORE
+    # ======================================================
+
+    score = max(
+        0,
+        min(
+            100,
+            score,
+        ),
     )
 
     # ======================================================
     # RISCO
     # ======================================================
 
-    risk = _get_risk(
-        score_data
+    risk = analyze_risk(
+        volatility
     )
 
     # ======================================================
-    # JUSTIFICATIVAS
+    # CLASSIFICAÇÃO
     # ======================================================
 
-    reasons = _build_reasons(
-        data,
-        score_data,
+    classification = classify_score(
+        score
     )
+
+    # ======================================================
+    # SINAL
+    # ======================================================
+
+    signal = classify_signal(
+        score
+    )
+
+    # ======================================================
+    # RECOMENDAÇÃO
+    # ======================================================
+
+    recommendation = generate_recommendation(
+        score,
+        trend,
+        risk,
+    )
+
+    # ======================================================
+    # JUSTIFICATIVAS DE RISCO
+    # ======================================================
+
+    if risk == "Baixo":
+
+        reasons.append(
+            "Volatilidade baixa, indicando menor risco técnico."
+        )
+
+    elif risk == "Moderado":
+
+        reasons.append(
+            "Volatilidade moderada, exigindo atenção ao risco."
+        )
+
+    else:
+
+        reasons.append(
+            "Volatilidade elevada, indicando maior risco técnico."
+        )
 
     # ======================================================
     # RETORNO
@@ -320,12 +466,7 @@ def analyze_asset(data):
 
     return {
 
-        # --------------------------------------------------
-        # SCORE
-        # --------------------------------------------------
-
-        "score":
-            score,
+        "score": score,
 
         "classification":
             classification,
@@ -333,53 +474,15 @@ def analyze_asset(data):
         "signal":
             signal,
 
-        "recommendation":
-            recommendation,
-
-        # --------------------------------------------------
-        # INTERPRETAÇÃO
-        # --------------------------------------------------
-
         "trend":
             trend,
+
+        "recommendation":
+            recommendation,
 
         "risk":
             risk,
 
         "reasons":
             reasons,
-
-        # --------------------------------------------------
-        # COMPONENTES DO SCORE
-        # --------------------------------------------------
-
-        "rsi_score":
-            score_data[
-                "rsi_score"
-            ],
-
-        "ma21_score":
-            score_data[
-                "ma21_score"
-            ],
-
-        "ma200_score":
-            score_data[
-                "ma200_score"
-            ],
-
-        "trend_score":
-            score_data[
-                "trend_score"
-            ],
-
-        "risk_score":
-            score_data[
-                "risk_score"
-            ],
-
-        "technical_score":
-            score_data[
-                "technical_score"
-            ],
     }
