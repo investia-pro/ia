@@ -1,9 +1,9 @@
 """
 InvestIA PRO
-Aplicação Principal
+Aplicação principal
 
 Versão: v0.6
-Fase: 1.7 - Validação e Qualidade dos Dados
+Fase: 2.3 - Integração do Score 2.0
 """
 
 import streamlit as st
@@ -14,21 +14,19 @@ from analysis import analyze_asset
 from charts import create_price_chart
 
 from utils import (
+    validate_market_data,
+    validate_analysis_data,
     format_currency,
     risk_icon,
-    validate_complete_analysis,
 )
 
 
 # ==========================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO DA PÁGINA
 # ==========================================================
 
-APP_NAME = "InvestIA PRO"
-VERSION = "v0.6"
-
 st.set_page_config(
-    page_title=APP_NAME,
+    page_title="InvestIA PRO",
     page_icon="📈",
     layout="wide",
 )
@@ -41,674 +39,496 @@ st.set_page_config(
 st.title("📈 InvestIA PRO")
 
 st.caption(
-    f"{APP_NAME} • {VERSION}"
+    "Análise inteligente de ativos financeiros"
 )
 
 
 # ==========================================================
-# SIDEBAR
+# ENTRADA DO USUÁRIO
 # ==========================================================
 
-st.sidebar.header(
-    "Configurações"
+col_input, col_period = st.columns(
+    [2, 1]
 )
 
 
-asset = st.sidebar.text_input(
-    "Ativo",
-    value="PETR4",
-).strip().upper()
+with col_input:
+
+    asset = st.text_input(
+        "Digite o código do ativo",
+        value="PETR4",
+        max_chars=10,
+    )
 
 
-period = st.sidebar.selectbox(
-    "Período",
-    [
-        "6mo",
-        "1y",
-        "2y",
-        "5y",
-    ],
-    index=1,
-)
+with col_period:
+
+    period = st.selectbox(
+        "Período de análise",
+        [
+            "6mo",
+            "1y",
+            "2y",
+            "5y",
+        ],
+        index=1,
+    )
 
 
-analyze_button = st.sidebar.button(
-    "🔎 Analisar",
+analyze_button = st.button(
+    "🔎 Analisar ativo",
     use_container_width=True,
 )
 
 
 # ==========================================================
-# TELA INICIAL
+# FUNÇÃO DE EXIBIÇÃO DE SCORE
 # ==========================================================
 
-if not analyze_button:
+def display_score_component(
+    label,
+    value,
+):
+    """
+    Exibe um componente individual do Score.
+    """
 
-    st.info(
-        "Informe um ativo e clique em **Analisar**."
+    try:
+
+        value = float(value)
+
+    except (TypeError, ValueError):
+
+        value = 0
+
+    st.metric(
+        label,
+        f"{value:.0f}/100",
     )
 
-    st.stop()
-
 
 # ==========================================================
-# VALIDAÇÃO DO ATIVO
+# EXECUÇÃO PRINCIPAL
 # ==========================================================
 
-if not asset:
+if analyze_button:
 
-    st.warning(
-        "Digite o código de um ativo."
-    )
+    # ------------------------------------------------------
+    # Validação do ativo
+    # ------------------------------------------------------
 
-    st.stop()
+    asset = asset.strip().upper()
 
+    if not asset:
 
-# ==========================================================
-# BUSCA DOS DADOS DE MERCADO
-# ==========================================================
-
-try:
-
-    with st.spinner(
-        "Buscando dados do mercado..."
-    ):
-
-        market = get_market_data(
-            asset,
-            period,
-        )
-
-except Exception as error:
-
-    st.error(
-        "Erro ao buscar os dados do mercado."
-    )
-
-    st.exception(error)
-
-    st.stop()
-
-
-# ==========================================================
-# VALIDAÇÃO DO RETORNO
-# ==========================================================
-
-if market is None:
-
-    st.error(
-        f"Não foram encontrados dados para o ativo "
-        f"**{asset}**."
-    )
-
-    st.info(
-        "Verifique o código do ativo e tente novamente."
-    )
-
-    st.stop()
-
-
-# ==========================================================
-# NORMALIZAÇÃO DOS DADOS
-# ==========================================================
-
-if isinstance(market, dict):
-
-    history = market.get(
-        "history"
-    )
-
-    market_for_indicators = market
-
-else:
-
-    history = market
-
-    market_for_indicators = {
-        "history": market
-    }
-
-
-# ==========================================================
-# VALIDAÇÃO DO HISTÓRICO
-# ==========================================================
-
-if history is None:
-
-    st.error(
-        "O histórico do ativo não está disponível."
-    )
-
-    st.stop()
-
-
-try:
-
-    if history.empty:
-
-        st.error(
-            "O histórico retornado está vazio."
+        st.warning(
+            "Digite o código de um ativo."
         )
 
         st.stop()
 
-except AttributeError:
 
-    st.error(
-        "Formato de histórico inválido."
-    )
+    try:
 
-    st.stop()
+        # ==================================================
+        # BUSCA DE DADOS
+        # ==================================================
 
+        with st.spinner(
+            "Buscando dados do mercado..."
+        ):
 
-# ==========================================================
-# CÁLCULO DOS INDICADORES
-# ==========================================================
-
-try:
-
-    indicators = calculate_indicators(
-        market_for_indicators
-    )
-
-except Exception as error:
-
-    st.error(
-        "Erro ao calcular os indicadores técnicos."
-    )
-
-    st.exception(error)
-
-    st.stop()
-
-
-# ==========================================================
-# VALIDAÇÃO COMPLETA
-# ==========================================================
-
-validation = validate_complete_analysis(
-    market_data=history,
-    indicators=indicators,
-    minimum_rows=200,
-)
-
-
-# ==========================================================
-# DIAGNÓSTICO
-# ==========================================================
-
-if not validation["valid"]:
-
-    st.error(
-        "⚠️ Os dados disponíveis não são suficientes "
-        "para realizar uma análise confiável."
-    )
-
-    st.subheader(
-        "Diagnóstico dos dados"
-    )
-
-    col1, col2 = st.columns(2)
-
-    # ------------------------------------------------------
-    # MERCADO
-    # ------------------------------------------------------
-
-    with col1:
-
-        st.write(
-            "### Mercado"
-        )
-
-        if validation["market_data"]:
-
-            st.success(
-                "✓ Dados de mercado encontrados."
+            market_data = get_market_data(
+                asset,
+                period,
             )
 
-        else:
+
+        # ==================================================
+        # VALIDAÇÃO DO MERCADO
+        # ==================================================
+
+        if not validate_market_data(
+            market_data
+        ):
 
             st.error(
-                "✗ Dados de mercado indisponíveis."
+                f"Não foi possível obter dados para {asset}."
             )
 
-        st.write(
-            "### Histórico"
-        )
-
-        if validation["history"]:
-
-            st.success(
-                "✓ Histórico suficiente."
+            st.info(
+                "Verifique o código do ativo e tente novamente."
             )
 
-        else:
+            st.stop()
+
+
+        # ==================================================
+        # INDICADORES
+        # ==================================================
+
+        with st.spinner(
+            "Calculando indicadores..."
+        ):
+
+            indicators = calculate_indicators(
+                market_data
+            )
+
+
+        # ==================================================
+        # PREPARAÇÃO DOS DADOS
+        # ==================================================
+
+        analysis_data = {
+            **indicators
+        }
+
+
+        # ==================================================
+        # VALIDAÇÃO DA ANÁLISE
+        # ==================================================
+
+        if not validate_analysis_data(
+            analysis_data
+        ):
 
             st.warning(
-                "⚠ Histórico insuficiente."
+                "Não existem dados suficientes "
+                "para realizar a análise."
             )
 
-    # ------------------------------------------------------
-    # ESTRUTURA
-    # ------------------------------------------------------
+            st.stop()
 
-    with col2:
 
-        st.write(
-            "### Estrutura"
-        )
+        # ==================================================
+        # MOTOR DE ANÁLISE
+        # ==================================================
 
-        if validation["columns"]:
+        with st.spinner(
+            "Executando análise InvestIA..."
+        ):
 
-            st.success(
-                "✓ Estrutura de mercado válida."
+            result = analyze_asset(
+                analysis_data
             )
 
-        else:
 
-            st.error(
-                "✗ Colunas necessárias ausentes."
-            )
+        # ==================================================
+        # CABEÇALHO DO ATIVO
+        # ==================================================
 
-        st.write(
-            "### Indicadores"
-        )
-
-        if validation["indicators"]:
-
-            st.success(
-                "✓ Indicadores válidos."
-            )
-
-        else:
-
-            st.error(
-                "✗ Indicadores inválidos ou incompletos."
-            )
-
-    # ------------------------------------------------------
-    # PROBLEMAS
-    # ------------------------------------------------------
-
-    if validation["errors"]:
+        st.divider()
 
         st.subheader(
-            "Problemas identificados"
+            f"📊 Análise: {asset}"
         )
 
-        for message in validation["errors"]:
 
-            st.write(
-                f"• {message}"
+        # ==================================================
+        # CARDS PRINCIPAIS
+        # ==================================================
+
+        col1, col2, col3, col4 = st.columns(
+            4
+        )
+
+
+        with col1:
+
+            st.metric(
+                "Preço atual",
+                format_currency(
+                    analysis_data["price"]
+                ),
             )
 
-    st.stop()
+
+        with col2:
+
+            st.metric(
+                "Score InvestIA",
+                f'{result["score"]:.0f}/100',
+            )
 
 
-# ==========================================================
-# ANÁLISE
-# ==========================================================
+        with col3:
 
-try:
-
-    analysis = analyze_asset(
-        indicators
-    )
-
-except Exception as error:
-
-    st.error(
-        "Erro durante a análise do ativo."
-    )
-
-    st.exception(error)
-
-    st.stop()
+            st.metric(
+                "Tendência",
+                result["trend"],
+            )
 
 
-# ==========================================================
-# TÍTULO DA ANÁLISE
-# ==========================================================
+        with col4:
 
-st.divider()
-
-st.subheader(
-    f"📊 Análise do ativo: {asset}"
-)
+            st.metric(
+                "Recomendação",
+                result["recommendation"],
+            )
 
 
-# ==========================================================
-# RESUMO PRINCIPAL
-# ==========================================================
+        # ==================================================
+        # STATUS DA ANÁLISE
+        # ==================================================
 
-col1, col2, col3, col4 = st.columns(
-    [1, 1, 1, 1]
-)
+        st.divider()
 
-
-with col1:
-
-    st.metric(
-        "Preço atual",
-        format_currency(
-            indicators["price"]
-        ),
-    )
-
-
-with col2:
-
-    st.metric(
-        "Score InvestIA",
-        f"{analysis['score']:.0f}/100",
-    )
-
-
-with col3:
-
-    st.metric(
-        "Tendência",
-        analysis["trend"],
-    )
-
-
-with col4:
-
-    recommendation = analysis[
-        "recommendation"
-    ]
-
-    st.metric(
-        "Recomendação",
-        recommendation,
-    )
-
-
-# ==========================================================
-# SCORE INVESTIA 2.0
-# ==========================================================
-
-st.divider()
-
-st.subheader(
-    "🤖 InvestIA Score 2.0"
-)
-
-
-score_col1, score_col2 = st.columns(
-    [1, 2]
-)
-
-
-# ==========================================================
-# SCORE PRINCIPAL
-# ==========================================================
-
-with score_col1:
-
-    st.metric(
-        "Score",
-        f"{analysis['score']:.0f}/100",
-    )
-
-    st.write(
-        f"**Classificação:** "
-        f"{analysis.get('classification', 'N/A')}"
-    )
-
-    st.write(
-        f"**Sinal:** "
-        f"{analysis.get('signal', 'N/A')}"
-    )
-
-
-# ==========================================================
-# COMPOSIÇÃO DO SCORE
-# ==========================================================
-
-with score_col2:
-
-    st.write(
-        "### Composição do Score"
-    )
-
-    metric_col1, metric_col2 = st.columns(2)
-
-    with metric_col1:
-
-        st.metric(
-            "RSI",
-            f"{analysis['rsi_score']:.0f}/100",
-        )
-
-        st.metric(
-            "MA21",
-            f"{analysis['ma21_score']:.0f}/100",
-        )
-
-        st.metric(
-            "MA200",
-            f"{analysis['ma200_score']:.0f}/100",
-        )
-
-    with metric_col2:
-
-        st.metric(
-            "Tendência",
-            f"{analysis['trend_score']:.0f}/100",
-        )
-
-        st.metric(
-            "Risco",
-            f"{analysis['risk_score']:.0f}/100",
-        )
-
-        st.metric(
-            "Técnico",
-            f"{analysis['technical_score']:.0f}/100",
+        col1, col2, col3 = st.columns(
+            3
         )
 
 
-# ==========================================================
-# BARRA DO SCORE
-# ==========================================================
+        with col1:
 
-score_value = float(
-    analysis["score"]
-)
+            st.write(
+                "**Classificação**"
+            )
 
-score_value = max(
-    0,
-    min(
-        100,
-        score_value,
-    ),
-)
-
-st.progress(
-    score_value / 100
-)
+            st.write(
+                result["classification"]
+            )
 
 
-# ==========================================================
-# INDICADORES TÉCNICOS
-# ==========================================================
+        with col2:
 
-st.divider()
+            st.write(
+                "**Sinal**"
+            )
 
-st.subheader(
-    "📐 Indicadores Técnicos"
-)
-
-
-ind_col1, ind_col2, ind_col3, ind_col4 = st.columns(4)
+            st.write(
+                result["signal"]
+            )
 
 
-with ind_col1:
+        with col3:
 
-    st.metric(
-        "RSI (14)",
-        f"{indicators['rsi']:.2f}",
-    )
+            st.write(
+                "**Risco**"
+            )
 
-
-with ind_col2:
-
-    st.metric(
-        "Média Móvel 21",
-        format_currency(
-            indicators["ma21"]
-        ),
-    )
+            st.write(
+                f'{risk_icon(result["risk"])} '
+                f'{result["risk"]}'
+            )
 
 
-with ind_col3:
+        # ==================================================
+        # SCORE DETALHADO
+        # ==================================================
 
-    st.metric(
-        "Média Móvel 200",
-        format_currency(
-            indicators["ma200"]
-        ),
-    )
+        st.divider()
 
-
-with ind_col4:
-
-    st.metric(
-        "Volatilidade",
-        f"{indicators['volatility']:.2%}",
-    )
-
-
-# ==========================================================
-# GRÁFICO
-# ==========================================================
-
-st.divider()
-
-st.subheader(
-    "📈 Evolução do Ativo"
-)
-
-
-try:
-
-    fig = create_price_chart(
-        history
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-    )
-
-except Exception as error:
-
-    st.warning(
-        "Não foi possível gerar o gráfico."
-    )
-
-    st.exception(error)
-
-
-# ==========================================================
-# FUNDAMENTAÇÃO
-# ==========================================================
-
-st.divider()
-
-st.subheader(
-    "🧠 Fundamentação da análise"
-)
-
-
-reasons = analysis.get(
-    "reasons",
-    [],
-)
-
-
-if reasons:
-
-    for reason in reasons:
-
-        st.write(
-            f"✔️ {reason}"
+        st.subheader(
+            "🎯 Componentes do Score"
         )
+
+
+        col1, col2, col3 = st.columns(
+            3
+        )
+
+
+        with col1:
+
+            display_score_component(
+                "RSI",
+                result["rsi_score"],
+            )
+
+            display_score_component(
+                "MA21",
+                result["ma21_score"],
+            )
+
+
+        with col2:
+
+            display_score_component(
+                "MA200",
+                result["ma200_score"],
+            )
+
+            display_score_component(
+                "Tendência",
+                result["trend_score"],
+            )
+
+
+        with col3:
+
+            display_score_component(
+                "Risco",
+                result["risk_score"],
+            )
+
+            display_score_component(
+                "Técnico",
+                result["technical_score"],
+            )
+
+
+        # ==================================================
+        # GRÁFICO
+        # ==================================================
+
+        st.divider()
+
+        st.subheader(
+            "📈 Evolução do preço"
+        )
+
+
+        fig = create_price_chart(
+            market_data
+        )
+
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+
+        # ==================================================
+        # ANÁLISE INVESTIA
+        # ==================================================
+
+        st.divider()
+
+        st.subheader(
+            "🤖 Análise InvestIA"
+        )
+
+
+        col1, col2 = st.columns(
+            2
+        )
+
+
+        # --------------------------------------------------
+        # JUSTIFICATIVAS
+        # --------------------------------------------------
+
+        with col1:
+
+            st.markdown(
+                "### 🔎 Principais fatores"
+            )
+
+
+            for reason in result["reasons"]:
+
+                st.write(
+                    f"✔ {reason}"
+                )
+
+
+        # --------------------------------------------------
+        # RESUMO DE RISCO
+        # --------------------------------------------------
+
+        with col2:
+
+            st.markdown(
+                "### 🛡️ Gestão de risco"
+            )
+
+
+            st.write(
+                f'{risk_icon(result["risk"])} '
+                f'**Risco:** {result["risk"]}'
+            )
+
+
+            st.write(
+                f'**Score de risco:** '
+                f'{result["risk_score"]:.0f}/100'
+            )
+
+
+            st.write(
+                f'**Score técnico:** '
+                f'{result["technical_score"]:.0f}/100'
+            )
+
+
+        # ==================================================
+        # RESUMO FINAL
+        # ==================================================
+
+        st.divider()
+
+        st.subheader(
+            "📋 Resumo InvestIA"
+        )
+
+
+        st.info(
+            f'O ativo **{asset}** apresenta '
+            f'Score InvestIA de '
+            f'**{result["score"]:.0f}/100**, '
+            f'com tendência **{result["trend"]}** '
+            f'e recomendação **{result["recommendation"]}**.'
+        )
+
+
+        # ==================================================
+        # INFORMAÇÕES TÉCNICAS
+        # ==================================================
+
+        with st.expander(
+            "🔧 Ver indicadores técnicos"
+        ):
+
+            st.write(
+                f'**Preço:** '
+                f'{format_currency(analysis_data["price"])}'
+            )
+
+            st.write(
+                f'**MA21:** '
+                f'{format_currency(analysis_data["ma21"])}'
+            )
+
+            st.write(
+                f'**MA200:** '
+                f'{format_currency(analysis_data["ma200"])}'
+            )
+
+            st.write(
+                f'**RSI:** '
+                f'{analysis_data["rsi"]:.2f}'
+            )
+
+            st.write(
+                f'**Volatilidade:** '
+                f'{analysis_data["volatility"]:.4f}'
+            )
+
+
+    # ======================================================
+    # TRATAMENTO DE ERROS
+    # ======================================================
+
+    except Exception as error:
+
+        st.error(
+            "Ocorreu um erro durante a análise."
+        )
+
+        st.exception(
+            error
+        )
+
+
+# ==========================================================
+# ESTADO INICIAL
+# ==========================================================
 
 else:
 
     st.info(
-        "Não foram encontradas justificativas "
-        "adicionais para esta análise."
+        "Digite um ativo e clique em "
+        "**🔎 Analisar ativo** para iniciar."
     )
-
-
-# ==========================================================
-# GESTÃO DE RISCO
-# ==========================================================
-
-st.divider()
-
-st.subheader(
-    "⚠️ Gestão de risco"
-)
-
-
-risk = analysis.get(
-    "risk",
-    "N/A"
-)
-
-
-st.markdown(
-    f"### {risk_icon(risk)} {risk}"
-)
-
-
-st.write(
-    f"Score de controle de risco: "
-    f"**{analysis['risk_score']:.0f}/100**"
-)
-
-
-st.caption(
-    "Quanto maior o Score de risco, melhor o controle "
-    "da volatilidade observada."
-)
-
-
-# ==========================================================
-# HISTÓRICO
-# ==========================================================
-
-st.divider()
-
-with st.expander(
-    "📋 Visualizar histórico do ativo"
-):
-
-    st.dataframe(
-        history.tail(20),
-        use_container_width=True,
-    )
-
-
-# ==========================================================
-# STATUS FINAL
-# ==========================================================
-
-st.divider()
-
-st.success(
-    "✅ Análise concluída com dados validados."
-)
-
-
-# ==========================================================
-# RODAPÉ
-# ==========================================================
-
-st.caption(
-    f"{APP_NAME} • {VERSION} • Fase 1.7"
-)
