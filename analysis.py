@@ -3,7 +3,7 @@ InvestIA PRO
 Motor de Análise
 
 Versão: v0.6
-Fase: 2.5 - Qualificação do Sinal e Resumo Executivo
+Fase: 2.6.1 - Identificação do ativo no resumo executivo
 """
 
 from score import calculate_score_details
@@ -28,10 +28,6 @@ def analyze_trend(price, ma21, ma200):
     short_term_positive = price > ma21
     long_term_positive = price > ma200
 
-    # ------------------------------------------------------
-    # Curto prazo
-    # ------------------------------------------------------
-
     if short_term_positive:
 
         reasons.append(
@@ -44,10 +40,6 @@ def analyze_trend(price, ma21, ma200):
             "Preço abaixo da média móvel de 21 períodos."
         )
 
-    # ------------------------------------------------------
-    # Longo prazo
-    # ------------------------------------------------------
-
     if long_term_positive:
 
         reasons.append(
@@ -59,10 +51,6 @@ def analyze_trend(price, ma21, ma200):
         reasons.append(
             "Preço abaixo da média móvel de 200 períodos."
         )
-
-    # ------------------------------------------------------
-    # Tendência final
-    # ------------------------------------------------------
 
     if short_term_positive and long_term_positive:
 
@@ -145,10 +133,6 @@ def qualify_signal(
     - Risco
     """
 
-    # ======================================================
-    # SINAL MUITO FORTE
-    # ======================================================
-
     if score >= 80:
 
         if trend == "Positiva" and risk == "Baixo":
@@ -173,10 +157,6 @@ def qualify_signal(
             "icon": "🟡",
         }
 
-    # ======================================================
-    # SINAL BOM
-    # ======================================================
-
     if score >= 65:
 
         if trend == "Positiva" and risk != "Alto":
@@ -193,10 +173,6 @@ def qualify_signal(
             "icon": "🟡",
         }
 
-    # ======================================================
-    # SINAL NEUTRO
-    # ======================================================
-
     if score >= 50:
 
         return {
@@ -204,10 +180,6 @@ def qualify_signal(
             "signal": "NEUTRO",
             "icon": "🟡",
         }
-
-    # ======================================================
-    # SINAL FRACO
-    # ======================================================
 
     if score >= 35:
 
@@ -224,10 +196,6 @@ def qualify_signal(
             "signal": "LEVE NEGATIVO",
             "icon": "🟡",
         }
-
-    # ======================================================
-    # SINAL MUITO FRACO
-    # ======================================================
 
     return {
         "level": "Venda Forte",
@@ -257,19 +225,17 @@ def generate_recommendation(
 
     level = qualification["level"]
 
-    if level == "Compra Forte":
+    if level in (
+        "Compra",
+        "Compra Forte",
+    ):
 
         return "Compra"
 
-    if level == "Compra":
-
-        return "Compra"
-
-    if level == "Venda Forte":
-
-        return "Venda"
-
-    if level == "Venda":
+    if level in (
+        "Venda",
+        "Venda Forte",
+    ):
 
         return "Venda"
 
@@ -290,12 +256,17 @@ def generate_executive_summary(
     rsi_status,
 ):
     """
-    Gera um resumo executivo da análise.
+    Gera um resumo executivo utilizando
+    o código real do ativo.
     """
 
-    # ------------------------------------------------------
-    # Tendência
-    # ------------------------------------------------------
+    asset = str(
+        asset
+    ).strip().upper()
+
+    # ======================================================
+    # TENDÊNCIA
+    # ======================================================
 
     if trend == "Positiva":
 
@@ -315,9 +286,9 @@ def generate_executive_summary(
             "apresenta tendência neutra"
         )
 
-    # ------------------------------------------------------
-    # Risco
-    # ------------------------------------------------------
+    # ======================================================
+    # RISCO
+    # ======================================================
 
     if risk == "Baixo":
 
@@ -337,9 +308,9 @@ def generate_executive_summary(
             "com elevada volatilidade"
         )
 
-    # ------------------------------------------------------
+    # ======================================================
     # RSI
-    # ------------------------------------------------------
+    # ======================================================
 
     if rsi_status == "Sobrevenda":
 
@@ -359,9 +330,9 @@ def generate_executive_summary(
             "O RSI permanece em região neutra."
         )
 
-    # ------------------------------------------------------
-    # Resumo
-    # ------------------------------------------------------
+    # ======================================================
+    # RESUMO
+    # ======================================================
 
     summary = (
         f"{asset} {trend_text}, "
@@ -380,12 +351,24 @@ def generate_executive_summary(
 # MOTOR PRINCIPAL
 # ==========================================================
 
-def analyze_asset(data):
+def analyze_asset(
+    data,
+    asset="",
+):
     """
     Executa a análise completa do ativo.
 
-    O Score continua sendo calculado
-    exclusivamente pelo score.py.
+    Parâmetros
+    ----------
+    data : dict
+        Dados técnicos do ativo.
+
+    asset : str
+        Código do ativo, por exemplo PETR4.
+
+    O parâmetro asset possui valor padrão vazio
+    para manter compatibilidade com chamadas
+    antigas de analyze_asset(data).
     """
 
     # ======================================================
@@ -424,11 +407,25 @@ def analyze_asset(data):
     # DADOS
     # ======================================================
 
-    price = float(data["price"])
-    ma21 = float(data["ma21"])
-    ma200 = float(data["ma200"])
-    rsi = float(data["rsi"])
-    volatility = float(data["volatility"])
+    price = float(
+        data["price"]
+    )
+
+    ma21 = float(
+        data["ma21"]
+    )
+
+    ma200 = float(
+        data["ma200"]
+    )
+
+    rsi = float(
+        data["rsi"]
+    )
+
+    volatility = float(
+        data["volatility"]
+    )
 
     # ======================================================
     # SCORE
@@ -514,10 +511,6 @@ def analyze_asset(data):
         rsi_reason
     )
 
-    # ------------------------------------------------------
-    # Risco
-    # ------------------------------------------------------
-
     if risk == "Baixo":
 
         reasons.append(
@@ -541,7 +534,7 @@ def analyze_asset(data):
     # ======================================================
 
     executive_summary = generate_executive_summary(
-        asset="Ativo",
+        asset=asset,
         score=score,
         classification=classification,
         trend=trend,
@@ -556,7 +549,8 @@ def analyze_asset(data):
 
     return {
 
-        "score": score,
+        "score":
+            score,
 
         "classification":
             classification,
