@@ -3,7 +3,7 @@ InvestIA PRO
 Motor de Score
 
 Versão: v0.6
-Fase: 2.3 - Score InvestIA unificado
+Fase: 2.4 - Explicabilidade do Score
 """
 
 from config import (
@@ -33,24 +33,30 @@ def clamp_score(score):
 
 
 # ==========================================================
-# SCORE BASE
+# CONTRIBUIÇÃO DOS INDICADORES
 # ==========================================================
 
-def calculate_investia_score(data):
+def get_score_breakdown(data):
     """
-    Calcula o Score InvestIA de 0 a 100.
+    Calcula a contribuição individual
+    de cada indicador para o Score.
 
-    Componentes:
+    Score base:
+        50 pontos
 
-    Tendência de curto prazo  → MA21
-    Tendência de longo prazo  → MA200
-    RSI                      → momentum
+    MA21:
+        +10 / -10
+
+    MA200:
+        +20 / -20
+
+    RSI:
+        +10 / -10 / 0
     """
 
     if data is None:
-
         raise ValueError(
-            "Dados não fornecidos para cálculo do Score."
+            "Dados não fornecidos para o detalhamento do Score."
         )
 
     required = [
@@ -58,7 +64,6 @@ def calculate_investia_score(data):
         "ma21",
         "ma200",
         "rsi",
-        "volatility",
     ]
 
     missing = [
@@ -69,33 +74,21 @@ def calculate_investia_score(data):
     ]
 
     if missing:
-
         raise ValueError(
-            "Dados ausentes para cálculo do Score: "
+            "Dados ausentes para o Score: "
             + ", ".join(missing)
         )
 
-    price = float(
-        data["price"]
-    )
-
-    ma21 = float(
-        data["ma21"]
-    )
-
-    ma200 = float(
-        data["ma200"]
-    )
-
-    rsi = float(
-        data["rsi"]
-    )
+    price = float(data["price"])
+    ma21 = float(data["ma21"])
+    ma200 = float(data["ma200"])
+    rsi = float(data["rsi"])
 
     # ======================================================
-    # SCORE INICIAL
+    # BASE
     # ======================================================
 
-    score = 50
+    base = 50
 
     # ======================================================
     # MA21
@@ -103,11 +96,27 @@ def calculate_investia_score(data):
 
     if price > ma21:
 
-        score += 10
+        ma21_points = 10
+        ma21_signal = "Positivo"
+        ma21_reason = (
+            "Preço acima da MA21."
+        )
 
     elif price < ma21:
 
-        score -= 10
+        ma21_points = -10
+        ma21_signal = "Negativo"
+        ma21_reason = (
+            "Preço abaixo da MA21."
+        )
+
+    else:
+
+        ma21_points = 0
+        ma21_signal = "Neutro"
+        ma21_reason = (
+            "Preço alinhado à MA21."
+        )
 
     # ======================================================
     # MA200
@@ -115,11 +124,27 @@ def calculate_investia_score(data):
 
     if price > ma200:
 
-        score += 20
+        ma200_points = 20
+        ma200_signal = "Positivo"
+        ma200_reason = (
+            "Preço acima da MA200."
+        )
 
     elif price < ma200:
 
-        score -= 20
+        ma200_points = -20
+        ma200_signal = "Negativo"
+        ma200_reason = (
+            "Preço abaixo da MA200."
+        )
+
+    else:
+
+        ma200_points = 0
+        ma200_signal = "Neutro"
+        ma200_reason = (
+            "Preço alinhado à MA200."
+        )
 
     # ======================================================
     # RSI
@@ -127,19 +152,93 @@ def calculate_investia_score(data):
 
     if rsi <= RSI_OVERSOLD:
 
-        score += 10
+        rsi_points = 10
+        rsi_signal = "Positivo"
+        rsi_reason = (
+            "RSI em região de sobrevenda."
+        )
 
     elif rsi >= RSI_OVERBOUGHT:
 
-        score -= 10
+        rsi_points = -10
+        rsi_signal = "Negativo"
+        rsi_reason = (
+            "RSI em região de sobrecompra."
+        )
+
+    else:
+
+        rsi_points = 0
+        rsi_signal = "Neutro"
+        rsi_reason = (
+            "RSI em região neutra."
+        )
+
+    # ======================================================
+    # SCORE BRUTO
+    # ======================================================
+
+    raw_score = (
+        base
+        + ma21_points
+        + ma200_points
+        + rsi_points
+    )
 
     # ======================================================
     # SCORE FINAL
     # ======================================================
 
-    return clamp_score(
-        score
+    final_score = clamp_score(
+        raw_score
     )
+
+    # ======================================================
+    # RETORNO
+    # ======================================================
+
+    return {
+
+        "base": base,
+
+        "ma21": {
+            "points": ma21_points,
+            "signal": ma21_signal,
+            "reason": ma21_reason,
+        },
+
+        "ma200": {
+            "points": ma200_points,
+            "signal": ma200_signal,
+            "reason": ma200_reason,
+        },
+
+        "rsi": {
+            "points": rsi_points,
+            "signal": rsi_signal,
+            "reason": rsi_reason,
+        },
+
+        "raw_score": raw_score,
+
+        "score": final_score,
+    }
+
+
+# ==========================================================
+# SCORE PRINCIPAL
+# ==========================================================
+
+def calculate_investia_score(data):
+    """
+    Calcula o Score InvestIA de 0 a 100.
+    """
+
+    breakdown = get_score_breakdown(
+        data
+    )
+
+    return breakdown["score"]
 
 
 # ==========================================================
@@ -156,19 +255,15 @@ def classify_score(score):
     )
 
     if score >= 80:
-
         return "FORTE"
 
     if score >= 65:
-
         return "BOM"
 
     if score >= 50:
-
         return "NEUTRO"
 
     if score >= 35:
-
         return "FRACO"
 
     return "MUITO FRACO"
@@ -180,8 +275,7 @@ def classify_score(score):
 
 def classify_signal(score):
     """
-    Classifica o sinal com base
-    nos parâmetros definidos no config.py.
+    Define o sinal do Score.
     """
 
     score = clamp_score(
@@ -189,96 +283,12 @@ def classify_signal(score):
     )
 
     if score >= BUY_SCORE:
-
         return "POSITIVO"
 
     if score <= SELL_SCORE:
-
         return "NEGATIVO"
 
     return "NEUTRO"
-
-
-# ==========================================================
-# CONTRIBUIÇÃO DOS INDICADORES
-# ==========================================================
-
-def get_score_breakdown(data):
-    """
-    Retorna a contribuição de cada componente
-    para o Score InvestIA.
-
-    Útil para a explicabilidade do sistema.
-    """
-
-    price = float(
-        data["price"]
-    )
-
-    ma21 = float(
-        data["ma21"]
-    )
-
-    ma200 = float(
-        data["ma200"]
-    )
-
-    rsi = float(
-        data["rsi"]
-    )
-
-    ma21_points = 0
-
-    ma200_points = 0
-
-    rsi_points = 0
-
-    # ------------------------------------------------------
-    # MA21
-    # ------------------------------------------------------
-
-    if price > ma21:
-
-        ma21_points = 10
-
-    elif price < ma21:
-
-        ma21_points = -10
-
-    # ------------------------------------------------------
-    # MA200
-    # ------------------------------------------------------
-
-    if price > ma200:
-
-        ma200_points = 20
-
-    elif price < ma200:
-
-        ma200_points = -20
-
-    # ------------------------------------------------------
-    # RSI
-    # ------------------------------------------------------
-
-    if rsi <= RSI_OVERSOLD:
-
-        rsi_points = 10
-
-    elif rsi >= RSI_OVERBOUGHT:
-
-        rsi_points = -10
-
-    return {
-
-        "base": 50,
-
-        "ma21": ma21_points,
-
-        "ma200": ma200_points,
-
-        "rsi": rsi_points,
-    }
 
 
 # ==========================================================
@@ -287,17 +297,15 @@ def get_score_breakdown(data):
 
 def calculate_score_details(data):
     """
-    Retorna Score + classificação + sinal
-    + detalhamento dos componentes.
+    Retorna o Score completo com
+    classificação, sinal e breakdown.
     """
-
-    score = calculate_investia_score(
-        data
-    )
 
     breakdown = get_score_breakdown(
         data
     )
+
+    score = breakdown["score"]
 
     return {
 
