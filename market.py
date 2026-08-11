@@ -1,175 +1,108 @@
 """
 InvestIA PRO
-Camada de Dados de Mercado
+Módulo de dados de mercado
 
-Versão: v0.5.3 Stable
+Versão: v0.6
+Fase: Estabilização do Market Data
 """
 
-import logging
-
-import pandas as pd
-import streamlit as st
 import yfinance as yf
-
-from config import (
-    CACHE_TTL,
-    MARKET_SUFFIX,
-    DEFAULT_PERIOD,
-)
+import streamlit as st
+import pandas as pd
 
 
 # ==========================================================
-# Logger
+# NORMALIZAÇÃO DO ATIVO
 # ==========================================================
 
-logger = logging.getLogger(__name__)
-
-
-# ==========================================================
-# Validação
-# ==========================================================
-
-def _validate_market_data(data):
+def normalize_asset(asset):
     """
-    Valida se o DataFrame possui dados utilizáveis.
+    Normaliza o código do ativo para utilização no Yahoo Finance.
     """
 
-    if data is None:
-        return False
+    if asset is None:
+        return None
 
-    if data.empty:
-        return False
+    asset = str(asset).strip().upper()
 
-    required_columns = [
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume",
-    ]
+    if not asset:
+        return None
 
-    return all(
-        column in data.columns
-        for column in required_columns
-    )
+    # Evita adicionar .SA duas vezes
+    if asset.endswith(".SA"):
+        return asset
+
+    return f"{asset}.SA"
 
 
 # ==========================================================
-# Download dos dados
+# BUSCA DOS DADOS
 # ==========================================================
 
-@st.cache_data(ttl=CACHE_TTL)
+@st.cache_data(ttl=300)
 def get_market_data(
-    asset: str,
-    period: str = DEFAULT_PERIOD,
+    asset,
+    period="1y",
 ):
     """
     Busca dados históricos do ativo.
 
-    Parameters
+    Parâmetros
     ----------
     asset : str
         Código do ativo, exemplo: PETR4.
 
     period : str
-        Período histórico, exemplo: 1y.
+        Período do histórico.
 
-    Returns
+    Retorno
     -------
-    dict | None
-
-    Estrutura:
-
-    {
-        "asset": "PETR4",
-        "price": 38.50,
-        "history": DataFrame
-    }
+    pandas.DataFrame ou None
     """
 
-    if not asset:
-        raise ValueError(
-            "O código do ativo não foi informado."
-        )
+    ticker_symbol = normalize_asset(
+        asset
+    )
 
-    asset = asset.strip().upper()
-
-    # ------------------------------------------------------
-    # Monta ticker brasileiro
-    # ------------------------------------------------------
-
-    if asset.endswith(MARKET_SUFFIX):
-        ticker_symbol = asset
-        clean_asset = asset.replace(
-            MARKET_SUFFIX,
-            "",
-        )
-    else:
-        ticker_symbol = (
-            f"{asset}{MARKET_SUFFIX}"
-        )
-        clean_asset = asset
-
-    # ------------------------------------------------------
-    # Busca dados
-    # ------------------------------------------------------
+    if ticker_symbol is None:
+        return None
 
     try:
 
-        logger.info(
-            "Buscando dados de %s",
-            ticker_symbol,
+        # ==================================================
+        # PRIMEIRA TENTATIVA
+        # ==================================================
+
+        ticker = yf.Ticker(
+            ticker_symbol
         )
 
-        data = yf.download(
-            ticker_symbol,
+        data = ticker.history(
             period=period,
-            interval="1d",
-            auto_adjust=True,
-            progress=False,
-            threads=False,
+            auto_adjust=False,
         )
 
-    except Exception as error:
+        # ==================================================
+        # VALIDAÇÃO
+        # ==================================================
 
-        logger.exception(
-            "Erro ao consultar Yahoo Finance: %s",
-            error,
-        )
+        if data is None:
+            return None
 
-        raise RuntimeError(
-            f"Erro ao consultar dados de "
-            f"{ticker_symbol}: {error}"
-        ) from error
+        if data.empty:
+            return None
 
-    # ------------------------------------------------------
-    # Verifica retorno
-    # ------------------------------------------------------
+        # ==================================================
+        # NORMALIZAÇÃO DAS COLUNAS
+        # ==================================================
 
-    if data is None or data.empty:
+        # Alguns retornos do Yahoo podem apresentar
+        # MultiIndex nas colunas.
 
-        raise ValueError(
-            f"Nenhum dado encontrado para "
-            f"{ticker_symbol}."
-        )
-
-    # ------------------------------------------------------
-    # Trata MultiIndex
-    # ------------------------------------------------------
-
-    if isinstance(
-        data.columns,
-        pd.MultiIndex,
-    ):
-
-        try:
-
-            data.columns = (
-                data.columns
-                .get_level_values(0)
-            )
-
-        except Exception:
+        if isinstance(
+            data.columns,
+            pd.MultiIndex,
+        ):
 
             data.columns = [
                 column[0]
@@ -178,42 +111,145 @@ def get_market_data(
                 for column in data.columns
             ]
 
-    # ------------------------------------------------------
-    # Remove linhas inválidas
-    # ------------------------------------------------------
+        # ==================================================
+        # COLUNAS NECESSÁRIAS
+        # ==================================================
 
-    data = data.dropna(
-        subset=["Close"]
-    )
+        required_columns = [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+        ]
 
-    if data.empty:
+        available_columns = [
+            column
+            for column in required_columns
+            if column in data.columns
+        ]
 
-        raise ValueError(
-            f"Os dados retornados para "
-            f"{ticker_symbol} não possuem "
-            f"preços válidos."
+        if "Close" not in available_columns:
+            return None
+
+        # Mantém somente as colunas disponíveis
+        data = data[
+            available_columns
+        ].copy()
+
+        # ==================================================
+        # LIMPEZA
+        # ==================================================
+
+        data = data.dropna(
+            subset=["Close"]
         )
 
-    # ------------------------------------------------------
-    # Ordenação
-    # ------------------------------------------------------
+        if data.empty:
+            return None
 
-    data = data.sort_index()
+        # ==================================================
+        # CONVERSÃO NUMÉRICA
+        # ==================================================
 
-    # ------------------------------------------------------
-    # Último preço
-    # ------------------------------------------------------
+        for column in data.columns:
 
-    price = float(
-        data["Close"].iloc[-1]
+            data[column] = pd.to_numeric(
+                data[column],
+                errors="coerce",
+            )
+
+        data = data.dropna(
+            subset=["Close"]
+        )
+
+        if data.empty:
+            return None
+
+        # ==================================================
+        # ORDENAÇÃO
+        # ==================================================
+
+        data = data.sort_index()
+
+        return data
+
+    except Exception as error:
+
+        # Não esconder completamente o erro.
+        # O Streamlit poderá mostrar a causa durante
+        # a estabilização.
+
+        print(
+            f"Erro ao buscar {ticker_symbol}: {error}"
+        )
+
+        return None
+
+
+# ==========================================================
+# ÚLTIMO PREÇO
+# ==========================================================
+
+def get_current_price(data):
+    """
+    Retorna o último preço disponível.
+    """
+
+    if data is None:
+        return None
+
+    if data.empty:
+        return None
+
+    if "Close" not in data.columns:
+        return None
+
+    try:
+
+        price = data["Close"].iloc[-1]
+
+        if pd.isna(price):
+            return None
+
+        return float(price)
+
+    except (
+        TypeError,
+        ValueError,
+        IndexError,
+    ):
+
+        return None
+
+
+# ==========================================================
+# PREPARAÇÃO DOS DADOS
+# ==========================================================
+
+def prepare_market_data(data):
+    """
+    Padroniza os dados de mercado
+    para utilização pelos demais módulos.
+    """
+
+    if data is None:
+        return None
+
+    if data.empty:
+        return None
+
+    if "Close" not in data.columns:
+        return None
+
+    price = get_current_price(
+        data
     )
 
-    # ------------------------------------------------------
-    # Resultado padronizado
-    # ------------------------------------------------------
+    if price is None:
+        return None
 
     return {
-        "asset": clean_asset,
         "price": price,
         "history": data,
     }
