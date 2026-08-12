@@ -3,7 +3,7 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.4 - Explicabilidade do Score
+Fase: 2.6.2 - Dashboard Executivo
 """
 
 import streamlit as st
@@ -56,7 +56,73 @@ st.caption(
 
 
 # ==========================================================
-# ENTRADA
+# FUNÇÕES AUXILIARES
+# ==========================================================
+
+def normalize_asset_input(asset):
+    """
+    Normaliza o código informado pelo usuário.
+    """
+
+    if asset is None:
+        return ""
+
+    return (
+        str(asset)
+        .strip()
+        .upper()
+        .replace(" ", "")
+    )
+
+
+def get_indicator_value(
+    indicators,
+    key,
+    default=None,
+):
+    """
+    Obtém um indicador com segurança.
+    """
+
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+        return default
+
+    return indicators.get(
+        key,
+        default,
+    )
+
+
+def get_analysis_value(
+    result,
+    *keys,
+    default=None,
+):
+    """
+    Obtém valores do resultado da análise
+    aceitando nomes alternativos.
+    """
+
+    if not isinstance(
+        result,
+        dict,
+    ):
+        return default
+
+    for key in keys:
+
+        if key in result:
+
+            return result[key]
+
+    return default
+
+
+# ==========================================================
+# ENTRADA DO USUÁRIO
 # ==========================================================
 
 col_input, col_period = st.columns(
@@ -94,61 +160,6 @@ analyze_button = st.button(
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
-# ==========================================================
-
-def normalize_asset_input(asset):
-
-    if asset is None:
-        return ""
-
-    return (
-        str(asset)
-        .strip()
-        .upper()
-        .replace(" ", "")
-    )
-
-
-def get_indicator_value(
-    indicators,
-    key,
-    default=None,
-):
-
-    if not isinstance(
-        indicators,
-        dict,
-    ):
-        return default
-
-    return indicators.get(
-        key,
-        default,
-    )
-
-
-def get_analysis_value(
-    result,
-    *keys,
-    default=None,
-):
-
-    if not isinstance(
-        result,
-        dict,
-    ):
-        return default
-
-    for key in keys:
-
-        if key in result:
-            return result[key]
-
-    return default
-
-
-# ==========================================================
 # EXECUÇÃO
 # ==========================================================
 
@@ -157,6 +168,10 @@ if analyze_button:
     asset = normalize_asset_input(
         asset
     )
+
+    # ======================================================
+    # VALIDAÇÃO DO ATIVO
+    # ======================================================
 
     if not asset:
 
@@ -167,17 +182,36 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # MERCADO
+    # BUSCA DE DADOS
     # ======================================================
 
     with st.spinner(
         "Buscando dados do mercado..."
     ):
 
-        market_data = get_market_data(
-            asset,
-            period,
-        )
+        try:
+
+            market_data = get_market_data(
+                asset,
+                period,
+            )
+
+        except Exception as error:
+
+            st.error(
+                "Erro ao buscar os dados "
+                "do mercado."
+            )
+
+            st.exception(
+                error
+            )
+
+            st.stop()
+
+    # ======================================================
+    # VALIDAÇÃO DOS DADOS
+    # ======================================================
 
     if market_data is None:
 
@@ -192,9 +226,24 @@ if analyze_button:
     # PREPARAÇÃO
     # ======================================================
 
-    prepared_data = prepare_market_data(
-        market_data
-    )
+    try:
+
+        prepared_data = prepare_market_data(
+            market_data
+        )
+
+    except Exception as error:
+
+        st.error(
+            "Erro ao preparar os dados "
+            "do mercado."
+        )
+
+        st.exception(
+            error
+        )
+
+        st.stop()
 
     if prepared_data is None:
 
@@ -205,14 +254,26 @@ if analyze_button:
 
         st.stop()
 
+    # ======================================================
+    # HISTÓRICO
+    # ======================================================
+
     history = prepared_data.get(
         "history"
     )
 
-    if history is None or history.empty:
+    if history is None:
 
         st.error(
             "Histórico do ativo não encontrado."
+        )
+
+        st.stop()
+
+    if history.empty:
+
+        st.error(
+            "O histórico do ativo está vazio."
         )
 
         st.stop()
@@ -252,7 +313,7 @@ if analyze_button:
 
             st.error(
                 "Erro ao calcular "
-                "os indicadores."
+                "os indicadores técnicos."
             )
 
             st.exception(
@@ -270,7 +331,7 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # DADOS DE ANÁLISE
+    # DADOS PARA ANÁLISE
     # ======================================================
 
     analysis_data = {
@@ -311,15 +372,15 @@ if analyze_button:
         analysis_data
     ):
 
-        st.warning(
-            "Dados insuficientes "
-            "para análise."
+        st.error(
+            "Os dados técnicos são insuficientes "
+            "para realizar a análise."
         )
 
         st.stop()
 
     # ======================================================
-    # ANÁLISE
+    # MOTOR DE ANÁLISE
     # ======================================================
 
     with st.spinner(
@@ -328,15 +389,20 @@ if analyze_button:
 
         try:
 
+            # IMPORTANTE:
+            # O ticker é enviado ao analysis.py
+            # para gerar o resumo executivo correto.
+
             result = analyze_asset(
-                analysis_data
+                analysis_data,
+                asset,
             )
 
         except Exception as error:
 
             st.error(
                 "Erro ao executar "
-                "a análise."
+                "a análise InvestIA."
             )
 
             st.exception(
@@ -344,6 +410,10 @@ if analyze_button:
             )
 
             st.stop()
+
+    # ======================================================
+    # VALIDAÇÃO DO RESULTADO
+    # ======================================================
 
     if result is None:
 
@@ -354,7 +424,7 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # RESULTADOS
+    # EXTRAÇÃO DOS RESULTADOS
     # ======================================================
 
     score = get_analysis_value(
@@ -373,6 +443,24 @@ if analyze_button:
         result,
         "signal",
         default="NEUTRO",
+    )
+
+    qualified_signal = get_analysis_value(
+        result,
+        "qualified_signal",
+        default=signal,
+    )
+
+    signal_level = get_analysis_value(
+        result,
+        "signal_level",
+        default="Aguardar",
+    )
+
+    signal_icon = get_analysis_value(
+        result,
+        "signal_icon",
+        default="🟡",
     )
 
     trend = get_analysis_value(
@@ -396,6 +484,12 @@ if analyze_button:
         default="Moderado",
     )
 
+    rsi_status = get_analysis_value(
+        result,
+        "rsi_status",
+        default="Neutro",
+    )
+
     reasons = get_analysis_value(
         result,
         "reasons",
@@ -409,8 +503,15 @@ if analyze_button:
         default={},
     )
 
+    executive_summary = get_analysis_value(
+        result,
+        "executive_summary",
+        default="",
+    )
+
+
     # ======================================================
-    # TÍTULO
+    # CABEÇALHO DA ANÁLISE
     # ======================================================
 
     st.divider()
@@ -419,13 +520,15 @@ if analyze_button:
         f"📊 Análise do ativo: {asset}"
     )
 
+
     # ======================================================
-    # CARDS
+    # CARDS PRINCIPAIS
     # ======================================================
 
     col1, col2, col3, col4 = st.columns(
         4
     )
+
 
     with col1:
 
@@ -436,12 +539,14 @@ if analyze_button:
             ),
         )
 
+
     with col2:
 
         st.metric(
             "Score InvestIA",
             f"{score}/100",
         )
+
 
     with col3:
 
@@ -450,6 +555,7 @@ if analyze_button:
             str(trend),
         )
 
+
     with col4:
 
         st.metric(
@@ -457,28 +563,56 @@ if analyze_button:
             str(recommendation),
         )
 
+
     # ======================================================
-    # CLASSIFICAÇÃO
+    # CLASSIFICAÇÃO E SINAL
     # ======================================================
 
     st.info(
-        f"**Classificação:** {classification}  "
-        f"| **Sinal:** {signal}"
+        f"**Classificação:** {classification} "
+        f"| **Sinal:** {qualified_signal} "
+        f"| **Nível:** {signal_icon} {signal_level}"
     )
 
+
     # ======================================================
-    # INDICADORES
+    # RESUMO EXECUTIVO
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "📈 Indicadores técnicos"
+        "🤖 Resumo Executivo"
     )
+
+    if executive_summary:
+
+        st.success(
+            executive_summary
+        )
+
+    else:
+
+        st.info(
+            "Resumo executivo não disponível."
+        )
+
+
+    # ======================================================
+    # INDICADORES TÉCNICOS
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "📈 Indicadores Técnicos"
+    )
+
 
     ind1, ind2, ind3, ind4 = st.columns(
         4
     )
+
 
     with ind1:
 
@@ -489,6 +623,7 @@ if analyze_button:
             ),
         )
 
+
     with ind2:
 
         st.metric(
@@ -498,12 +633,14 @@ if analyze_button:
             ),
         )
 
+
     with ind3:
 
         st.metric(
             "RSI",
             f'{analysis_data["rsi"]:.2f}',
         )
+
 
     with ind4:
 
@@ -517,20 +654,22 @@ if analyze_button:
             f"{volatility_percent:.2f}%",
         )
 
+
     # ======================================================
-    # EXPLICABILIDADE DO SCORE
+    # SCORE EXPLICADO
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "🧠 Como o Score foi calculado"
+        "🧠 Composição do Score InvestIA"
     )
 
     st.caption(
-        "O Score InvestIA começa em 50 pontos "
-        "e recebe ajustes conforme os indicadores técnicos."
+        "O Score começa em 50 pontos e "
+        "recebe ajustes conforme os indicadores."
     )
+
 
     # ======================================================
     # BASE
@@ -552,13 +691,15 @@ if analyze_button:
         f"**Base:** {base_points:+d} pontos"
     )
 
+
     # ======================================================
-    # BREAKDOWN
+    # COMPONENTES
     # ======================================================
 
     bd1, bd2, bd3 = st.columns(
         3
     )
+
 
     # ------------------------------------------------------
     # MA21
@@ -610,6 +751,7 @@ if analyze_button:
             ma21_reason
         )
 
+
     # ------------------------------------------------------
     # MA200
     # ------------------------------------------------------
@@ -659,6 +801,7 @@ if analyze_button:
         st.caption(
             ma200_reason
         )
+
 
     # ------------------------------------------------------
     # RSI
@@ -710,11 +853,10 @@ if analyze_button:
             rsi_reason
         )
 
+
     # ======================================================
     # SCORE FINAL
     # ======================================================
-
-    st.write("")
 
     raw_score = None
 
@@ -727,11 +869,12 @@ if analyze_button:
             "raw_score"
         )
 
+
     if raw_score is not None:
 
         st.success(
             f"**Score final: {score}/100** "
-            f"(cálculo bruto: {raw_score})"
+            f"| Cálculo bruto: {raw_score}"
         )
 
     else:
@@ -739,6 +882,7 @@ if analyze_button:
         st.success(
             f"**Score final: {score}/100**"
         )
+
 
     # ======================================================
     # GRÁFICO
@@ -749,6 +893,7 @@ if analyze_button:
     st.subheader(
         "📊 Evolução do preço"
     )
+
 
     try:
 
@@ -780,24 +925,31 @@ if analyze_button:
             error
         )
 
+
     # ======================================================
-    # ANÁLISE
+    # ANÁLISE DETALHADA
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "🤖 Análise InvestIA"
+        "🔎 Análise Detalhada"
     )
 
-    analysis_col1, analysis_col2 = (
-        st.columns(2)
+
+    analysis_col1, analysis_col2 = st.columns(
+        2
     )
+
+
+    # ------------------------------------------------------
+    # JUSTIFICATIVAS
+    # ------------------------------------------------------
 
     with analysis_col1:
 
-        st.write(
-            "### Justificativas"
+        st.markdown(
+            "### Fundamentação"
         )
 
         if reasons:
@@ -815,14 +967,19 @@ if analyze_button:
                 "foi retornada."
             )
 
+
+    # ------------------------------------------------------
+    # RISCO
+    # ------------------------------------------------------
+
     with analysis_col2:
 
-        st.write(
-            "### Gestão de risco"
+        st.markdown(
+            "### 🛡️ Gestão de risco"
         )
 
         st.write(
-            f"{risk_icon(risk)} {risk}"
+            f"{risk_icon(risk)} **{risk}**"
         )
 
         st.write(
@@ -830,29 +987,39 @@ if analyze_button:
         )
 
         st.write(
-            f"**Sinal:** {signal}"
+            f"**Tendência:** {trend}"
         )
 
         st.write(
-            f"**Recomendação:** "
-            f"{recommendation}"
+            f"**RSI:** {rsi_status}"
         )
 
+        st.write(
+            f"**Sinal:** {qualified_signal}"
+        )
+
+        st.write(
+            f"**Recomendação:** {recommendation}"
+        )
+
+
     # ======================================================
-    # RESUMO
+    # RESUMO FINAL
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "📋 Resumo"
+        "📋 Resumo da Análise"
     )
 
-    summary_col1, summary_col2 = (
-        st.columns(2)
+
+    summary1, summary2 = st.columns(
+        2
     )
 
-    with summary_col1:
+
+    with summary1:
 
         st.write(
             f"**Ativo:** {asset}"
@@ -864,12 +1031,6 @@ if analyze_button:
         )
 
         st.write(
-            f"**Tendência:** {trend}"
-        )
-
-    with summary_col2:
-
-        st.write(
             f"**Score:** {score}/100"
         )
 
@@ -878,9 +1039,15 @@ if analyze_button:
             f"{classification}"
         )
 
+
+    with summary2:
+
         st.write(
-            f"**Recomendação:** "
-            f"{recommendation}"
+            f"**Tendência:** {trend}"
+        )
+
+        st.write(
+            f"**Sinal:** {qualified_signal}"
         )
 
         st.write(
@@ -888,9 +1055,33 @@ if analyze_button:
             f"{risk_icon(risk)} {risk}"
         )
 
+        st.write(
+            f"**Recomendação:** "
+            f"{recommendation}"
+        )
+
+
+# ==========================================================
+# TELA INICIAL
+# ==========================================================
+
 else:
 
     st.info(
         "Digite um ativo e clique em "
         "🔎 Analisar ativo."
+    )
+
+    st.markdown(
+        """
+### Como utilizar
+
+1. Informe o código do ativo.
+2. Escolha o período de análise.
+3. Clique em **Analisar ativo**.
+4. Consulte o Score InvestIA, tendência,
+   risco e recomendação.
+
+**Exemplos:** PETR4, VALE3, ITUB4.
+"""
     )
