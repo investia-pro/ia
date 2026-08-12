@@ -1,287 +1,414 @@
 """
 InvestIA PRO
-Módulo de dados de mercado
+Market Data
 
 Versão: v0.6
-Fase: Diagnóstico do Market Data
+Fase: 2.6.3 - Estabilidade do Market Data
 """
 
-import yfinance as yf
-import streamlit as st
+import time
+
 import pandas as pd
+import streamlit as st
+import yfinance as yf
+
+
+# ==========================================================
+# CONFIGURAÇÕES
+# ==========================================================
+
+MAX_RETRIES = 2
+
+CACHE_TTL = 900  # 15 minutos
 
 
 # ==========================================================
 # NORMALIZAÇÃO DO ATIVO
 # ==========================================================
 
-def normalize_asset(asset):
+def normalize_ticker(asset):
     """
     Normaliza o código do ativo.
 
     Exemplos:
 
-    PETR4
-    ↓
-    PETR4.SA
-
-    PETR4.SA
-    ↓
-    PETR4.SA
+    PETR4 -> PETR4.SA
+    VALE3 -> VALE3.SA
+    ITUB4 -> ITUB4.SA
+    PETR4.SA -> PETR4.SA
     """
 
     if asset is None:
         return None
 
-    asset = str(asset).strip().upper()
+    asset = (
+        str(asset)
+        .strip()
+        .upper()
+        .replace(" ", "")
+    )
 
     if not asset:
         return None
 
-    if asset.endswith(".SA"):
-        return asset
+    if not asset.endswith(".SA"):
+        asset = f"{asset}.SA"
 
-    return f"{asset}.SA"
+    return asset
 
 
 # ==========================================================
-# BUSCA DOS DADOS DE MERCADO
+# DOWNLOAD DOS DADOS
 # ==========================================================
 
-@st.cache_data(ttl=300)
+def _download_market_data(
+    ticker_symbol,
+    period,
+):
+    """
+    Faz a consulta ao Yahoo Finance.
+
+    Esta função não possui cache.
+    O cache fica na função pública
+    get_market_data().
+    """
+
+    last_error = None
+
+    for attempt in range(
+        MAX_RETRIES
+    ):
+
+        try:
+
+            ticker = yf.Ticker(
+                ticker_symbol
+            )
+
+            data = ticker.history(
+                period=period,
+                auto_adjust=False,
+            )
+
+            # ----------------------------------------------
+            # VALIDAÇÃO
+            # ----------------------------------------------
+
+            if data is None:
+
+                raise ValueError(
+                    "Yahoo Finance retornou None."
+                )
+
+            if data.empty:
+
+                raise ValueError(
+                    "Yahoo Finance retornou "
+                    "um histórico vazio."
+                )
+
+            # ----------------------------------------------
+            # NORMALIZAÇÃO DO INDEX
+            # ----------------------------------------------
+
+            if not isinstance(
+                data.index,
+                pd.DatetimeIndex,
+            ):
+
+                data.index = pd.to_datetime(
+                    data.index
+                )
+
+            # ----------------------------------------------
+            # LIMPEZA
+            # ----------------------------------------------
+
+            data = data.copy()
+
+            data.dropna(
+                how="all",
+                inplace=True,
+            )
+
+            if data.empty:
+
+                raise ValueError(
+                    "Histórico ficou vazio "
+                    "após limpeza."
+                )
+
+            return data
+
+        except Exception as error:
+
+            last_error = error
+
+            error_text = str(
+                error
+            ).lower()
+
+            # ----------------------------------------------
+            # RATE LIMIT
+            # ----------------------------------------------
+
+            if (
+                "rate" in error_text
+                or "too many requests"
+                in error_text
+                or "ratelimit" in error_text
+            ):
+
+                # Não fazemos várias requisições
+                # imediatamente.
+
+                if attempt < MAX_RETRIES - 1:
+
+                    time.sleep(
+                        3
+                        * (
+                            attempt + 1
+                        )
+                    )
+
+                    continue
+
+                break
+
+            # ----------------------------------------------
+            # OUTROS ERROS
+            # ----------------------------------------------
+
+            if attempt < MAX_RETRIES - 1:
+
+                time.sleep(1)
+
+                continue
+
+    # ======================================================
+    # FALHA FINAL
+    # ======================================================
+
+    return None
+
+
+# ==========================================================
+# OBTENÇÃO DOS DADOS
+# ==========================================================
+
+@st.cache_data(
+    ttl=CACHE_TTL,
+    show_spinner=False,
+)
 def get_market_data(
     asset,
     period="1y",
 ):
     """
-    Busca dados históricos do ativo.
+    Obtém dados históricos do ativo.
 
-    Retorno esperado:
-
-    {
-        "asset": "PETR4",
-        "ticker": "PETR4.SA",
-        "history": DataFrame,
-        "price": float
-    }
-
-    O campo "history" é obrigatório para o
-    indicators.py atual.
+    Utiliza cache para evitar requisições
+    repetidas ao Yahoo Finance.
     """
 
-    ticker_symbol = normalize_asset(
+    ticker_symbol = normalize_ticker(
         asset
     )
 
     if ticker_symbol is None:
 
-        st.error(
-            "Código do ativo inválido."
+        return None
+
+    data = _download_market_data(
+        ticker_symbol,
+        period,
+    )
+
+    if data is None:
+
+        return None
+
+    return data
+
+
+# ==========================================================
+# PREPARAÇÃO DOS DADOS
+# ==========================================================
+
+def prepare_market_data(
+    market_data
+):
+    """
+    Prepara os dados para os módulos
+    de indicadores e análise.
+
+    Retorno:
+
+    {
+        "history": DataFrame
+    }
+    """
+
+    if market_data is None:
+
+        return None
+
+    if not isinstance(
+        market_data,
+        pd.DataFrame,
+    ):
+
+        return None
+
+    if market_data.empty:
+
+        return None
+
+    history = market_data.copy()
+
+    # ======================================================
+    # LIMPEZA
+    # ======================================================
+
+    history.dropna(
+        how="all",
+        inplace=True,
+    )
+
+    if history.empty:
+
+        return None
+
+    # ======================================================
+    # GARANTE COLUNAS IMPORTANTES
+    # ======================================================
+
+    required_columns = [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+    ]
+
+    available_columns = [
+        column
+        for column in required_columns
+        if column in history.columns
+    ]
+
+    if "Close" not in history.columns:
+
+        return None
+
+    # ======================================================
+    # CONVERSÃO NUMÉRICA
+    # ======================================================
+
+    for column in available_columns:
+
+        history[column] = pd.to_numeric(
+            history[column],
+            errors="coerce",
         )
+
+    # ======================================================
+    # REMOVE LINHAS SEM FECHAMENTO
+    # ======================================================
+
+    history.dropna(
+        subset=["Close"],
+        inplace=True,
+    )
+
+    if history.empty:
+
+        return None
+
+    # ======================================================
+    # RETORNO PADRONIZADO
+    # ======================================================
+
+    return {
+        "history": history,
+    }
+
+
+# ==========================================================
+# PREÇO ATUAL
+# ==========================================================
+
+def get_current_price(
+    market_data
+):
+    """
+    Obtém o preço mais recente disponível.
+    """
+
+    if market_data is None:
+
+        return None
+
+    # ======================================================
+    # ESTRUTURA PADRONIZADA
+    # ======================================================
+
+    if isinstance(
+        market_data,
+        dict,
+    ):
+
+        history = market_data.get(
+            "history"
+        )
+
+    else:
+
+        history = market_data
+
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
+
+    if history is None:
+
+        return None
+
+    if not isinstance(
+        history,
+        pd.DataFrame,
+    ):
+
+        return None
+
+    if history.empty:
+
+        return None
+
+    if "Close" not in history.columns:
+
+        return None
+
+    # ======================================================
+    # PREÇO
+    # ======================================================
+
+    close = history["Close"].dropna()
+
+    if close.empty:
 
         return None
 
     try:
 
-        # ==================================================
-        # INFORMAÇÕES DO ATIVO
-        # ==================================================
-
-        ticker = yf.Ticker(
-            ticker_symbol
+        return float(
+            close.iloc[-1]
         )
 
-        # ==================================================
-        # HISTÓRICO
-        # ==================================================
-
-        data = ticker.history(
-            period=period,
-            auto_adjust=False,
-        )
-
-        # ==================================================
-        # VERIFICAÇÃO DO RETORNO
-        # ==================================================
-
-        if data is None:
-
-            st.error(
-                f"O Yahoo Finance não retornou "
-                f"dados para {ticker_symbol}."
-            )
-
-            return None
-
-        if data.empty:
-
-            st.error(
-                f"O histórico de {ticker_symbol} "
-                f"retornou vazio."
-            )
-
-            st.info(
-                "Ticker consultado: "
-                f"{ticker_symbol}"
-            )
-
-            st.info(
-                "Período solicitado: "
-                f"{period}"
-            )
-
-            return None
-
-        # ==================================================
-        # MULTIINDEX
-        # ==================================================
-
-        if isinstance(
-            data.columns,
-            pd.MultiIndex,
-        ):
-
-            data.columns = [
-                column[0]
-                if isinstance(
-                    column,
-                    tuple,
-                )
-                else column
-                for column in data.columns
-            ]
-
-        # ==================================================
-        # VERIFICA CLOSE
-        # ==================================================
-
-        if "Close" not in data.columns:
-
-            st.error(
-                "A resposta do Yahoo Finance "
-                "não contém a coluna Close."
-            )
-
-            st.write(
-                "Colunas recebidas:"
-            )
-
-            st.write(
-                list(data.columns)
-            )
-
-            return None
-
-        # ==================================================
-        # CÓPIA DOS DADOS
-        # ==================================================
-
-        data = data.copy()
-
-        # ==================================================
-        # CONVERSÃO NUMÉRICA
-        # ==================================================
-
-        numeric_columns = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
-        ]
-
-        for column in numeric_columns:
-
-            if column in data.columns:
-
-                data[column] = pd.to_numeric(
-                    data[column],
-                    errors="coerce",
-                )
-
-        # ==================================================
-        # REMOVE LINHAS INVÁLIDAS
-        # ==================================================
-
-        data = data.dropna(
-            subset=[
-                "Close"
-            ]
-        )
-
-        if data.empty:
-
-            st.error(
-                "Após a limpeza dos dados, "
-                "não restaram preços válidos."
-            )
-
-            return None
-
-        # ==================================================
-        # ORDENAÇÃO
-        # ==================================================
-
-        data = data.sort_index()
-
-        # ==================================================
-        # PREÇO ATUAL
-        # ==================================================
-
-        price = data[
-            "Close"
-        ].iloc[-1]
-
-        if pd.isna(price):
-
-            st.error(
-                "Não foi possível determinar "
-                "o último preço."
-            )
-
-            return None
-
-        price = float(
-            price
-        )
-
-        # ==================================================
-        # RETORNO PADRONIZADO
-        # ==================================================
-
-        result = {
-
-            "asset":
-                str(asset)
-                .strip()
-                .upper(),
-
-            "ticker":
-                ticker_symbol,
-
-            "history":
-                data,
-
-            "price":
-                price,
-        }
-
-        return result
-
-    except Exception as error:
-
-        # ==================================================
-        # DIAGNÓSTICO
-        # ==================================================
-
-        st.error(
-            f"Erro ao consultar "
-            f"{ticker_symbol}"
-        )
-
-        st.exception(
-            error
-        )
+    except (
+        TypeError,
+        ValueError,
+    ):
 
         return None
 
@@ -290,195 +417,31 @@ def get_market_data(
 # ÚLTIMO PREÇO
 # ==========================================================
 
-def get_current_price(
-    market_data,
+def get_last_close(
+    market_data
 ):
     """
-    Retorna o último preço disponível.
+    Alias para get_current_price().
     """
 
-    if market_data is None:
-        return None
-
-    # ======================================================
-    # DICIONÁRIO
-    # ======================================================
-
-    if isinstance(
-        market_data,
-        dict,
-    ):
-
-        # --------------------------------------------------
-        # Preço já calculado
-        # --------------------------------------------------
-
-        if "price" in market_data:
-
-            try:
-
-                return float(
-                    market_data["price"]
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-
-                pass
-
-        # --------------------------------------------------
-        # Histórico
-        # --------------------------------------------------
-
-        if "history" in market_data:
-
-            history = market_data[
-                "history"
-            ]
-
-            if (
-                history is not None
-                and not history.empty
-                and "Close" in history.columns
-            ):
-
-                try:
-
-                    return float(
-                        history[
-                            "Close"
-                        ].iloc[-1]
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                    IndexError,
-                ):
-
-                    return None
-
-    # ======================================================
-    # DATAFRAME
-    # ======================================================
-
-    if isinstance(
-        market_data,
-        pd.DataFrame,
-    ):
-
-        if (
-            not market_data.empty
-            and "Close" in market_data.columns
-        ):
-
-            try:
-
-                return float(
-                    market_data[
-                        "Close"
-                    ].iloc[-1]
-                )
-
-            except (
-                TypeError,
-                ValueError,
-                IndexError,
-            ):
-
-                return None
-
-    return None
+    return get_current_price(
+        market_data
+    )
 
 
 # ==========================================================
-# PREPARAÇÃO DOS DADOS
+# LIMPAR CACHE
 # ==========================================================
 
-def prepare_market_data(
-    data,
-):
+def clear_market_cache():
     """
-    Padroniza os dados de mercado.
-
-    Mantém o campo history para o
-    indicators.py.
+    Limpa o cache dos dados de mercado.
     """
 
-    if data is None:
-        return None
+    try:
 
-    # ======================================================
-    # DICIONÁRIO
-    # ======================================================
+        get_market_data.clear()
 
-    if isinstance(
-        data,
-        dict,
-    ):
+    except Exception:
 
-        if "history" not in data:
-
-            return None
-
-        history = data[
-            "history"
-        ]
-
-        if history is None:
-            return None
-
-        if history.empty:
-            return None
-
-        if "Close" not in history.columns:
-
-            return None
-
-        price = get_current_price(
-            data
-        )
-
-        if price is None:
-            return None
-
-        result = data.copy()
-
-        result["price"] = price
-
-        return result
-
-    # ======================================================
-    # DATAFRAME
-    # ======================================================
-
-    if isinstance(
-        data,
-        pd.DataFrame,
-    ):
-
-        if data.empty:
-            return None
-
-        if "Close" not in data.columns:
-            return None
-
-        price = get_current_price(
-            data
-        )
-
-        if price is None:
-            return None
-
-        return {
-
-            "history":
-                data,
-
-            "price":
-                price,
-        }
-
-    return None
+        pass
