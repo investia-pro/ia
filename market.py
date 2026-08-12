@@ -4,6 +4,7 @@ Market Data
 
 Versão: v0.6
 Fase: 2.6.3 - Estabilidade do Market Data
+Correção: suporte à chave "asset"
 """
 
 import time
@@ -26,16 +27,16 @@ CACHE_TTL = 900  # 15 minutos
 # NORMALIZAÇÃO DO ATIVO
 # ==========================================================
 
-def normalize_ticker(asset):
+def normalize_asset(asset):
     """
     Normaliza o código do ativo.
 
     Exemplos:
 
-    PETR4 -> PETR4.SA
-    VALE3 -> VALE3.SA
-    ITUB4 -> ITUB4.SA
-    PETR4.SA -> PETR4.SA
+    PETR4     -> PETR4
+    PETR4.SA  -> PETR4
+    VALE3     -> VALE3
+    ITUB4     -> ITUB4
     """
 
     if asset is None:
@@ -51,10 +52,24 @@ def normalize_ticker(asset):
     if not asset:
         return None
 
-    if not asset.endswith(".SA"):
-        asset = f"{asset}.SA"
+    if asset.endswith(".SA"):
+        asset = asset[:-3]
 
     return asset
+
+
+def normalize_ticker(asset):
+    """
+    Converte o ativo para o ticker utilizado
+    pelo Yahoo Finance.
+    """
+
+    normalized = normalize_asset(asset)
+
+    if normalized is None:
+        return None
+
+    return f"{normalized}.SA"
 
 
 # ==========================================================
@@ -67,17 +82,9 @@ def _download_market_data(
 ):
     """
     Faz a consulta ao Yahoo Finance.
-
-    Esta função não possui cache.
-    O cache fica na função pública
-    get_market_data().
     """
 
-    last_error = None
-
-    for attempt in range(
-        MAX_RETRIES
-    ):
+    for attempt in range(MAX_RETRIES):
 
         try:
 
@@ -90,9 +97,9 @@ def _download_market_data(
                 auto_adjust=False,
             )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # VALIDAÇÃO
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             if data is None:
 
@@ -107,9 +114,9 @@ def _download_market_data(
                     "um histórico vazio."
                 )
 
-            # ----------------------------------------------
-            # NORMALIZAÇÃO DO INDEX
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # INDEX
+            # ------------------------------------------------
 
             if not isinstance(
                 data.index,
@@ -120,9 +127,9 @@ def _download_market_data(
                     data.index
                 )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # LIMPEZA
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             data = data.copy()
 
@@ -134,50 +141,46 @@ def _download_market_data(
             if data.empty:
 
                 raise ValueError(
-                    "Histórico ficou vazio "
-                    "após limpeza."
+                    "Histórico vazio após limpeza."
                 )
 
             return data
 
         except Exception as error:
 
-            last_error = error
-
             error_text = str(
                 error
             ).lower()
 
-            # ----------------------------------------------
+            # ================================================
             # RATE LIMIT
-            # ----------------------------------------------
+            # ================================================
 
-            if (
+            is_rate_limit = (
                 "rate" in error_text
-                or "too many requests"
+                or
+                "too many requests"
                 in error_text
-                or "ratelimit" in error_text
-            ):
+                or
+                "ratelimit"
+                in error_text
+            )
 
-                # Não fazemos várias requisições
-                # imediatamente.
+            if is_rate_limit:
 
                 if attempt < MAX_RETRIES - 1:
 
                     time.sleep(
-                        3
-                        * (
-                            attempt + 1
-                        )
+                        3 * (attempt + 1)
                     )
 
                     continue
 
-                break
+                return None
 
-            # ----------------------------------------------
+            # ================================================
             # OUTROS ERROS
-            # ----------------------------------------------
+            # ================================================
 
             if attempt < MAX_RETRIES - 1:
 
@@ -185,9 +188,7 @@ def _download_market_data(
 
                 continue
 
-    # ======================================================
-    # FALHA FINAL
-    # ======================================================
+            return None
 
     return None
 
@@ -205,30 +206,47 @@ def get_market_data(
     period="1y",
 ):
     """
-    Obtém dados históricos do ativo.
+    Obtém os dados do mercado.
 
-    Utiliza cache para evitar requisições
-    repetidas ao Yahoo Finance.
+    Retorna um dicionário contendo:
+
+    {
+        "asset": "PETR4",
+        "ticker": "PETR4.SA",
+        "history": DataFrame
+    }
     """
 
-    ticker_symbol = normalize_ticker(
+    normalized_asset = normalize_asset(
         asset
+    )
+
+    if normalized_asset is None:
+
+        return None
+
+    ticker_symbol = normalize_ticker(
+        normalized_asset
     )
 
     if ticker_symbol is None:
 
         return None
 
-    data = _download_market_data(
+    history = _download_market_data(
         ticker_symbol,
         period,
     )
 
-    if data is None:
+    if history is None:
 
         return None
 
-    return data
+    return {
+        "asset": normalized_asset,
+        "ticker": ticker_symbol,
+        "history": history,
+    }
 
 
 # ==========================================================
@@ -242,33 +260,90 @@ def prepare_market_data(
     Prepara os dados para os módulos
     de indicadores e análise.
 
-    Retorno:
-
-    {
-        "history": DataFrame
-    }
+    Mantém a estrutura esperada
+    pelo indicators.py.
     """
 
     if market_data is None:
 
         return None
 
-    if not isinstance(
+    # ======================================================
+    # NOVA ESTRUTURA
+    # ======================================================
+
+    if isinstance(
         market_data,
+        dict,
+    ):
+
+        asset = market_data.get(
+            "asset"
+        )
+
+        ticker = market_data.get(
+            "ticker"
+        )
+
+        history = market_data.get(
+            "history"
+        )
+
+    # ======================================================
+    # COMPATIBILIDADE COM DATAFRAME
+    # ======================================================
+
+    elif isinstance(
+        market_data,
+        pd.DataFrame,
+    ):
+
+        asset = None
+
+        ticker = None
+
+        history = market_data
+
+    else:
+
+        return None
+
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
+
+    if history is None:
+
+        return None
+
+    if not isinstance(
+        history,
         pd.DataFrame,
     ):
 
         return None
 
-    if market_data.empty:
+    if history.empty:
 
         return None
 
-    history = market_data.copy()
+    # ======================================================
+    # CÓDIGO DO ATIVO
+    # ======================================================
+
+    if asset is None:
+
+        asset = "UNKNOWN"
+
+    asset = normalize_asset(
+        asset
+    )
 
     # ======================================================
     # LIMPEZA
     # ======================================================
+
+    history = history.copy()
 
     history.dropna(
         how="all",
@@ -280,22 +355,8 @@ def prepare_market_data(
         return None
 
     # ======================================================
-    # GARANTE COLUNAS IMPORTANTES
+    # COLUNAS NECESSÁRIAS
     # ======================================================
-
-    required_columns = [
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume",
-    ]
-
-    available_columns = [
-        column
-        for column in required_columns
-        if column in history.columns
-    ]
 
     if "Close" not in history.columns:
 
@@ -305,12 +366,23 @@ def prepare_market_data(
     # CONVERSÃO NUMÉRICA
     # ======================================================
 
-    for column in available_columns:
+    numeric_columns = [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Adj Close",
+        "Volume",
+    ]
 
-        history[column] = pd.to_numeric(
-            history[column],
-            errors="coerce",
-        )
+    for column in numeric_columns:
+
+        if column in history.columns:
+
+            history[column] = pd.to_numeric(
+                history[column],
+                errors="coerce",
+            )
 
     # ======================================================
     # REMOVE LINHAS SEM FECHAMENTO
@@ -326,10 +398,12 @@ def prepare_market_data(
         return None
 
     # ======================================================
-    # RETORNO PADRONIZADO
+    # RETORNO
     # ======================================================
 
     return {
+        "asset": asset,
+        "ticker": ticker,
         "history": history,
     }
 
@@ -342,7 +416,7 @@ def get_current_price(
     market_data
 ):
     """
-    Obtém o preço mais recente disponível.
+    Obtém o preço de fechamento mais recente.
     """
 
     if market_data is None:
@@ -350,7 +424,7 @@ def get_current_price(
         return None
 
     # ======================================================
-    # ESTRUTURA PADRONIZADA
+    # DICIONÁRIO
     # ======================================================
 
     if isinstance(
@@ -362,9 +436,20 @@ def get_current_price(
             "history"
         )
 
-    else:
+    # ======================================================
+    # DATAFRAME
+    # ======================================================
+
+    elif isinstance(
+        market_data,
+        pd.DataFrame,
+    ):
 
         history = market_data
+
+    else:
+
+        return None
 
     # ======================================================
     # VALIDAÇÃO
@@ -393,7 +478,9 @@ def get_current_price(
     # PREÇO
     # ======================================================
 
-    close = history["Close"].dropna()
+    close = history[
+        "Close"
+    ].dropna()
 
     if close.empty:
 
@@ -414,14 +501,14 @@ def get_current_price(
 
 
 # ==========================================================
-# ÚLTIMO PREÇO
+# ALIAS
 # ==========================================================
 
 def get_last_close(
     market_data
 ):
     """
-    Alias para get_current_price().
+    Retorna o último fechamento.
     """
 
     return get_current_price(
@@ -430,7 +517,7 @@ def get_last_close(
 
 
 # ==========================================================
-# LIMPAR CACHE
+# LIMPEZA DO CACHE
 # ==========================================================
 
 def clear_market_cache():
