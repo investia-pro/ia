@@ -4,7 +4,7 @@ Market Data
 
 Versão: v0.6
 Fase: 2.6.3 - Estabilidade do Market Data
-Correção: suporte à chave "asset"
+Correção: asset + price + history
 """
 
 import time
@@ -19,24 +19,19 @@ import yfinance as yf
 # ==========================================================
 
 MAX_RETRIES = 2
-
 CACHE_TTL = 900  # 15 minutos
 
 
 # ==========================================================
-# NORMALIZAÇÃO DO ATIVO
+# NORMALIZAÇÃO
 # ==========================================================
 
 def normalize_asset(asset):
     """
     Normaliza o código do ativo.
 
-    Exemplos:
-
     PETR4     -> PETR4
     PETR4.SA  -> PETR4
-    VALE3     -> VALE3
-    ITUB4     -> ITUB4
     """
 
     if asset is None:
@@ -60,8 +55,7 @@ def normalize_asset(asset):
 
 def normalize_ticker(asset):
     """
-    Converte o ativo para o ticker utilizado
-    pelo Yahoo Finance.
+    Converte o ativo para o formato Yahoo Finance.
     """
 
     normalized = normalize_asset(asset)
@@ -73,7 +67,7 @@ def normalize_ticker(asset):
 
 
 # ==========================================================
-# DOWNLOAD DOS DADOS
+# DOWNLOAD
 # ==========================================================
 
 def _download_market_data(
@@ -81,7 +75,7 @@ def _download_market_data(
     period,
 ):
     """
-    Faz a consulta ao Yahoo Finance.
+    Consulta o Yahoo Finance com tentativas controladas.
     """
 
     for attempt in range(MAX_RETRIES):
@@ -97,26 +91,16 @@ def _download_market_data(
                 auto_adjust=False,
             )
 
-            # ------------------------------------------------
-            # VALIDAÇÃO
-            # ------------------------------------------------
-
             if data is None:
-
                 raise ValueError(
                     "Yahoo Finance retornou None."
                 )
 
             if data.empty:
-
                 raise ValueError(
                     "Yahoo Finance retornou "
-                    "um histórico vazio."
+                    "histórico vazio."
                 )
-
-            # ------------------------------------------------
-            # INDEX
-            # ------------------------------------------------
 
             if not isinstance(
                 data.index,
@@ -127,10 +111,6 @@ def _download_market_data(
                     data.index
                 )
 
-            # ------------------------------------------------
-            # LIMPEZA
-            # ------------------------------------------------
-
             data = data.copy()
 
             data.dropna(
@@ -139,10 +119,7 @@ def _download_market_data(
             )
 
             if data.empty:
-
-                raise ValueError(
-                    "Histórico vazio após limpeza."
-                )
+                return None
 
             return data
 
@@ -151,10 +128,6 @@ def _download_market_data(
             error_text = str(
                 error
             ).lower()
-
-            # ================================================
-            # RATE LIMIT
-            # ================================================
 
             is_rate_limit = (
                 "rate" in error_text
@@ -177,10 +150,6 @@ def _download_market_data(
                     continue
 
                 return None
-
-            # ================================================
-            # OUTROS ERROS
-            # ================================================
 
             if attempt < MAX_RETRIES - 1:
 
@@ -208,11 +177,12 @@ def get_market_data(
     """
     Obtém os dados do mercado.
 
-    Retorna um dicionário contendo:
+    Retorno:
 
     {
         "asset": "PETR4",
         "ticker": "PETR4.SA",
+        "price": 40.87,
         "history": DataFrame
     }
     """
@@ -222,7 +192,6 @@ def get_market_data(
     )
 
     if normalized_asset is None:
-
         return None
 
     ticker_symbol = normalize_ticker(
@@ -230,7 +199,6 @@ def get_market_data(
     )
 
     if ticker_symbol is None:
-
         return None
 
     history = _download_market_data(
@@ -239,37 +207,69 @@ def get_market_data(
     )
 
     if history is None:
+        return None
+
+    # ======================================================
+    # PREÇO
+    # ======================================================
+
+    if "Close" not in history.columns:
+        return None
+
+    close = history["Close"].dropna()
+
+    if close.empty:
+        return None
+
+    try:
+
+        price = float(
+            close.iloc[-1]
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
 
         return None
+
+    # ======================================================
+    # RETORNO
+    # ======================================================
 
     return {
         "asset": normalized_asset,
         "ticker": ticker_symbol,
+        "price": price,
         "history": history,
     }
 
 
 # ==========================================================
-# PREPARAÇÃO DOS DADOS
+# PREPARAÇÃO
 # ==========================================================
 
 def prepare_market_data(
     market_data
 ):
     """
-    Prepara os dados para os módulos
-    de indicadores e análise.
+    Prepara os dados para os indicadores.
 
-    Mantém a estrutura esperada
-    pelo indicators.py.
+    Estrutura obrigatória:
+
+    {
+        "asset": ...,
+        "price": ...,
+        "history": ...
+    }
     """
 
     if market_data is None:
-
         return None
 
     # ======================================================
-    # NOVA ESTRUTURA
+    # ESTRUTURA EM DICIONÁRIO
     # ======================================================
 
     if isinstance(
@@ -283,6 +283,10 @@ def prepare_market_data(
 
         ticker = market_data.get(
             "ticker"
+        )
+
+        price = market_data.get(
+            "price"
         )
 
         history = market_data.get(
@@ -299,9 +303,8 @@ def prepare_market_data(
     ):
 
         asset = None
-
         ticker = None
-
+        price = None
         history = market_data
 
     else:
@@ -309,57 +312,28 @@ def prepare_market_data(
         return None
 
     # ======================================================
-    # VALIDAÇÃO
+    # HISTÓRICO
     # ======================================================
 
     if history is None:
-
         return None
 
     if not isinstance(
         history,
         pd.DataFrame,
     ):
-
         return None
 
     if history.empty:
-
         return None
-
-    # ======================================================
-    # CÓDIGO DO ATIVO
-    # ======================================================
-
-    if asset is None:
-
-        asset = "UNKNOWN"
-
-    asset = normalize_asset(
-        asset
-    )
-
-    # ======================================================
-    # LIMPEZA
-    # ======================================================
 
     history = history.copy()
 
-    history.dropna(
-        how="all",
-        inplace=True,
-    )
-
-    if history.empty:
-
-        return None
-
     # ======================================================
-    # COLUNAS NECESSÁRIAS
+    # COLUNA CLOSE
     # ======================================================
 
     if "Close" not in history.columns:
-
         return None
 
     # ======================================================
@@ -385,7 +359,7 @@ def prepare_market_data(
             )
 
     # ======================================================
-    # REMOVE LINHAS SEM FECHAMENTO
+    # REMOVE LINHAS SEM CLOSE
     # ======================================================
 
     history.dropna(
@@ -394,16 +368,68 @@ def prepare_market_data(
     )
 
     if history.empty:
-
         return None
 
     # ======================================================
-    # RETORNO
+    # PREÇO
+    # ======================================================
+
+    if price is None:
+
+        close = history[
+            "Close"
+        ].dropna()
+
+        if close.empty:
+            return None
+
+        try:
+
+            price = float(
+                close.iloc[-1]
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            return None
+
+    else:
+
+        try:
+
+            price = float(
+                price
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            return None
+
+    # ======================================================
+    # ATIVO
+    # ======================================================
+
+    if asset is None:
+        asset = "UNKNOWN"
+
+    asset = normalize_asset(
+        asset
+    )
+
+    # ======================================================
+    # RETORNO FINAL
     # ======================================================
 
     return {
         "asset": asset,
         "ticker": ticker,
+        "price": price,
         "history": history,
     }
 
@@ -416,29 +442,35 @@ def get_current_price(
     market_data
 ):
     """
-    Obtém o preço de fechamento mais recente.
+    Obtém o preço atual do conjunto de dados.
     """
 
     if market_data is None:
-
         return None
-
-    # ======================================================
-    # DICIONÁRIO
-    # ======================================================
 
     if isinstance(
         market_data,
         dict,
     ):
 
+        price = market_data.get(
+            "price"
+        )
+
+        if price is not None:
+
+            try:
+                return float(price)
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                pass
+
         history = market_data.get(
             "history"
         )
-
-    # ======================================================
-    # DATAFRAME
-    # ======================================================
 
     elif isinstance(
         market_data,
@@ -452,38 +484,29 @@ def get_current_price(
         return None
 
     # ======================================================
-    # VALIDAÇÃO
+    # FALLBACK PELO HISTÓRICO
     # ======================================================
 
     if history is None:
-
         return None
 
     if not isinstance(
         history,
         pd.DataFrame,
     ):
-
         return None
 
     if history.empty:
-
         return None
 
     if "Close" not in history.columns:
-
         return None
-
-    # ======================================================
-    # PREÇO
-    # ======================================================
 
     close = history[
         "Close"
     ].dropna()
 
     if close.empty:
-
         return None
 
     try:
@@ -517,7 +540,7 @@ def get_last_close(
 
 
 # ==========================================================
-# LIMPEZA DO CACHE
+# LIMPAR CACHE
 # ==========================================================
 
 def clear_market_cache():
