@@ -3,7 +3,7 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.6.2 - Dashboard Executivo
+Fase: 2.6.3 - Dashboard Executivo + Gráfico Integrado
 """
 
 import streamlit as st
@@ -84,10 +84,7 @@ def get_indicator_value(
     Obtém um indicador com segurança.
     """
 
-    if not isinstance(
-        indicators,
-        dict,
-    ):
+    if not isinstance(indicators, dict):
         return default
 
     return indicators.get(
@@ -106,16 +103,12 @@ def get_analysis_value(
     aceitando nomes alternativos.
     """
 
-    if not isinstance(
-        result,
-        dict,
-    ):
+    if not isinstance(result, dict):
         return default
 
     for key in keys:
 
         if key in result:
-
             return result[key]
 
     return default
@@ -165,9 +158,7 @@ analyze_button = st.button(
 
 if analyze_button:
 
-    asset = normalize_asset_input(
-        asset
-    )
+    asset = normalize_asset_input(asset)
 
     # ======================================================
     # VALIDAÇÃO DO ATIVO
@@ -180,6 +171,7 @@ if analyze_button:
         )
 
         st.stop()
+
 
     # ======================================================
     # BUSCA DE DADOS
@@ -199,15 +191,13 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao buscar os dados "
-                "do mercado."
+                "Erro ao buscar os dados do mercado."
             )
 
-            st.exception(
-                error
-            )
+            st.exception(error)
 
             st.stop()
+
 
     # ======================================================
     # VALIDAÇÃO DOS DADOS
@@ -216,14 +206,18 @@ if analyze_button:
     if market_data is None:
 
         st.error(
-            f"Não foi possível obter "
-            f"dados para {asset}."
+            f"Não foi possível obter dados para {asset}."
+        )
+
+        st.info(
+            "Verifique o código do ativo e tente novamente."
         )
 
         st.stop()
 
+
     # ======================================================
-    # PREPARAÇÃO
+    # PREPARAÇÃO DOS DADOS
     # ======================================================
 
     try:
@@ -235,32 +229,36 @@ if analyze_button:
     except Exception as error:
 
         st.error(
-            "Erro ao preparar os dados "
-            "do mercado."
+            "Erro ao preparar os dados do mercado."
         )
 
-        st.exception(
-            error
-        )
+        st.exception(error)
 
         st.stop()
+
 
     if prepared_data is None:
 
         st.error(
-            "Os dados do mercado "
-            "não puderam ser preparados."
+            "Os dados do mercado não puderam ser preparados."
         )
 
         st.stop()
+
 
     # ======================================================
     # HISTÓRICO
     # ======================================================
 
-    history = prepared_data.get(
-        "history"
-    )
+    history = None
+
+
+    if isinstance(prepared_data, dict):
+
+        history = prepared_data.get(
+            "history"
+        )
+
 
     if history is None:
 
@@ -270,6 +268,7 @@ if analyze_button:
 
         st.stop()
 
+
     if history.empty:
 
         st.error(
@@ -278,22 +277,50 @@ if analyze_button:
 
         st.stop()
 
+
     # ======================================================
-    # PREÇO
+    # PREÇO ATUAL
     # ======================================================
 
-    price = get_current_price(
-        prepared_data
-    )
+    try:
+
+        price = get_current_price(
+            prepared_data
+        )
+
+    except Exception:
+
+        price = None
+
+
+    # Fallback caso get_current_price não consiga
+    # identificar o preço.
+
+    if price is None:
+
+        try:
+
+            if "Close" in history.columns:
+
+                price = float(
+                    history["Close"]
+                    .dropna()
+                    .iloc[-1]
+                )
+
+        except Exception:
+
+            price = None
+
 
     if price is None:
 
         st.error(
-            "Não foi possível determinar "
-            "o preço atual."
+            "Não foi possível determinar o preço atual."
         )
 
         st.stop()
+
 
     # ======================================================
     # INDICADORES
@@ -312,15 +339,13 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao calcular "
-                "os indicadores técnicos."
+                "Erro ao calcular os indicadores técnicos."
             )
 
-            st.exception(
-                error
-            )
+            st.exception(error)
 
             st.stop()
+
 
     if indicators is None:
 
@@ -330,39 +355,36 @@ if analyze_button:
 
         st.stop()
 
+
     # ======================================================
     # DADOS PARA ANÁLISE
     # ======================================================
 
     analysis_data = {
 
-        "price":
-            price,
+        "price": price,
 
-        "rsi":
-            get_indicator_value(
-                indicators,
-                "rsi",
-            ),
+        "rsi": get_indicator_value(
+            indicators,
+            "rsi",
+        ),
 
-        "ma21":
-            get_indicator_value(
-                indicators,
-                "ma21",
-            ),
+        "ma21": get_indicator_value(
+            indicators,
+            "ma21",
+        ),
 
-        "ma200":
-            get_indicator_value(
-                indicators,
-                "ma200",
-            ),
+        "ma200": get_indicator_value(
+            indicators,
+            "ma200",
+        ),
 
-        "volatility":
-            get_indicator_value(
-                indicators,
-                "volatility",
-            ),
+        "volatility": get_indicator_value(
+            indicators,
+            "volatility",
+        ),
     }
+
 
     # ======================================================
     # VALIDAÇÃO
@@ -379,6 +401,7 @@ if analyze_button:
 
         st.stop()
 
+
     # ======================================================
     # MOTOR DE ANÁLISE
     # ======================================================
@@ -389,27 +412,42 @@ if analyze_button:
 
         try:
 
-            # IMPORTANTE:
-            # O ticker é enviado ao analysis.py
-            # para gerar o resumo executivo correto.
-
             result = analyze_asset(
                 analysis_data,
                 asset,
             )
 
+        except TypeError:
+
+            # Compatibilidade com versões anteriores
+            # do analysis.py.
+
+            try:
+
+                result = analyze_asset(
+                    analysis_data
+                )
+
+            except Exception as error:
+
+                st.error(
+                    "Erro ao executar a análise InvestIA."
+                )
+
+                st.exception(error)
+
+                st.stop()
+
         except Exception as error:
 
             st.error(
-                "Erro ao executar "
-                "a análise InvestIA."
+                "Erro ao executar a análise InvestIA."
             )
 
-            st.exception(
-                error
-            )
+            st.exception(error)
 
             st.stop()
+
 
     # ======================================================
     # VALIDAÇÃO DO RESULTADO
@@ -423,6 +461,7 @@ if analyze_button:
 
         st.stop()
 
+
     # ======================================================
     # EXTRAÇÃO DOS RESULTADOS
     # ======================================================
@@ -433,11 +472,13 @@ if analyze_button:
         default=0,
     )
 
+
     classification = get_analysis_value(
         result,
         "classification",
         default="NEUTRO",
     )
+
 
     signal = get_analysis_value(
         result,
@@ -445,11 +486,13 @@ if analyze_button:
         default="NEUTRO",
     )
 
+
     qualified_signal = get_analysis_value(
         result,
         "qualified_signal",
         default=signal,
     )
+
 
     signal_level = get_analysis_value(
         result,
@@ -457,11 +500,13 @@ if analyze_button:
         default="Aguardar",
     )
 
+
     signal_icon = get_analysis_value(
         result,
         "signal_icon",
         default="🟡",
     )
+
 
     trend = get_analysis_value(
         result,
@@ -470,12 +515,14 @@ if analyze_button:
         default="Neutra",
     )
 
+
     recommendation = get_analysis_value(
         result,
         "recommendation",
         "recomendacao",
         default="Aguardar",
     )
+
 
     risk = get_analysis_value(
         result,
@@ -484,11 +531,13 @@ if analyze_button:
         default="Moderado",
     )
 
+
     rsi_status = get_analysis_value(
         result,
         "rsi_status",
         default="Neutro",
     )
+
 
     reasons = get_analysis_value(
         result,
@@ -497,11 +546,13 @@ if analyze_button:
         default=[],
     )
 
+
     breakdown = get_analysis_value(
         result,
         "breakdown",
         default={},
     )
+
 
     executive_summary = get_analysis_value(
         result,
@@ -534,9 +585,7 @@ if analyze_button:
 
         st.metric(
             "Preço atual",
-            format_currency(
-                price
-            ),
+            format_currency(price),
         )
 
 
@@ -584,6 +633,7 @@ if analyze_button:
     st.subheader(
         "🤖 Resumo Executivo"
     )
+
 
     if executive_summary:
 
@@ -665,6 +715,7 @@ if analyze_button:
         "🧠 Composição do Score InvestIA"
     )
 
+
     st.caption(
         "O Score começa em 50 pontos e "
         "recebe ajustes conforme os indicadores."
@@ -677,6 +728,7 @@ if analyze_button:
 
     base_points = 50
 
+
     if isinstance(
         breakdown,
         dict,
@@ -686,6 +738,7 @@ if analyze_button:
             "base",
             50,
         )
+
 
     st.write(
         f"**Base:** {base_points:+d} pontos"
@@ -701,13 +754,14 @@ if analyze_button:
     )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # MA21
-    # ------------------------------------------------------
+    # ======================================================
 
     with bd1:
 
         ma21_data = {}
+
 
         if isinstance(
             breakdown,
@@ -719,46 +773,54 @@ if analyze_button:
                 {},
             )
 
+
         ma21_points = ma21_data.get(
             "points",
             0,
         )
+
 
         ma21_signal = ma21_data.get(
             "signal",
             "Neutro",
         )
 
+
         ma21_reason = ma21_data.get(
             "reason",
             "Sem informação.",
         )
 
+
         st.markdown(
             "### 📏 MA21"
         )
+
 
         st.metric(
             "Contribuição",
             f"{ma21_points:+d} pts",
         )
 
+
         st.write(
             f"**Sinal:** {ma21_signal}"
         )
+
 
         st.caption(
             ma21_reason
         )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # MA200
-    # ------------------------------------------------------
+    # ======================================================
 
     with bd2:
 
         ma200_data = {}
+
 
         if isinstance(
             breakdown,
@@ -770,46 +832,54 @@ if analyze_button:
                 {},
             )
 
+
         ma200_points = ma200_data.get(
             "points",
             0,
         )
+
 
         ma200_signal = ma200_data.get(
             "signal",
             "Neutro",
         )
 
+
         ma200_reason = ma200_data.get(
             "reason",
             "Sem informação.",
         )
 
+
         st.markdown(
             "### 📐 MA200"
         )
+
 
         st.metric(
             "Contribuição",
             f"{ma200_points:+d} pts",
         )
 
+
         st.write(
             f"**Sinal:** {ma200_signal}"
         )
+
 
         st.caption(
             ma200_reason
         )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # RSI
-    # ------------------------------------------------------
+    # ======================================================
 
     with bd3:
 
         rsi_data = {}
+
 
         if isinstance(
             breakdown,
@@ -821,33 +891,40 @@ if analyze_button:
                 {},
             )
 
+
         rsi_points = rsi_data.get(
             "points",
             0,
         )
+
 
         rsi_signal = rsi_data.get(
             "signal",
             "Neutro",
         )
 
+
         rsi_reason = rsi_data.get(
             "reason",
             "Sem informação.",
         )
 
+
         st.markdown(
             "### 📊 RSI"
         )
+
 
         st.metric(
             "Contribuição",
             f"{rsi_points:+d} pts",
         )
 
+
         st.write(
             f"**Sinal:** {rsi_signal}"
         )
+
 
         st.caption(
             rsi_reason
@@ -859,6 +936,7 @@ if analyze_button:
     # ======================================================
 
     raw_score = None
+
 
     if isinstance(
         breakdown,
@@ -897,9 +975,22 @@ if analyze_button:
 
     try:
 
+        # ==================================================
+        # CORREÇÃO DA FASE 2.6.3
+        #
+        # O charts.py agora recebe:
+        #
+        # 1. history
+        # 2. indicators
+        #
+        # Não utilizar somente create_price_chart(history)
+        # ==================================================
+
         fig = create_price_chart(
-            history
+            history,
+            indicators,
         )
+
 
         if fig is not None:
 
@@ -911,9 +1002,9 @@ if analyze_button:
         else:
 
             st.warning(
-                "Não foi possível gerar "
-                "o gráfico."
+                "Não foi possível gerar o gráfico."
             )
+
 
     except Exception as error:
 
@@ -921,9 +1012,7 @@ if analyze_button:
             "O gráfico não pôde ser gerado."
         )
 
-        st.exception(
-            error
-        )
+        st.exception(error)
 
 
     # ======================================================
@@ -942,15 +1031,16 @@ if analyze_button:
     )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # JUSTIFICATIVAS
-    # ------------------------------------------------------
+    # ======================================================
 
     with analysis_col1:
 
         st.markdown(
             "### Fundamentação"
         )
+
 
         if reasons:
 
@@ -963,14 +1053,13 @@ if analyze_button:
         else:
 
             st.info(
-                "Nenhuma justificativa "
-                "foi retornada."
+                "Nenhuma justificativa foi retornada."
             )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # RISCO
-    # ------------------------------------------------------
+    # ======================================================
 
     with analysis_col2:
 
@@ -978,25 +1067,31 @@ if analyze_button:
             "### 🛡️ Gestão de risco"
         )
 
+
         st.write(
             f"{risk_icon(risk)} **{risk}**"
         )
+
 
         st.write(
             f"**Score:** {score}/100"
         )
 
+
         st.write(
             f"**Tendência:** {trend}"
         )
+
 
         st.write(
             f"**RSI:** {rsi_status}"
         )
 
+
         st.write(
             f"**Sinal:** {qualified_signal}"
         )
+
 
         st.write(
             f"**Recomendação:** {recommendation}"
@@ -1025,14 +1120,17 @@ if analyze_button:
             f"**Ativo:** {asset}"
         )
 
+
         st.write(
             f"**Preço:** "
             f"{format_currency(price)}"
         )
 
+
         st.write(
             f"**Score:** {score}/100"
         )
+
 
         st.write(
             f"**Classificação:** "
@@ -1046,14 +1144,17 @@ if analyze_button:
             f"**Tendência:** {trend}"
         )
 
+
         st.write(
             f"**Sinal:** {qualified_signal}"
         )
+
 
         st.write(
             f"**Risco:** "
             f"{risk_icon(risk)} {risk}"
         )
+
 
         st.write(
             f"**Recomendação:** "
@@ -1071,6 +1172,7 @@ else:
         "Digite um ativo e clique em "
         "🔎 Analisar ativo."
     )
+
 
     st.markdown(
         """
