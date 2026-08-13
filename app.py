@@ -3,7 +3,7 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.6.3 - Dashboard Executivo + Gráfico Integrado
+Fase: 2.7.2 - Gestão de Risco e Sinal
 """
 
 import streamlit as st
@@ -99,8 +99,7 @@ def get_analysis_value(
     default=None,
 ):
     """
-    Obtém valores do resultado da análise
-    aceitando nomes alternativos.
+    Obtém valores do resultado da análise.
     """
 
     if not isinstance(result, dict):
@@ -112,6 +111,102 @@ def get_analysis_value(
             return result[key]
 
     return default
+
+
+def safe_int(value, default=0):
+    """
+    Converte valor para inteiro com segurança.
+    """
+
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def risk_description(risk):
+    """
+    Descrição operacional do nível de risco.
+    """
+
+    descriptions = {
+        "Baixo": (
+            "Baixa volatilidade relativa. "
+            "O comportamento recente apresenta "
+            "menor nível de oscilação."
+        ),
+
+        "Moderado": (
+            "Volatilidade intermediária. "
+            "O ativo exige acompanhamento regular "
+            "antes de uma decisão."
+        ),
+
+        "Alto": (
+            "Alta volatilidade. "
+            "Movimentos de preço podem ser mais intensos "
+            "e exigem maior controle de risco."
+        ),
+    }
+
+    return descriptions.get(
+        risk,
+        "Nível de risco não identificado.",
+    )
+
+
+def signal_description(
+    recommendation,
+    risk,
+):
+    """
+    Interpretação operacional do sinal.
+    """
+
+    if recommendation == "Compra":
+
+        if risk == "Alto":
+            return (
+                "Cenário favorável, porém com "
+                "risco elevado. Exige maior cautela."
+            )
+
+        return (
+            "Cenário técnico favorável ao movimento "
+            "de compra."
+        )
+
+    if recommendation == "Compra Moderada":
+
+        return (
+            "Cenário parcialmente favorável. "
+            "A entrada deve considerar confirmação."
+        )
+
+    if recommendation == "Venda":
+
+        if risk == "Alto":
+            return (
+                "Cenário desfavorável com elevada "
+                "volatilidade."
+            )
+
+        return (
+            "Cenário técnico desfavorável "
+            "ao movimento de alta."
+        )
+
+    if recommendation == "Venda Moderada":
+
+        return (
+            "Cenário parcialmente desfavorável. "
+            "Requer confirmação antes de uma decisão."
+        )
+
+    return (
+        "Os indicadores não apresentam "
+        "força suficiente para uma decisão."
+    )
 
 
 # ==========================================================
@@ -158,10 +253,12 @@ analyze_button = st.button(
 
 if analyze_button:
 
-    asset = normalize_asset_input(asset)
+    asset = normalize_asset_input(
+        asset
+    )
 
     # ======================================================
-    # VALIDAÇÃO DO ATIVO
+    # VALIDAÇÃO
     # ======================================================
 
     if not asset:
@@ -199,25 +296,17 @@ if analyze_button:
             st.stop()
 
 
-    # ======================================================
-    # VALIDAÇÃO DOS DADOS
-    # ======================================================
-
     if market_data is None:
 
         st.error(
             f"Não foi possível obter dados para {asset}."
         )
 
-        st.info(
-            "Verifique o código do ativo e tente novamente."
-        )
-
         st.stop()
 
 
     # ======================================================
-    # PREPARAÇÃO DOS DADOS
+    # PREPARAÇÃO
     # ======================================================
 
     try:
@@ -250,14 +339,9 @@ if analyze_button:
     # HISTÓRICO
     # ======================================================
 
-    history = None
-
-
-    if isinstance(prepared_data, dict):
-
-        history = prepared_data.get(
-            "history"
-        )
+    history = prepared_data.get(
+        "history"
+    )
 
 
     if history is None:
@@ -279,7 +363,7 @@ if analyze_button:
 
 
     # ======================================================
-    # PREÇO ATUAL
+    # PREÇO
     # ======================================================
 
     try:
@@ -293,20 +377,15 @@ if analyze_button:
         price = None
 
 
-    # Fallback caso get_current_price não consiga
-    # identificar o preço.
-
     if price is None:
 
         try:
 
-            if "Close" in history.columns:
-
-                price = float(
-                    history["Close"]
-                    .dropna()
-                    .iloc[-1]
-                )
+            price = float(
+                history["Close"]
+                .dropna()
+                .iloc[-1]
+            )
 
         except Exception:
 
@@ -403,7 +482,7 @@ if analyze_button:
 
 
     # ======================================================
-    # MOTOR DE ANÁLISE
+    # ANÁLISE
     # ======================================================
 
     with st.spinner(
@@ -418,9 +497,6 @@ if analyze_button:
             )
 
         except TypeError:
-
-            # Compatibilidade com versões anteriores
-            # do analysis.py.
 
             try:
 
@@ -449,10 +525,6 @@ if analyze_button:
             st.stop()
 
 
-    # ======================================================
-    # VALIDAÇÃO DO RESULTADO
-    # ======================================================
-
     if result is None:
 
         st.error(
@@ -463,7 +535,7 @@ if analyze_button:
 
 
     # ======================================================
-    # EXTRAÇÃO DOS RESULTADOS
+    # RESULTADOS
     # ======================================================
 
     score = get_analysis_value(
@@ -497,7 +569,7 @@ if analyze_button:
     signal_level = get_analysis_value(
         result,
         "signal_level",
-        default="Aguardar",
+        default="Neutro",
     )
 
 
@@ -532,6 +604,15 @@ if analyze_button:
     )
 
 
+    risk_points = safe_int(
+        get_analysis_value(
+            result,
+            "risk_score",
+            default=0,
+        )
+    )
+
+
     rsi_status = get_analysis_value(
         result,
         "rsi_status",
@@ -543,6 +624,13 @@ if analyze_button:
         result,
         "reasons",
         "justificativas",
+        default=[],
+    )
+
+
+    alerts = get_analysis_value(
+        result,
+        "alerts",
         default=[],
     )
 
@@ -562,7 +650,7 @@ if analyze_button:
 
 
     # ======================================================
-    # CABEÇALHO DA ANÁLISE
+    # CABEÇALHO
     # ======================================================
 
     st.divider()
@@ -614,14 +702,162 @@ if analyze_button:
 
 
     # ======================================================
-    # CLASSIFICAÇÃO E SINAL
+    # SINAL OPERACIONAL
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🎯 Sinal Operacional"
+    )
+
+
+    sig1, sig2, sig3 = st.columns(
+        3
+    )
+
+
+    with sig1:
+
+        st.metric(
+            "Sinal",
+            f"{signal_icon} {qualified_signal}",
+        )
+
+
+    with sig2:
+
+        st.metric(
+            "Nível",
+            str(signal_level),
+        )
+
+
+    with sig3:
+
+        st.metric(
+            "Risco",
+            f"{risk_icon(risk)} {risk}",
+        )
+
+
+    st.info(
+        signal_description(
+            recommendation,
+            risk,
+        )
+    )
+
+
+    # ======================================================
+    # CLASSIFICAÇÃO
     # ======================================================
 
     st.info(
         f"**Classificação:** {classification} "
-        f"| **Sinal:** {qualified_signal} "
+        f"| **Sinal:** {signal} "
         f"| **Nível:** {signal_icon} {signal_level}"
     )
+
+
+    # ======================================================
+    # GESTÃO DE RISCO
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🛡️ Gestão de Risco"
+    )
+
+
+    risk1, risk2 = st.columns(
+        [1, 2]
+    )
+
+
+    with risk1:
+
+        st.metric(
+            "Nível de risco",
+            f"{risk_icon(risk)} {risk}",
+        )
+
+
+        st.metric(
+            "Índice de risco",
+            f"{risk_points}/100",
+        )
+
+
+    with risk2:
+
+        st.markdown(
+            "### Interpretação"
+        )
+
+        st.write(
+            risk_description(
+                risk
+            )
+        )
+
+        st.caption(
+            "Quanto maior o índice, maior a volatilidade "
+            "relativa considerada pelo modelo."
+        )
+
+
+    # ======================================================
+    # ALERTAS
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "⚠️ Alertas da Análise"
+    )
+
+
+    if not isinstance(
+        alerts,
+        list,
+    ):
+
+        alerts = [alerts]
+
+
+    valid_alerts = [
+        alert
+        for alert in alerts
+        if alert
+    ]
+
+
+    if valid_alerts:
+
+        for alert in valid_alerts:
+
+            if (
+                "Nenhum alerta"
+                in str(alert)
+            ):
+
+                st.success(
+                    f"✅ {alert}"
+                )
+
+            else:
+
+                st.warning(
+                    f"⚠️ {alert}"
+                )
+
+    else:
+
+        st.success(
+            "✅ Nenhum alerta técnico relevante identificado."
+        )
 
 
     # ======================================================
@@ -699,6 +935,7 @@ if analyze_button:
             * 100
         )
 
+
         st.metric(
             "Volatilidade",
             f"{volatility_percent:.2f}%",
@@ -722,10 +959,6 @@ if analyze_button:
     )
 
 
-    # ======================================================
-    # BASE
-    # ======================================================
-
     base_points = 50
 
 
@@ -744,10 +977,6 @@ if analyze_button:
         f"**Base:** {base_points:+d} pontos"
     )
 
-
-    # ======================================================
-    # COMPONENTES
-    # ======================================================
 
     bd1, bd2, bd3 = st.columns(
         3
@@ -975,17 +1204,6 @@ if analyze_button:
 
     try:
 
-        # ==================================================
-        # CORREÇÃO DA FASE 2.6.3
-        #
-        # O charts.py agora recebe:
-        #
-        # 1. history
-        # 2. indicators
-        #
-        # Não utilizar somente create_price_chart(history)
-        # ==================================================
-
         fig = create_price_chart(
             history,
             indicators,
@@ -1031,10 +1249,6 @@ if analyze_button:
     )
 
 
-    # ======================================================
-    # JUSTIFICATIVAS
-    # ======================================================
-
     with analysis_col1:
 
         st.markdown(
@@ -1057,10 +1271,6 @@ if analyze_button:
             )
 
 
-    # ======================================================
-    # RISCO
-    # ======================================================
-
     with analysis_col2:
 
         st.markdown(
@@ -1070,6 +1280,12 @@ if analyze_button:
 
         st.write(
             f"{risk_icon(risk)} **{risk}**"
+        )
+
+
+        st.write(
+            f"**Índice de risco:** "
+            f"{risk_points}/100"
         )
 
 
@@ -1157,6 +1373,12 @@ if analyze_button:
 
 
         st.write(
+            f"**Índice de risco:** "
+            f"{risk_points}/100"
+        )
+
+
+        st.write(
             f"**Recomendação:** "
             f"{recommendation}"
         )
@@ -1182,7 +1404,7 @@ else:
 2. Escolha o período de análise.
 3. Clique em **Analisar ativo**.
 4. Consulte o Score InvestIA, tendência,
-   risco e recomendação.
+   risco, alertas e recomendação.
 
 **Exemplos:** PETR4, VALE3, ITUB4.
 """
