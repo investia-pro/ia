@@ -3,345 +3,380 @@ InvestIA PRO
 Motor de Análise
 
 Versão: v0.6
-Fase: 2.6.1 - Identificação do ativo no resumo executivo
+Fase: 2.7.1 - Motor de Risco e Sinal
 """
 
-from score import calculate_score_details
-
-from config import (
-    RSI_OVERSOLD,
-    RSI_OVERBOUGHT,
-)
+from score import calculate_investia_score
 
 
 # ==========================================================
-# TENDÊNCIA
+# FUNÇÕES AUXILIARES
 # ==========================================================
 
-def analyze_trend(price, ma21, ma200):
+def safe_float(value, default=0.0):
     """
-    Analisa a tendência de curto e longo prazo.
-    """
-
-    reasons = []
-
-    short_term_positive = price > ma21
-    long_term_positive = price > ma200
-
-    if short_term_positive:
-
-        reasons.append(
-            "Preço acima da média móvel de 21 períodos."
-        )
-
-    else:
-
-        reasons.append(
-            "Preço abaixo da média móvel de 21 períodos."
-        )
-
-    if long_term_positive:
-
-        reasons.append(
-            "Preço acima da média móvel de 200 períodos."
-        )
-
-    else:
-
-        reasons.append(
-            "Preço abaixo da média móvel de 200 períodos."
-        )
-
-    if short_term_positive and long_term_positive:
-
-        trend = "Positiva"
-
-    elif not short_term_positive and not long_term_positive:
-
-        trend = "Negativa"
-
-    else:
-
-        trend = "Neutra"
-
-    return trend, reasons
-
-
-# ==========================================================
-# RSI
-# ==========================================================
-
-def analyze_rsi(rsi):
-    """
-    Interpreta o RSI.
+    Converte valores numéricos com segurança.
     """
 
-    if rsi <= RSI_OVERSOLD:
-
-        return (
-            "Sobrevenda",
-            "RSI em região de sobrevenda."
-        )
-
-    if rsi >= RSI_OVERBOUGHT:
-
-        return (
-            "Sobrecompra",
-            "RSI em região de sobrecompra."
-        )
-
-    return (
-        "Neutro",
-        "RSI em região neutra."
-    )
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
-# ==========================================================
-# RISCO
-# ==========================================================
-
-def analyze_risk(volatility):
+def normalize_text(value, default="Neutro"):
     """
-    Classifica o risco através da volatilidade.
+    Normaliza textos utilizados na análise.
     """
+
+    if value is None:
+        return default
+
+    text = str(value).strip()
+
+    if not text:
+        return default
+
+    return text
+
+
+def classify_score(score):
+    """
+    Classificação qualitativa do Score InvestIA.
+    """
+
+    if score >= 80:
+        return "MUITO FORTE"
+
+    if score >= 65:
+        return "FORTE"
+
+    if score >= 50:
+        return "NEUTRO"
+
+    if score >= 35:
+        return "FRACO"
+
+    return "MUITO FRACO"
+
+
+def classify_signal(score):
+    """
+    Define o sinal operacional principal.
+    """
+
+    if score >= 65:
+        return "POSITIVO"
+
+    if score <= 35:
+        return "NEGATIVO"
+
+    return "NEUTRO"
+
+
+def classify_recommendation(score):
+    """
+    Define a recomendação operacional.
+    """
+
+    if score >= 75:
+        return "Compra"
+
+    if score >= 65:
+        return "Compra Moderada"
+
+    if score <= 25:
+        return "Venda"
+
+    if score <= 35:
+        return "Venda Moderada"
+
+    return "Aguardar"
+
+
+def classify_risk(volatility):
+    """
+    Classifica o risco com base na volatilidade.
+    """
+
+    volatility = safe_float(volatility)
 
     if volatility < 0.015:
-
         return "Baixo"
 
     if volatility < 0.030:
-
         return "Moderado"
 
     return "Alto"
 
 
-# ==========================================================
-# QUALIFICAÇÃO DO SINAL
-# ==========================================================
-
-def qualify_signal(
-    score,
-    trend,
-    risk,
-):
+def risk_score(volatility):
     """
-    Qualifica a força do sinal considerando:
+    Converte a volatilidade em uma escala de risco 0-100.
 
-    - Score
-    - Tendência
-    - Risco
+    Quanto maior o valor, maior o risco.
     """
 
-    if score >= 80:
+    volatility = safe_float(volatility)
 
-        if trend == "Positiva" and risk == "Baixo":
+    if volatility <= 0:
+        return 0
 
-            return {
-                "level": "Compra Forte",
-                "signal": "MUITO POSITIVO",
-                "icon": "🟢",
-            }
+    score = volatility / 0.040 * 100
 
-        if trend == "Positiva":
-
-            return {
-                "level": "Compra",
-                "signal": "POSITIVO",
-                "icon": "🟢",
-            }
-
-        return {
-            "level": "Aguardar",
-            "signal": "POSITIVO COM RESSALVAS",
-            "icon": "🟡",
-        }
-
-    if score >= 65:
-
-        if trend == "Positiva" and risk != "Alto":
-
-            return {
-                "level": "Compra",
-                "signal": "POSITIVO",
-                "icon": "🟢",
-            }
-
-        return {
-            "level": "Aguardar",
-            "signal": "LEVE POSITIVO",
-            "icon": "🟡",
-        }
-
-    if score >= 50:
-
-        return {
-            "level": "Aguardar",
-            "signal": "NEUTRO",
-            "icon": "🟡",
-        }
-
-    if score >= 35:
-
-        if trend == "Negativa":
-
-            return {
-                "level": "Venda",
-                "signal": "NEGATIVO",
-                "icon": "🟠",
-            }
-
-        return {
-            "level": "Aguardar",
-            "signal": "LEVE NEGATIVO",
-            "icon": "🟡",
-        }
-
-    return {
-        "level": "Venda Forte",
-        "signal": "MUITO NEGATIVO",
-        "icon": "🔴",
-    }
-
-
-# ==========================================================
-# RECOMENDAÇÃO
-# ==========================================================
-
-def generate_recommendation(
-    score,
-    trend,
-    risk,
-):
-    """
-    Gera a recomendação final.
-    """
-
-    qualification = qualify_signal(
-        score,
-        trend,
-        risk,
+    return max(
+        0,
+        min(
+            100,
+            round(score),
+        ),
     )
 
-    level = qualification["level"]
 
-    if level in (
-        "Compra",
-        "Compra Forte",
-    ):
+def calculate_trend(
+    price,
+    ma21,
+    ma200,
+):
+    """
+    Determina a tendência considerando
+    preço x MA21 e preço x MA200.
+    """
 
-        return "Compra"
+    price = safe_float(price)
+    ma21 = safe_float(ma21)
+    ma200 = safe_float(ma200)
 
-    if level in (
-        "Venda",
-        "Venda Forte",
-    ):
+    above_ma21 = price > ma21
+    above_ma200 = price > ma200
 
-        return "Venda"
+    if above_ma21 and above_ma200:
+        return "Positiva"
 
-    return "Aguardar"
+    if not above_ma21 and not above_ma200:
+        return "Negativa"
+
+    return "Moderada"
 
 
-# ==========================================================
-# RESUMO EXECUTIVO
-# ==========================================================
+def calculate_rsi_status(rsi):
+    """
+    Classifica o RSI.
+    """
 
-def generate_executive_summary(
-    asset,
+    rsi = safe_float(rsi)
+
+    if rsi <= 30:
+        return "Sobrevendido"
+
+    if rsi >= 70:
+        return "Sobrecomprado"
+
+    return "Neutro"
+
+
+def build_alerts(
     score,
-    classification,
-    trend,
     risk,
-    recommendation,
+    trend,
     rsi_status,
 ):
     """
-    Gera um resumo executivo utilizando
-    o código real do ativo.
+    Identifica situações que exigem atenção.
     """
 
-    asset = str(
-        asset
-    ).strip().upper()
+    alerts = []
 
-    # ======================================================
-    # TENDÊNCIA
-    # ======================================================
+    # ------------------------------------------------------
+    # Score alto + risco alto
+    # ------------------------------------------------------
 
-    if trend == "Positiva":
+    if score >= 65 and risk == "Alto":
 
-        trend_text = (
-            "apresenta tendência positiva"
+        alerts.append(
+            "Score favorável, porém com risco elevado."
         )
 
-    elif trend == "Negativa":
 
-        trend_text = (
-            "apresenta tendência negativa"
+    # ------------------------------------------------------
+    # Score baixo + risco baixo
+    # ------------------------------------------------------
+
+    if score <= 35 and risk == "Baixo":
+
+        alerts.append(
+            "Score desfavorável apesar do baixo risco."
         )
 
-    else:
 
-        trend_text = (
-            "apresenta tendência neutra"
+    # ------------------------------------------------------
+    # Tendência positiva + sobrecompra
+    # ------------------------------------------------------
+
+    if (
+        trend == "Positiva"
+        and rsi_status == "Sobrecomprado"
+    ):
+
+        alerts.append(
+            "Tendência positiva, mas RSI indica sobrecompra."
         )
 
-    # ======================================================
-    # RISCO
-    # ======================================================
 
-    if risk == "Baixo":
+    # ------------------------------------------------------
+    # Tendência negativa + sobrevenda
+    # ------------------------------------------------------
 
-        risk_text = (
-            "com baixo nível de volatilidade"
+    if (
+        trend == "Negativa"
+        and rsi_status == "Sobrevendido"
+    ):
+
+        alerts.append(
+            "Tendência negativa, mas RSI indica sobrevenda."
         )
 
-    elif risk == "Moderado":
 
-        risk_text = (
-            "com volatilidade moderada"
+    # ------------------------------------------------------
+    # Ausência de alertas
+    # ------------------------------------------------------
+
+    if not alerts:
+
+        alerts.append(
+            "Nenhum alerta técnico relevante identificado."
         )
 
-    else:
 
-        risk_text = (
-            "com elevada volatilidade"
-        )
+    return alerts
 
-    # ======================================================
-    # RSI
-    # ======================================================
 
-    if rsi_status == "Sobrevenda":
+def build_qualified_signal(
+    recommendation,
+    risk,
+):
+    """
+    Combina recomendação e risco em um sinal
+    operacional mais informativo.
+    """
 
-        rsi_text = (
-            "O RSI está em região de sobrevenda."
-        )
+    if recommendation == "Compra":
 
-    elif rsi_status == "Sobrecompra":
+        if risk == "Alto":
+            return "COMPRA COM ALTO RISCO"
 
-        rsi_text = (
-            "O RSI está em região de sobrecompra."
-        )
+        return "COMPRA"
 
-    else:
+    if recommendation == "Compra Moderada":
 
-        rsi_text = (
-            "O RSI permanece em região neutra."
-        )
+        if risk == "Alto":
+            return "COMPRA MODERADA COM ALTO RISCO"
 
-    # ======================================================
-    # RESUMO
-    # ======================================================
+        return "COMPRA MODERADA"
+
+    if recommendation == "Venda":
+
+        if risk == "Alto":
+            return "VENDA COM ALTO RISCO"
+
+        return "VENDA"
+
+    if recommendation == "Venda Moderada":
+
+        if risk == "Alto":
+            return "VENDA MODERADA COM ALTO RISCO"
+
+        return "VENDA MODERADA"
+
+    return "AGUARDAR"
+
+
+def build_signal_level(
+    score,
+    risk,
+):
+    """
+    Define o nível de confiança operacional.
+    """
+
+    if score >= 75 and risk != "Alto":
+        return "Forte"
+
+    if score >= 65 and risk == "Baixo":
+        return "Forte"
+
+    if score >= 65:
+        return "Moderado"
+
+    if score <= 35 and risk != "Alto":
+        return "Forte"
+
+    if score <= 35:
+        return "Moderado"
+
+    return "Neutro"
+
+
+def build_signal_icon(
+    recommendation,
+):
+    """
+    Ícone correspondente à recomendação.
+    """
+
+    if recommendation in (
+        "Compra",
+        "Compra Moderada",
+    ):
+        return "🟢"
+
+    if recommendation in (
+        "Venda",
+        "Venda Moderada",
+    ):
+        return "🔴"
+
+    return "🟡"
+
+
+def build_executive_summary(
+    asset,
+    price,
+    score,
+    classification,
+    trend,
+    recommendation,
+    risk,
+    rsi_status,
+):
+    """
+    Gera o resumo executivo da análise.
+    """
+
+    asset = normalize_text(
+        asset,
+        "Ativo",
+    )
+
+    price = safe_float(price)
+    score = safe_float(score)
 
     summary = (
-        f"{asset} {trend_text}, "
-        f"com Score InvestIA de {score}/100, "
-        f"classificação {classification} e "
-        f"{risk_text}. "
-        f"{rsi_text} "
-        f"A recomendação técnica atual é "
-        f"{recommendation}."
+        f"{asset} apresenta Score InvestIA de "
+        f"{score:.0f}/100, classificação "
+        f"{classification.lower()}. "
+    )
+
+    summary += (
+        f"A tendência é {trend.lower()}, "
+        f"com recomendação de "
+        f"{recommendation.lower()}. "
+    )
+
+    summary += (
+        f"O risco atual é {risk.lower()} "
+        f"e o RSI está em condição "
+        f"{rsi_status.lower()}."
     )
 
     return summary
@@ -353,7 +388,7 @@ def generate_executive_summary(
 
 def analyze_asset(
     data,
-    asset="",
+    asset=None,
 ):
     """
     Executa a análise completa do ativo.
@@ -361,230 +396,268 @@ def analyze_asset(
     Parâmetros
     ----------
     data : dict
-        Dados técnicos do ativo.
+        Indicadores técnicos.
 
-    asset : str
-        Código do ativo, por exemplo PETR4.
+    asset : str, opcional
+        Código do ativo.
 
-    O parâmetro asset possui valor padrão vazio
-    para manter compatibilidade com chamadas
-    antigas de analyze_asset(data).
+    Retorno
+    -------
+    dict
+        Resultado completo da análise.
     """
 
-    # ======================================================
-    # VALIDAÇÃO
-    # ======================================================
-
-    if data is None:
-
+    if not isinstance(data, dict):
         raise ValueError(
-            "Dados de análise não fornecidos."
+            "Os dados para análise devem ser um dicionário."
         )
 
-    required = [
-        "price",
-        "ma21",
-        "ma200",
-        "rsi",
-        "volatility",
-    ]
 
-    missing = [
-        field
-        for field in required
-        if field not in data
-        or data[field] is None
-    ]
+    # ======================================================
+    # INDICADORES
+    # ======================================================
 
-    if missing:
+    price = safe_float(
+        data.get("price")
+    )
 
-        raise ValueError(
-            "Dados ausentes para análise: "
-            + ", ".join(missing)
+    ma21 = safe_float(
+        data.get("ma21")
+    )
+
+    ma200 = safe_float(
+        data.get("ma200")
+    )
+
+    rsi = safe_float(
+        data.get("rsi")
+    )
+
+    volatility = safe_float(
+        data.get("volatility")
+    )
+
+
+    # ======================================================
+    # SCORE INVESTIA
+    # ======================================================
+
+    try:
+
+        score_result = calculate_investia_score(
+            data
         )
 
-    # ======================================================
-    # DADOS
-    # ======================================================
+    except TypeError:
 
-    price = float(
-        data["price"]
-    )
+        score_result = calculate_investia_score(
+            price=price,
+            ma21=ma21,
+            ma200=ma200,
+            rsi=rsi,
+            volatility=volatility,
+        )
 
-    ma21 = float(
-        data["ma21"]
-    )
-
-    ma200 = float(
-        data["ma200"]
-    )
-
-    rsi = float(
-        data["rsi"]
-    )
-
-    volatility = float(
-        data["volatility"]
-    )
 
     # ======================================================
-    # SCORE
+    # COMPATIBILIDADE COM score.py
     # ======================================================
 
-    score_result = calculate_score_details(
-        data
+    if isinstance(
+        score_result,
+        dict,
+    ):
+
+        score = score_result.get(
+            "score",
+            score_result.get(
+                "final_score",
+                50,
+            ),
+        )
+
+        breakdown = score_result.get(
+            "breakdown",
+            {},
+        )
+
+    else:
+
+        score = score_result
+
+        breakdown = {}
+
+
+    score = safe_float(
+        score,
+        50,
     )
 
-    score = score_result["score"]
-
-    classification = (
-        score_result["classification"]
+    score = max(
+        0,
+        min(
+            100,
+            round(score),
+        ),
     )
 
-    signal = score_result["signal"]
 
-    breakdown = score_result["breakdown"]
+    # ======================================================
+    # CLASSIFICAÇÃO
+    # ======================================================
+
+    classification = classify_score(
+        score
+    )
+
+
+    # ======================================================
+    # SINAL
+    # ======================================================
+
+    signal = classify_signal(
+        score
+    )
+
 
     # ======================================================
     # TENDÊNCIA
     # ======================================================
 
-    trend, trend_reasons = analyze_trend(
+    trend = calculate_trend(
         price,
         ma21,
         ma200,
     )
 
+
     # ======================================================
     # RSI
     # ======================================================
 
-    rsi_status, rsi_reason = analyze_rsi(
+    rsi_status = calculate_rsi_status(
         rsi
     )
+
 
     # ======================================================
     # RISCO
     # ======================================================
 
-    risk = analyze_risk(
+    risk = classify_risk(
         volatility
     )
 
-    # ======================================================
-    # QUALIFICAÇÃO
-    # ======================================================
 
-    qualification = qualify_signal(
-        score,
-        trend,
-        risk,
+    risk_points = risk_score(
+        volatility
     )
 
-    signal_level = qualification["level"]
-
-    qualified_signal = qualification["signal"]
-
-    signal_icon = qualification["icon"]
 
     # ======================================================
     # RECOMENDAÇÃO
     # ======================================================
 
-    recommendation = generate_recommendation(
-        score,
-        trend,
+    recommendation = classify_recommendation(
+        score
+    )
+
+
+    # ======================================================
+    # SINAL QUALIFICADO
+    # ======================================================
+
+    qualified_signal = build_qualified_signal(
+        recommendation,
         risk,
     )
 
+
     # ======================================================
-    # JUSTIFICATIVAS
+    # NÍVEL DO SINAL
     # ======================================================
 
-    reasons = []
-
-    reasons.extend(
-        trend_reasons
+    signal_level = build_signal_level(
+        score,
+        risk,
     )
 
-    reasons.append(
-        rsi_reason
+
+    # ======================================================
+    # ÍCONE
+    # ======================================================
+
+    signal_icon = build_signal_icon(
+        recommendation
     )
 
-    if risk == "Baixo":
 
-        reasons.append(
-            "Volatilidade baixa, indicando menor risco técnico."
-        )
+    # ======================================================
+    # ALERTAS
+    # ======================================================
 
-    elif risk == "Moderado":
+    alerts = build_alerts(
+        score,
+        risk,
+        trend,
+        rsi_status,
+    )
 
-        reasons.append(
-            "Volatilidade moderada, exigindo atenção ao risco."
-        )
-
-    else:
-
-        reasons.append(
-            "Volatilidade elevada, indicando maior risco técnico."
-        )
 
     # ======================================================
     # RESUMO EXECUTIVO
     # ======================================================
 
-    executive_summary = generate_executive_summary(
-        asset=asset,
-        score=score,
-        classification=classification,
-        trend=trend,
-        risk=risk,
-        recommendation=recommendation,
-        rsi_status=rsi_status,
+    executive_summary = build_executive_summary(
+        asset,
+        price,
+        score,
+        classification,
+        trend,
+        recommendation,
+        risk,
+        rsi_status,
     )
 
+
     # ======================================================
-    # RETORNO
+    # RESULTADO FINAL
     # ======================================================
 
     return {
 
-        "score":
-            score,
+        "asset": asset,
 
-        "classification":
-            classification,
+        "price": price,
 
-        "signal":
-            signal,
+        "score": score,
 
-        "qualified_signal":
-            qualified_signal,
+        "classification": classification,
 
-        "signal_level":
-            signal_level,
+        "signal": signal,
 
-        "signal_icon":
-            signal_icon,
+        "qualified_signal": qualified_signal,
 
-        "trend":
-            trend,
+        "signal_level": signal_level,
 
-        "recommendation":
-            recommendation,
+        "signal_icon": signal_icon,
 
-        "risk":
-            risk,
+        "trend": trend,
 
-        "rsi_status":
-            rsi_status,
+        "recommendation": recommendation,
 
-        "breakdown":
-            breakdown,
+        "risk": risk,
 
-        "reasons":
-            reasons,
+        "risk_score": risk_points,
 
-        "executive_summary":
-            executive_summary,
+        "rsi_status": rsi_status,
+
+        "alerts": alerts,
+
+        "reasons": alerts,
+
+        "breakdown": breakdown,
+
+        "executive_summary": executive_summary,
+
     }
