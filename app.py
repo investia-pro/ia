@@ -3,7 +3,7 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.7.2 - Gestão de Risco e Sinal
+Fase: 2.7.4 - Dashboard Executivo Consolidado
 """
 
 import streamlit as st
@@ -45,23 +45,12 @@ st.set_page_config(
 
 
 # ==========================================================
-# CABEÇALHO
-# ==========================================================
-
-st.title("📈 InvestIA PRO")
-
-st.caption(
-    "Análise inteligente de ativos financeiros"
-)
-
-
-# ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
 def normalize_asset_input(asset):
     """
-    Normaliza o código informado pelo usuário.
+    Normaliza o código do ativo.
     """
 
     if asset is None:
@@ -75,120 +64,133 @@ def normalize_asset_input(asset):
     )
 
 
-def get_indicator_value(
-    indicators,
-    key,
-    default=None,
-):
-    """
-    Obtém um indicador com segurança.
-    """
-
-    if not isinstance(indicators, dict):
-        return default
-
-    return indicators.get(
-        key,
-        default,
-    )
-
-
-def get_analysis_value(
-    result,
+def get_value(
+    data,
     *keys,
     default=None,
 ):
     """
-    Obtém valores do resultado da análise.
+    Obtém um valor de um dicionário
+    utilizando possíveis nomes alternativos.
     """
 
-    if not isinstance(result, dict):
+    if not isinstance(data, dict):
         return default
 
     for key in keys:
 
-        if key in result:
-            return result[key]
+        if key in data:
+            return data[key]
 
     return default
 
 
-def safe_int(value, default=0):
+def safe_float(
+    value,
+    default=0.0,
+):
     """
-    Converte valor para inteiro com segurança.
+    Conversão segura para float.
     """
 
     try:
-        return int(float(value))
-    except (TypeError, ValueError):
+        return float(value)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
         return default
 
 
-def risk_description(risk):
+def safe_int(
+    value,
+    default=0,
+):
     """
-    Descrição operacional do nível de risco.
+    Conversão segura para inteiro.
     """
 
-    descriptions = {
-        "Baixo": (
+    try:
+        return int(
+            float(value)
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return default
+
+
+def get_risk_message(risk):
+    """
+    Mensagem operacional de risco.
+    """
+
+    messages = {
+
+        "Baixo":
             "Baixa volatilidade relativa. "
-            "O comportamento recente apresenta "
-            "menor nível de oscilação."
-        ),
+            "O ativo apresenta menor oscilação "
+            "dentro dos parâmetros analisados.",
 
-        "Moderado": (
+        "Moderado":
             "Volatilidade intermediária. "
-            "O ativo exige acompanhamento regular "
-            "antes de uma decisão."
-        ),
+            "Recomenda-se acompanhamento antes "
+            "de uma decisão operacional.",
 
-        "Alto": (
-            "Alta volatilidade. "
-            "Movimentos de preço podem ser mais intensos "
-            "e exigem maior controle de risco."
-        ),
+        "Alto":
+            "Volatilidade elevada. "
+            "O ativo exige maior controle de risco "
+            "e cautela na tomada de decisão.",
     }
 
-    return descriptions.get(
+    return messages.get(
         risk,
         "Nível de risco não identificado.",
     )
 
 
-def signal_description(
+def get_signal_message(
     recommendation,
     risk,
 ):
     """
-    Interpretação operacional do sinal.
+    Interpretação do sinal operacional.
     """
 
     if recommendation == "Compra":
 
         if risk == "Alto":
+
             return (
                 "Cenário favorável, porém com "
-                "risco elevado. Exige maior cautela."
+                "risco elevado. A entrada exige cautela."
             )
 
         return (
-            "Cenário técnico favorável ao movimento "
-            "de compra."
+            "Cenário técnico favorável "
+            "ao movimento de alta."
         )
+
 
     if recommendation == "Compra Moderada":
 
         return (
             "Cenário parcialmente favorável. "
-            "A entrada deve considerar confirmação."
+            "A confirmação dos indicadores "
+            "é recomendável."
         )
+
 
     if recommendation == "Venda":
 
         if risk == "Alto":
+
             return (
-                "Cenário desfavorável com elevada "
-                "volatilidade."
+                "Cenário desfavorável acompanhado "
+                "de elevada volatilidade."
             )
 
         return (
@@ -196,12 +198,14 @@ def signal_description(
             "ao movimento de alta."
         )
 
+
     if recommendation == "Venda Moderada":
 
         return (
             "Cenário parcialmente desfavorável. "
-            "Requer confirmação antes de uma decisão."
+            "É necessária confirmação."
         )
+
 
     return (
         "Os indicadores não apresentam "
@@ -210,15 +214,28 @@ def signal_description(
 
 
 # ==========================================================
-# ENTRADA DO USUÁRIO
+# CABEÇALHO
 # ==========================================================
 
-col_input, col_period = st.columns(
+st.title(
+    "📈 InvestIA PRO"
+)
+
+st.caption(
+    "Análise inteligente de ativos financeiros"
+)
+
+
+# ==========================================================
+# ENTRADA
+# ==========================================================
+
+input_col, period_col = st.columns(
     [3, 1]
 )
 
 
-with col_input:
+with input_col:
 
     asset = st.text_input(
         "Digite o código do ativo",
@@ -227,10 +244,10 @@ with col_input:
     )
 
 
-with col_period:
+with period_col:
 
     period = st.selectbox(
-        "Período de análise",
+        "Período",
         [
             "6mo",
             "1y",
@@ -248,7 +265,7 @@ analyze_button = st.button(
 
 
 # ==========================================================
-# EXECUÇÃO
+# PROCESSAMENTO
 # ==========================================================
 
 if analyze_button:
@@ -256,6 +273,7 @@ if analyze_button:
     asset = normalize_asset_input(
         asset
     )
+
 
     # ======================================================
     # VALIDAÇÃO
@@ -271,7 +289,7 @@ if analyze_button:
 
 
     # ======================================================
-    # BUSCA DE DADOS
+    # MERCADO
     # ======================================================
 
     with st.spinner(
@@ -291,7 +309,9 @@ if analyze_button:
                 "Erro ao buscar os dados do mercado."
             )
 
-            st.exception(error)
+            st.exception(
+                error
+            )
 
             st.stop()
 
@@ -321,7 +341,9 @@ if analyze_button:
             "Erro ao preparar os dados do mercado."
         )
 
-        st.exception(error)
+        st.exception(
+            error
+        )
 
         st.stop()
 
@@ -339,9 +361,17 @@ if analyze_button:
     # HISTÓRICO
     # ======================================================
 
-    history = prepared_data.get(
-        "history"
-    )
+    history = None
+
+
+    if isinstance(
+        prepared_data,
+        dict,
+    ):
+
+        history = prepared_data.get(
+            "history"
+        )
 
 
     if history is None:
@@ -365,6 +395,9 @@ if analyze_button:
     # ======================================================
     # PREÇO
     # ======================================================
+
+    price = None
+
 
     try:
 
@@ -421,7 +454,9 @@ if analyze_button:
                 "Erro ao calcular os indicadores técnicos."
             )
 
-            st.exception(error)
+            st.exception(
+                error
+            )
 
             st.stop()
 
@@ -441,27 +476,32 @@ if analyze_button:
 
     analysis_data = {
 
-        "price": price,
+        "price":
+            price,
 
-        "rsi": get_indicator_value(
-            indicators,
-            "rsi",
-        ),
+        "rsi":
+            get_value(
+                indicators,
+                "rsi",
+            ),
 
-        "ma21": get_indicator_value(
-            indicators,
-            "ma21",
-        ),
+        "ma21":
+            get_value(
+                indicators,
+                "ma21",
+            ),
 
-        "ma200": get_indicator_value(
-            indicators,
-            "ma200",
-        ),
+        "ma200":
+            get_value(
+                indicators,
+                "ma200",
+            ),
 
-        "volatility": get_indicator_value(
-            indicators,
-            "volatility",
-        ),
+        "volatility":
+            get_value(
+                indicators,
+                "volatility",
+            ),
     }
 
 
@@ -482,7 +522,7 @@ if analyze_button:
 
 
     # ======================================================
-    # ANÁLISE
+    # ANÁLISE INVESTIA
     # ======================================================
 
     with st.spinner(
@@ -510,7 +550,9 @@ if analyze_button:
                     "Erro ao executar a análise InvestIA."
                 )
 
-                st.exception(error)
+                st.exception(
+                    error
+                )
 
                 st.stop()
 
@@ -520,7 +562,9 @@ if analyze_button:
                 "Erro ao executar a análise InvestIA."
             )
 
-            st.exception(error)
+            st.exception(
+                error
+            )
 
             st.stop()
 
@@ -538,49 +582,51 @@ if analyze_button:
     # RESULTADOS
     # ======================================================
 
-    score = get_analysis_value(
-        result,
-        "score",
-        default=0,
+    score = safe_int(
+        get_value(
+            result,
+            "score",
+            default=0,
+        )
     )
 
 
-    classification = get_analysis_value(
+    classification = get_value(
         result,
         "classification",
         default="NEUTRO",
     )
 
 
-    signal = get_analysis_value(
+    signal = get_value(
         result,
         "signal",
         default="NEUTRO",
     )
 
 
-    qualified_signal = get_analysis_value(
+    qualified_signal = get_value(
         result,
         "qualified_signal",
         default=signal,
     )
 
 
-    signal_level = get_analysis_value(
+    signal_level = get_value(
         result,
         "signal_level",
         default="Neutro",
     )
 
 
-    signal_icon = get_analysis_value(
+    signal_icon = get_value(
         result,
         "signal_icon",
         default="🟡",
     )
 
 
-    trend = get_analysis_value(
+    trend = get_value(
         result,
         "trend",
         "tendencia",
@@ -588,7 +634,7 @@ if analyze_button:
     )
 
 
-    recommendation = get_analysis_value(
+    recommendation = get_value(
         result,
         "recommendation",
         "recomendacao",
@@ -596,7 +642,7 @@ if analyze_button:
     )
 
 
-    risk = get_analysis_value(
+    risk = get_value(
         result,
         "risk",
         "risco",
@@ -604,8 +650,8 @@ if analyze_button:
     )
 
 
-    risk_points = safe_int(
-        get_analysis_value(
+    risk_score = safe_int(
+        get_value(
             result,
             "risk_score",
             default=0,
@@ -613,14 +659,14 @@ if analyze_button:
     )
 
 
-    rsi_status = get_analysis_value(
+    rsi_status = get_value(
         result,
         "rsi_status",
         default="Neutro",
     )
 
 
-    reasons = get_analysis_value(
+    reasons = get_value(
         result,
         "reasons",
         "justificativas",
@@ -628,21 +674,21 @@ if analyze_button:
     )
 
 
-    alerts = get_analysis_value(
+    alerts = get_value(
         result,
         "alerts",
         default=[],
     )
 
 
-    breakdown = get_analysis_value(
+    breakdown = get_value(
         result,
         "breakdown",
         default={},
     )
 
 
-    executive_summary = get_analysis_value(
+    executive_summary = get_value(
         result,
         "executive_summary",
         default="",
@@ -650,42 +696,49 @@ if analyze_button:
 
 
     # ======================================================
-    # CABEÇALHO
+    # DASHBOARD
     # ======================================================
 
     st.divider()
 
     st.header(
-        f"📊 Análise do ativo: {asset}"
+        f"📊 Dashboard Executivo — {asset}"
     )
 
 
     # ======================================================
-    # CARDS PRINCIPAIS
+    # PAINEL PRINCIPAL
     # ======================================================
 
-    col1, col2, col3, col4 = st.columns(
-        4
+    st.subheader(
+        "🎯 Visão Geral"
     )
 
 
-    with col1:
+    main1, main2, main3, main4, main5 = st.columns(
+        5
+    )
+
+
+    with main1:
 
         st.metric(
-            "Preço atual",
-            format_currency(price),
+            "Preço",
+            format_currency(
+                price
+            ),
         )
 
 
-    with col2:
+    with main2:
 
         st.metric(
-            "Score InvestIA",
+            "Score",
             f"{score}/100",
         )
 
 
-    with col3:
+    with main3:
 
         st.metric(
             "Tendência",
@@ -693,7 +746,15 @@ if analyze_button:
         )
 
 
-    with col4:
+    with main4:
+
+        st.metric(
+            "Risco",
+            f"{risk_icon(risk)} {risk}",
+        )
+
+
+    with main5:
 
         st.metric(
             "Recomendação",
@@ -702,161 +763,47 @@ if analyze_button:
 
 
     # ======================================================
-    # SINAL OPERACIONAL
+    # SINAL
     # ======================================================
 
     st.divider()
 
-    st.subheader(
-        "🎯 Sinal Operacional"
+    signal_col1, signal_col2 = st.columns(
+        [2, 1]
     )
 
 
-    sig1, sig2, sig3 = st.columns(
-        3
-    )
+    with signal_col1:
 
-
-    with sig1:
-
-        st.metric(
-            "Sinal",
-            f"{signal_icon} {qualified_signal}",
+        st.subheader(
+            "🎯 Sinal InvestIA"
         )
-
-
-    with sig2:
-
-        st.metric(
-            "Nível",
-            str(signal_level),
-        )
-
-
-    with sig3:
-
-        st.metric(
-            "Risco",
-            f"{risk_icon(risk)} {risk}",
-        )
-
-
-    st.info(
-        signal_description(
-            recommendation,
-            risk,
-        )
-    )
-
-
-    # ======================================================
-    # CLASSIFICAÇÃO
-    # ======================================================
-
-    st.info(
-        f"**Classificação:** {classification} "
-        f"| **Sinal:** {signal} "
-        f"| **Nível:** {signal_icon} {signal_level}"
-    )
-
-
-    # ======================================================
-    # GESTÃO DE RISCO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🛡️ Gestão de Risco"
-    )
-
-
-    risk1, risk2 = st.columns(
-        [1, 2]
-    )
-
-
-    with risk1:
-
-        st.metric(
-            "Nível de risco",
-            f"{risk_icon(risk)} {risk}",
-        )
-
-
-        st.metric(
-            "Índice de risco",
-            f"{risk_points}/100",
-        )
-
-
-    with risk2:
 
         st.markdown(
-            "### Interpretação"
+            f"# {signal_icon} {qualified_signal}"
         )
 
         st.write(
-            risk_description(
-                risk
+            get_signal_message(
+                recommendation,
+                risk,
             )
         )
 
-        st.caption(
-            "Quanto maior o índice, maior a volatilidade "
-            "relativa considerada pelo modelo."
+
+    with signal_col2:
+
+        st.subheader(
+            "Nível do sinal"
         )
 
+        st.metric(
+            "Confiança operacional",
+            str(signal_level),
+        )
 
-    # ======================================================
-    # ALERTAS
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "⚠️ Alertas da Análise"
-    )
-
-
-    if not isinstance(
-        alerts,
-        list,
-    ):
-
-        alerts = [alerts]
-
-
-    valid_alerts = [
-        alert
-        for alert in alerts
-        if alert
-    ]
-
-
-    if valid_alerts:
-
-        for alert in valid_alerts:
-
-            if (
-                "Nenhum alerta"
-                in str(alert)
-            ):
-
-                st.success(
-                    f"✅ {alert}"
-                )
-
-            else:
-
-                st.warning(
-                    f"⚠️ {alert}"
-                )
-
-    else:
-
-        st.success(
-            "✅ Nenhum alerta técnico relevante identificado."
+        st.caption(
+            f"Sinal base: {signal}"
         )
 
 
@@ -885,7 +832,103 @@ if analyze_button:
 
 
     # ======================================================
-    # INDICADORES TÉCNICOS
+    # RISCO
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🛡️ Gestão de Risco"
+    )
+
+
+    risk_col1, risk_col2, risk_col3 = st.columns(
+        3
+    )
+
+
+    with risk_col1:
+
+        st.metric(
+            "Nível de risco",
+            f"{risk_icon(risk)} {risk}",
+        )
+
+
+    with risk_col2:
+
+        st.metric(
+            "Índice de risco",
+            f"{risk_score}/100",
+        )
+
+
+    with risk_col3:
+
+        st.metric(
+            "RSI",
+            f'{safe_float(analysis_data["rsi"]):.2f}',
+        )
+
+
+    st.info(
+        get_risk_message(
+            risk
+        )
+    )
+
+
+    # ======================================================
+    # ALERTAS
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "⚠️ Alertas Técnicos"
+    )
+
+
+    if not isinstance(
+        alerts,
+        list,
+    ):
+
+        alerts = [alerts]
+
+
+    alerts = [
+        alert
+        for alert in alerts
+        if alert
+    ]
+
+
+    if alerts:
+
+        for alert in alerts:
+
+            if "Nenhum alerta" in str(alert):
+
+                st.success(
+                    f"✅ {alert}"
+                )
+
+            else:
+
+                st.warning(
+                    f"⚠️ {alert}"
+                )
+
+    else:
+
+        st.success(
+            "✅ Nenhum alerta técnico relevante."
+        )
+
+
+    # ======================================================
+    # INDICADORES
     # ======================================================
 
     st.divider()
@@ -924,14 +967,16 @@ if analyze_button:
 
         st.metric(
             "RSI",
-            f'{analysis_data["rsi"]:.2f}',
+            f'{safe_float(analysis_data["rsi"]):.2f}',
         )
 
 
     with ind4:
 
         volatility_percent = (
-            analysis_data["volatility"]
+            safe_float(
+                analysis_data["volatility"]
+            )
             * 100
         )
 
@@ -943,262 +988,13 @@ if analyze_button:
 
 
     # ======================================================
-    # SCORE EXPLICADO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🧠 Composição do Score InvestIA"
-    )
-
-
-    st.caption(
-        "O Score começa em 50 pontos e "
-        "recebe ajustes conforme os indicadores."
-    )
-
-
-    base_points = 50
-
-
-    if isinstance(
-        breakdown,
-        dict,
-    ):
-
-        base_points = breakdown.get(
-            "base",
-            50,
-        )
-
-
-    st.write(
-        f"**Base:** {base_points:+d} pontos"
-    )
-
-
-    bd1, bd2, bd3 = st.columns(
-        3
-    )
-
-
-    # ======================================================
-    # MA21
-    # ======================================================
-
-    with bd1:
-
-        ma21_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            ma21_data = breakdown.get(
-                "ma21",
-                {},
-            )
-
-
-        ma21_points = ma21_data.get(
-            "points",
-            0,
-        )
-
-
-        ma21_signal = ma21_data.get(
-            "signal",
-            "Neutro",
-        )
-
-
-        ma21_reason = ma21_data.get(
-            "reason",
-            "Sem informação.",
-        )
-
-
-        st.markdown(
-            "### 📏 MA21"
-        )
-
-
-        st.metric(
-            "Contribuição",
-            f"{ma21_points:+d} pts",
-        )
-
-
-        st.write(
-            f"**Sinal:** {ma21_signal}"
-        )
-
-
-        st.caption(
-            ma21_reason
-        )
-
-
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    with bd2:
-
-        ma200_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            ma200_data = breakdown.get(
-                "ma200",
-                {},
-            )
-
-
-        ma200_points = ma200_data.get(
-            "points",
-            0,
-        )
-
-
-        ma200_signal = ma200_data.get(
-            "signal",
-            "Neutro",
-        )
-
-
-        ma200_reason = ma200_data.get(
-            "reason",
-            "Sem informação.",
-        )
-
-
-        st.markdown(
-            "### 📐 MA200"
-        )
-
-
-        st.metric(
-            "Contribuição",
-            f"{ma200_points:+d} pts",
-        )
-
-
-        st.write(
-            f"**Sinal:** {ma200_signal}"
-        )
-
-
-        st.caption(
-            ma200_reason
-        )
-
-
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    with bd3:
-
-        rsi_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            rsi_data = breakdown.get(
-                "rsi",
-                {},
-            )
-
-
-        rsi_points = rsi_data.get(
-            "points",
-            0,
-        )
-
-
-        rsi_signal = rsi_data.get(
-            "signal",
-            "Neutro",
-        )
-
-
-        rsi_reason = rsi_data.get(
-            "reason",
-            "Sem informação.",
-        )
-
-
-        st.markdown(
-            "### 📊 RSI"
-        )
-
-
-        st.metric(
-            "Contribuição",
-            f"{rsi_points:+d} pts",
-        )
-
-
-        st.write(
-            f"**Sinal:** {rsi_signal}"
-        )
-
-
-        st.caption(
-            rsi_reason
-        )
-
-
-    # ======================================================
-    # SCORE FINAL
-    # ======================================================
-
-    raw_score = None
-
-
-    if isinstance(
-        breakdown,
-        dict,
-    ):
-
-        raw_score = breakdown.get(
-            "raw_score"
-        )
-
-
-    if raw_score is not None:
-
-        st.success(
-            f"**Score final: {score}/100** "
-            f"| Cálculo bruto: {raw_score}"
-        )
-
-    else:
-
-        st.success(
-            f"**Score final: {score}/100**"
-        )
-
-
-    # ======================================================
     # GRÁFICO
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "📊 Evolução do preço"
+        "📊 Evolução do Preço"
     )
 
 
@@ -1230,7 +1026,210 @@ if analyze_button:
             "O gráfico não pôde ser gerado."
         )
 
-        st.exception(error)
+        st.exception(
+            error
+        )
+
+
+    # ======================================================
+    # COMPOSIÇÃO DO SCORE
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🧠 Composição do Score InvestIA"
+    )
+
+
+    base_points = 50
+
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        base_points = breakdown.get(
+            "base",
+            50,
+        )
+
+
+    st.write(
+        f"**Base:** {base_points:+d} pontos"
+    )
+
+
+    score1, score2, score3 = st.columns(
+        3
+    )
+
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    with score1:
+
+        ma21_data = {}
+
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma21_data = breakdown.get(
+                "ma21",
+                {},
+            )
+
+
+        st.markdown(
+            "### 📏 MA21"
+        )
+
+
+        st.metric(
+            "Contribuição",
+            f'{ma21_data.get("points", 0):+d} pts',
+        )
+
+
+        st.write(
+            f'**Sinal:** '
+            f'{ma21_data.get("signal", "Neutro")}'
+        )
+
+
+        st.caption(
+            ma21_data.get(
+                "reason",
+                "Sem informação.",
+            )
+        )
+
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    with score2:
+
+        ma200_data = {}
+
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma200_data = breakdown.get(
+                "ma200",
+                {},
+            )
+
+
+        st.markdown(
+            "### 📐 MA200"
+        )
+
+
+        st.metric(
+            "Contribuição",
+            f'{ma200_data.get("points", 0):+d} pts',
+        )
+
+
+        st.write(
+            f'**Sinal:** '
+            f'{ma200_data.get("signal", "Neutro")}'
+        )
+
+
+        st.caption(
+            ma200_data.get(
+                "reason",
+                "Sem informação.",
+            )
+        )
+
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    with score3:
+
+        rsi_data = {}
+
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            rsi_data = breakdown.get(
+                "rsi",
+                {},
+            )
+
+
+        st.markdown(
+            "### 📊 RSI"
+        )
+
+
+        st.metric(
+            "Contribuição",
+            f'{rsi_data.get("points", 0):+d} pts',
+        )
+
+
+        st.write(
+            f'**Sinal:** '
+            f'{rsi_data.get("signal", "Neutro")}'
+        )
+
+
+        st.caption(
+            rsi_data.get(
+                "reason",
+                "Sem informação.",
+            )
+        )
+
+
+    # ======================================================
+    # SCORE FINAL
+    # ======================================================
+
+    raw_score = None
+
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        raw_score = breakdown.get(
+            "raw_score"
+        )
+
+
+    if raw_score is not None:
+
+        st.success(
+            f"**Score InvestIA: {score}/100** "
+            f"| Cálculo bruto: {raw_score}"
+        )
+
+    else:
+
+        st.success(
+            f"**Score InvestIA: {score}/100**"
+        )
 
 
     # ======================================================
@@ -1244,12 +1243,12 @@ if analyze_button:
     )
 
 
-    analysis_col1, analysis_col2 = st.columns(
+    detail1, detail2 = st.columns(
         2
     )
 
 
-    with analysis_col1:
+    with detail1:
 
         st.markdown(
             "### Fundamentação"
@@ -1257,6 +1256,14 @@ if analyze_button:
 
 
         if reasons:
+
+            if not isinstance(
+                reasons,
+                list,
+            ):
+
+                reasons = [reasons]
+
 
             for reason in reasons:
 
@@ -1271,26 +1278,15 @@ if analyze_button:
             )
 
 
-    with analysis_col2:
+    with detail2:
 
         st.markdown(
-            "### 🛡️ Gestão de risco"
+            "### Situação Técnica"
         )
 
 
         st.write(
-            f"{risk_icon(risk)} **{risk}**"
-        )
-
-
-        st.write(
-            f"**Índice de risco:** "
-            f"{risk_points}/100"
-        )
-
-
-        st.write(
-            f"**Score:** {score}/100"
+            f"**Classificação:** {classification}"
         )
 
 
@@ -1306,6 +1302,12 @@ if analyze_button:
 
         st.write(
             f"**Sinal:** {qualified_signal}"
+        )
+
+
+        st.write(
+            f"**Risco:** "
+            f"{risk_icon(risk)} {risk}"
         )
 
 
@@ -1349,8 +1351,7 @@ if analyze_button:
 
 
         st.write(
-            f"**Classificação:** "
-            f"{classification}"
+            f"**Classificação:** {classification}"
         )
 
 
@@ -1373,14 +1374,7 @@ if analyze_button:
 
 
         st.write(
-            f"**Índice de risco:** "
-            f"{risk_points}/100"
-        )
-
-
-        st.write(
-            f"**Recomendação:** "
-            f"{recommendation}"
+            f"**Recomendação:** {recommendation}"
         )
 
 
@@ -1403,8 +1397,8 @@ else:
 1. Informe o código do ativo.
 2. Escolha o período de análise.
 3. Clique em **Analisar ativo**.
-4. Consulte o Score InvestIA, tendência,
-   risco, alertas e recomendação.
+4. Consulte o Score, tendência, risco,
+   alertas e recomendação.
 
 **Exemplos:** PETR4, VALE3, ITUB4.
 """
