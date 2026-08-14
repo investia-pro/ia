@@ -1,1405 +1,1174 @@
 """
 InvestIA PRO
-Aplicação principal
+Motor de Análise e Inteligência de Sinais
 
 Versão: v0.6
-Fase: 2.7.4 - Dashboard Executivo Consolidado
+Fase: 2.8.1 - Motor de Sinais
 """
 
-import streamlit as st
-
-from market import (
-    get_market_data,
-    prepare_market_data,
-    get_current_price,
-)
-
-from indicators import (
-    calculate_indicators,
-)
-
-from analysis import (
-    analyze_asset,
-)
-
-from charts import (
-    create_price_chart,
-)
-
-from utils import (
-    validate_analysis_data,
-    format_currency,
-    risk_icon,
+from score import (
+    calculate_score_details,
 )
 
 
 # ==========================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÕES DO MOTOR DE SINAIS
 # ==========================================================
 
-st.set_page_config(
-    page_title="InvestIA PRO",
-    page_icon="📈",
-    layout="wide",
-)
+RSI_OVERSOLD_DEFAULT = 30
+RSI_OVERBOUGHT_DEFAULT = 70
+
+STRONG_SIGNAL_SCORE = 80
+BUY_SIGNAL_SCORE = 65
+NEUTRAL_SCORE = 50
+SELL_SIGNAL_SCORE = 35
+
+STRONG_CONFIRMATIONS = 2
 
 
 # ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
-def normalize_asset_input(asset):
+def safe_float(value, default=None):
     """
-    Normaliza o código do ativo.
-    """
-
-    if asset is None:
-        return ""
-
-    return (
-        str(asset)
-        .strip()
-        .upper()
-        .replace(" ", "")
-    )
-
-
-def get_value(
-    data,
-    *keys,
-    default=None,
-):
-    """
-    Obtém um valor de um dicionário
-    utilizando possíveis nomes alternativos.
-    """
-
-    if not isinstance(data, dict):
-        return default
-
-    for key in keys:
-
-        if key in data:
-            return data[key]
-
-    return default
-
-
-def safe_float(
-    value,
-    default=0.0,
-):
-    """
-    Conversão segura para float.
+    Converte um valor para float com segurança.
     """
 
     try:
+        if value is None:
+            return default
+
         return float(value)
 
-    except (
-        TypeError,
-        ValueError,
-    ):
+    except (TypeError, ValueError):
         return default
 
 
-def safe_int(
-    value,
-    default=0,
-):
+def safe_text(value, default=""):
     """
-    Conversão segura para inteiro.
+    Converte um valor para texto com segurança.
     """
 
-    try:
-        return int(
-            float(value)
-        )
-
-    except (
-        TypeError,
-        ValueError,
-    ):
+    if value is None:
         return default
 
+    return str(value)
 
-def get_risk_message(risk):
+
+def normalize_signal(signal):
     """
-    Mensagem operacional de risco.
+    Normaliza diferentes formatos de sinal.
     """
 
-    messages = {
+    if signal is None:
+        return "NEUTRO"
 
-        "Baixo":
-            "Baixa volatilidade relativa. "
-            "O ativo apresenta menor oscilação "
-            "dentro dos parâmetros analisados.",
+    signal = str(signal).strip().upper()
 
-        "Moderado":
-            "Volatilidade intermediária. "
-            "Recomenda-se acompanhamento antes "
-            "de uma decisão operacional.",
+    mapping = {
+        "POSITIVO": "POSITIVO",
+        "POSITIVE": "POSITIVO",
+        "COMPRA": "POSITIVO",
+        "BUY": "POSITIVO",
 
-        "Alto":
-            "Volatilidade elevada. "
-            "O ativo exige maior controle de risco "
-            "e cautela na tomada de decisão.",
+        "NEGATIVO": "NEGATIVO",
+        "NEGATIVE": "NEGATIVO",
+        "VENDA": "NEGATIVO",
+        "SELL": "NEGATIVO",
+
+        "NEUTRO": "NEUTRO",
+        "NEUTRAL": "NEUTRO",
+        "AGUARDAR": "NEUTRO",
     }
 
-    return messages.get(
-        risk,
-        "Nível de risco não identificado.",
+    return mapping.get(
+        signal,
+        "NEUTRO",
     )
 
 
-def get_signal_message(
+# ==========================================================
+# VALIDAÇÃO
+# ==========================================================
+
+def validate_analysis_data(data):
+    """
+    Valida os dados necessários para a análise.
+    """
+
+    if data is None:
+        return False
+
+    if not isinstance(data, dict):
+        return False
+
+    required = [
+        "price",
+        "rsi",
+        "ma21",
+        "ma200",
+    ]
+
+    for field in required:
+
+        if field not in data:
+            return False
+
+        if data[field] is None:
+            return False
+
+        if safe_float(data[field]) is None:
+            return False
+
+    return True
+
+
+# ==========================================================
+# ANÁLISE DA MA21
+# ==========================================================
+
+def analyze_ma21(price, ma21):
+    """
+    Analisa a posição do preço em relação à MA21.
+    """
+
+    if price > ma21:
+
+        return {
+            "signal": "POSITIVO",
+            "confirmation": True,
+            "reason": (
+                "O preço está acima da MA21, "
+                "indicando força de curto prazo."
+            ),
+        }
+
+    if price < ma21:
+
+        return {
+            "signal": "NEGATIVO",
+            "confirmation": True,
+            "reason": (
+                "O preço está abaixo da MA21, "
+                "indicando fraqueza de curto prazo."
+            ),
+        }
+
+    return {
+        "signal": "NEUTRO",
+        "confirmation": False,
+        "reason": (
+            "O preço está alinhado à MA21."
+        ),
+    }
+
+
+# ==========================================================
+# ANÁLISE DA MA200
+# ==========================================================
+
+def analyze_ma200(price, ma200):
+    """
+    Analisa a posição do preço em relação à MA200.
+    """
+
+    if price > ma200:
+
+        return {
+            "signal": "POSITIVO",
+            "confirmation": True,
+            "reason": (
+                "O preço está acima da MA200, "
+                "indicando tendência estrutural positiva."
+            ),
+        }
+
+    if price < ma200:
+
+        return {
+            "signal": "NEGATIVO",
+            "confirmation": True,
+            "reason": (
+                "O preço está abaixo da MA200, "
+                "indicando tendência estrutural negativa."
+            ),
+        }
+
+    return {
+        "signal": "NEUTRO",
+        "confirmation": False,
+        "reason": (
+            "O preço está alinhado à MA200."
+        ),
+    }
+
+
+# ==========================================================
+# ANÁLISE DO RSI
+# ==========================================================
+
+def analyze_rsi(rsi):
+    """
+    Analisa o RSI.
+
+    RSI <= 30:
+        sobrevenda / potencial recuperação
+
+    RSI >= 70:
+        sobrecompra / atenção à correção
+
+    Entre 30 e 70:
+        região neutra
+    """
+
+    if rsi <= RSI_OVERSOLD_DEFAULT:
+
+        return {
+            "signal": "POSITIVO",
+            "confirmation": True,
+            "status": "Sobrevenda",
+            "reason": (
+                "RSI em região de sobrevenda, "
+                "podendo indicar oportunidade de recuperação."
+            ),
+        }
+
+    if rsi >= RSI_OVERBOUGHT_DEFAULT:
+
+        return {
+            "signal": "NEGATIVO",
+            "confirmation": True,
+            "status": "Sobrecompra",
+            "reason": (
+                "RSI em região de sobrecompra, "
+                "indicando atenção para possível correção."
+            ),
+        }
+
+    return {
+        "signal": "NEUTRO",
+        "confirmation": False,
+        "status": "Neutro",
+        "reason": (
+            "RSI em região neutra."
+        ),
+    }
+
+
+# ==========================================================
+# DETERMINAÇÃO DA TENDÊNCIA
+# ==========================================================
+
+def determine_trend(
+    price,
+    ma21,
+    ma200,
+):
+    """
+    Determina a tendência utilizando
+    MA21 e MA200.
+    """
+
+    short_term_positive = price > ma21
+    long_term_positive = price > ma200
+
+    short_term_negative = price < ma21
+    long_term_negative = price < ma200
+
+    if (
+        short_term_positive
+        and long_term_positive
+    ):
+
+        return "Positiva"
+
+    if (
+        short_term_negative
+        and long_term_negative
+    ):
+
+        return "Negativa"
+
+    return "Neutra"
+
+
+# ==========================================================
+# CONTAGEM DE CONFIRMAÇÕES
+# ==========================================================
+
+def calculate_confirmations(
+    ma21_analysis,
+    ma200_analysis,
+    rsi_analysis,
+):
+    """
+    Conta confirmações positivas e negativas.
+    """
+
+    analyses = [
+        ma21_analysis,
+        ma200_analysis,
+        rsi_analysis,
+    ]
+
+    positive = sum(
+        1
+        for item in analyses
+        if item.get("signal") == "POSITIVO"
+    )
+
+    negative = sum(
+        1
+        for item in analyses
+        if item.get("signal") == "NEGATIVO"
+    )
+
+    neutral = sum(
+        1
+        for item in analyses
+        if item.get("signal") == "NEUTRO"
+    )
+
+    return {
+        "positive": positive,
+        "negative": negative,
+        "neutral": neutral,
+    }
+
+
+# ==========================================================
+# FORÇA DO SINAL
+# ==========================================================
+
+def determine_signal_strength(
+    score,
+    confirmations,
+    signal,
+):
+    """
+    Determina a força do sinal.
+
+    Forte:
+        Score >= 80
+        e pelo menos 2 confirmações.
+
+    Moderado:
+        Score >= 65
+        ou pelo menos 2 confirmações.
+
+    Fraco:
+        sinal existente sem confirmação suficiente.
+
+    Aguardar:
+        sinal neutro.
+    """
+
+    if signal == "NEUTRO":
+
+        return {
+            "level": "Aguardar",
+            "icon": "🟡",
+            "description": (
+                "Os indicadores não apresentam "
+                "confirmação suficiente."
+            ),
+        }
+
+    if (
+        score >= STRONG_SIGNAL_SCORE
+        and confirmations >= STRONG_CONFIRMATIONS
+    ):
+
+        return {
+            "level": "Forte",
+            "icon": "🟢",
+            "description": (
+                "Sinal confirmado por múltiplos "
+                "indicadores."
+            ),
+        }
+
+    if (
+        score >= BUY_SIGNAL_SCORE
+        and confirmations >= 1
+    ):
+
+        return {
+            "level": "Moderado",
+            "icon": "🟢",
+            "description": (
+                "Sinal favorável, porém com "
+                "confirmação parcial."
+            ),
+        }
+
+    if (
+        score <= SELL_SIGNAL_SCORE
+        and confirmations >= 1
+    ):
+
+        return {
+            "level": "Moderado",
+            "icon": "🔴",
+            "description": (
+                "Sinal desfavorável com "
+                "confirmação parcial."
+            ),
+        }
+
+    return {
+        "level": "Fraco",
+        "icon": "🟡",
+        "description": (
+            "Existe sinal, mas a confirmação "
+            "técnica é limitada."
+        ),
+    }
+
+
+# ==========================================================
+# SINAL QUALIFICADO
+# ==========================================================
+
+def determine_qualified_signal(
+    signal,
+    strength_level,
+):
+    """
+    Cria o sinal apresentado ao usuário.
+    """
+
+    if signal == "POSITIVO":
+
+        if strength_level == "Forte":
+            return "COMPRA FORTE"
+
+        if strength_level == "Moderado":
+            return "COMPRA"
+
+        return "COMPRA FRACA"
+
+    if signal == "NEGATIVO":
+
+        if strength_level == "Forte":
+            return "VENDA FORTE"
+
+        if strength_level == "Moderado":
+            return "VENDA"
+
+        return "VENDA FRACA"
+
+    return "AGUARDAR"
+
+
+# ==========================================================
+# RECOMENDAÇÃO
+# ==========================================================
+
+def determine_recommendation(
+    score,
+    signal,
+    strength_level,
+    trend,
+):
+    """
+    Define a recomendação operacional.
+    """
+
+    if (
+        signal == "POSITIVO"
+        and strength_level == "Forte"
+        and trend == "Positiva"
+    ):
+
+        return "Compra"
+
+    if (
+        signal == "POSITIVO"
+        and strength_level in [
+            "Forte",
+            "Moderado",
+        ]
+    ):
+
+        return "Compra Moderada"
+
+    if (
+        signal == "NEGATIVO"
+        and strength_level == "Forte"
+        and trend == "Negativa"
+    ):
+
+        return "Venda"
+
+    if (
+        signal == "NEGATIVO"
+        and strength_level in [
+            "Forte",
+            "Moderado",
+        ]
+    ):
+
+        return "Venda Moderada"
+
+    return "Aguardar"
+
+
+# ==========================================================
+# NÍVEL DE RISCO
+# ==========================================================
+
+def determine_risk(
+    score,
+    signal,
+    trend,
+    confirmations,
+):
+    """
+    Determina o nível de risco da leitura.
+
+    A análise é baseada em:
+        - Score
+        - Tendência
+        - Confirmações
+        - Divergências
+    """
+
+    if signal == "NEUTRO":
+
+        return "Moderado"
+
+    if (
+        signal == "POSITIVO"
+        and trend == "Positiva"
+        and confirmations >= 2
+        and score >= 80
+    ):
+
+        return "Baixo"
+
+    if (
+        signal == "NEGATIVO"
+        and trend == "Negativa"
+        and confirmations >= 2
+        and score <= 20
+    ):
+
+        return "Alto"
+
+    if (
+        confirmations >= 2
+        and (
+            trend == "Positiva"
+            or trend == "Negativa"
+        )
+    ):
+
+        return "Moderado"
+
+    return "Moderado"
+
+
+# ==========================================================
+# RESUMO EXECUTIVO
+# ==========================================================
+
+def build_executive_summary(
+    asset,
+    score,
+    trend,
+    signal,
+    qualified_signal,
     recommendation,
     risk,
+    confirmations,
 ):
     """
-    Interpretação do sinal operacional.
+    Gera o resumo executivo da análise.
     """
 
-    if recommendation == "Compra":
+    asset = safe_text(
+        asset,
+        "Ativo",
+    )
 
-        if risk == "Alto":
+    if signal == "POSITIVO":
+
+        if confirmations >= 2:
 
             return (
-                "Cenário favorável, porém com "
-                "risco elevado. A entrada exige cautela."
+                f"{asset} apresenta cenário técnico "
+                f"favorável, com Score InvestIA de "
+                f"{score}/100 e confirmação positiva "
+                f"por múltiplos indicadores. "
+                f"Tendência {trend.lower()}, "
+                f"sinal {qualified_signal.lower()} "
+                f"e recomendação de {recommendation.lower()}. "
+                f"Nível de risco: {risk.lower()}."
             )
 
         return (
-            "Cenário técnico favorável "
-            "ao movimento de alta."
+            f"{asset} apresenta viés positivo, "
+            f"com Score InvestIA de {score}/100. "
+            f"O sinal ainda possui confirmação parcial. "
+            f"Recomendação: {recommendation.lower()}."
         )
 
+    if signal == "NEGATIVO":
 
-    if recommendation == "Compra Moderada":
-
-        return (
-            "Cenário parcialmente favorável. "
-            "A confirmação dos indicadores "
-            "é recomendável."
-        )
-
-
-    if recommendation == "Venda":
-
-        if risk == "Alto":
+        if confirmations >= 2:
 
             return (
-                "Cenário desfavorável acompanhado "
-                "de elevada volatilidade."
+                f"{asset} apresenta cenário técnico "
+                f"desfavorável, com Score InvestIA de "
+                f"{score}/100 e confirmação negativa "
+                f"por múltiplos indicadores. "
+                f"Tendência {trend.lower()}, "
+                f"sinal {qualified_signal.lower()} "
+                f"e recomendação de {recommendation.lower()}. "
+                f"Nível de risco: {risk.lower()}."
             )
 
         return (
-            "Cenário técnico desfavorável "
-            "ao movimento de alta."
+            f"{asset} apresenta viés negativo, "
+            f"com Score InvestIA de {score}/100. "
+            f"O sinal possui confirmação parcial. "
+            f"Recomendação: {recommendation.lower()}."
         )
-
-
-    if recommendation == "Venda Moderada":
-
-        return (
-            "Cenário parcialmente desfavorável. "
-            "É necessária confirmação."
-        )
-
 
     return (
-        "Os indicadores não apresentam "
-        "força suficiente para uma decisão."
+        f"{asset} apresenta cenário técnico "
+        f"sem confirmação suficiente para uma "
+        f"decisão direcional. Score InvestIA de "
+        f"{score}/100, tendência {trend.lower()} "
+        f"e recomendação de aguardar."
     )
 
 
 # ==========================================================
-# CABEÇALHO
+# ANÁLISE PRINCIPAL
 # ==========================================================
 
-st.title(
-    "📈 InvestIA PRO"
-)
-
-st.caption(
-    "Análise inteligente de ativos financeiros"
-)
-
-
-# ==========================================================
-# ENTRADA
-# ==========================================================
-
-input_col, period_col = st.columns(
-    [3, 1]
-)
-
-
-with input_col:
-
-    asset = st.text_input(
-        "Digite o código do ativo",
-        value="PETR4",
-        max_chars=20,
-    )
-
-
-with period_col:
-
-    period = st.selectbox(
-        "Período",
-        [
-            "6mo",
-            "1y",
-            "2y",
-            "5y",
-        ],
-        index=1,
-    )
-
-
-analyze_button = st.button(
-    "🔎 Analisar ativo",
-    use_container_width=True,
-)
-
-
-# ==========================================================
-# PROCESSAMENTO
-# ==========================================================
-
-if analyze_button:
-
-    asset = normalize_asset_input(
-        asset
-    )
-
-
-    # ======================================================
-    # VALIDAÇÃO
-    # ======================================================
-
-    if not asset:
-
-        st.warning(
-            "Digite o código de um ativo."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # MERCADO
-    # ======================================================
-
-    with st.spinner(
-        "Buscando dados do mercado..."
-    ):
-
-        try:
-
-            market_data = get_market_data(
-                asset,
-                period,
-            )
-
-        except Exception as error:
-
-            st.error(
-                "Erro ao buscar os dados do mercado."
-            )
-
-            st.exception(
-                error
-            )
-
-            st.stop()
-
-
-    if market_data is None:
-
-        st.error(
-            f"Não foi possível obter dados para {asset}."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # PREPARAÇÃO
-    # ======================================================
-
-    try:
-
-        prepared_data = prepare_market_data(
-            market_data
-        )
-
-    except Exception as error:
-
-        st.error(
-            "Erro ao preparar os dados do mercado."
-        )
-
-        st.exception(
-            error
-        )
-
-        st.stop()
-
-
-    if prepared_data is None:
-
-        st.error(
-            "Os dados do mercado não puderam ser preparados."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # HISTÓRICO
-    # ======================================================
-
-    history = None
-
-
-    if isinstance(
-        prepared_data,
-        dict,
-    ):
-
-        history = prepared_data.get(
-            "history"
-        )
-
-
-    if history is None:
-
-        st.error(
-            "Histórico do ativo não encontrado."
-        )
-
-        st.stop()
-
-
-    if history.empty:
-
-        st.error(
-            "O histórico do ativo está vazio."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # PREÇO
-    # ======================================================
-
-    price = None
-
-
-    try:
-
-        price = get_current_price(
-            prepared_data
-        )
-
-    except Exception:
-
-        price = None
-
-
-    if price is None:
-
-        try:
-
-            price = float(
-                history["Close"]
-                .dropna()
-                .iloc[-1]
-            )
-
-        except Exception:
-
-            price = None
-
-
-    if price is None:
-
-        st.error(
-            "Não foi possível determinar o preço atual."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # INDICADORES
-    # ======================================================
-
-    with st.spinner(
-        "Calculando indicadores técnicos..."
-    ):
-
-        try:
-
-            indicators = calculate_indicators(
-                prepared_data
-            )
-
-        except Exception as error:
-
-            st.error(
-                "Erro ao calcular os indicadores técnicos."
-            )
-
-            st.exception(
-                error
-            )
-
-            st.stop()
-
-
-    if indicators is None:
-
-        st.error(
-            "Os indicadores não foram calculados."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # DADOS PARA ANÁLISE
-    # ======================================================
-
-    analysis_data = {
-
-        "price":
-            price,
-
-        "rsi":
-            get_value(
-                indicators,
-                "rsi",
-            ),
-
-        "ma21":
-            get_value(
-                indicators,
-                "ma21",
-            ),
-
-        "ma200":
-            get_value(
-                indicators,
-                "ma200",
-            ),
-
-        "volatility":
-            get_value(
-                indicators,
-                "volatility",
-            ),
-    }
-
-
-    # ======================================================
-    # VALIDAÇÃO
-    # ======================================================
-
-    if not validate_analysis_data(
-        analysis_data
-    ):
-
-        st.error(
-            "Os dados técnicos são insuficientes "
-            "para realizar a análise."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # ANÁLISE INVESTIA
-    # ======================================================
-
-    with st.spinner(
-        "Executando análise InvestIA..."
-    ):
-
-        try:
-
-            result = analyze_asset(
-                analysis_data,
-                asset,
-            )
-
-        except TypeError:
-
-            try:
-
-                result = analyze_asset(
-                    analysis_data
-                )
-
-            except Exception as error:
-
-                st.error(
-                    "Erro ao executar a análise InvestIA."
-                )
-
-                st.exception(
-                    error
-                )
-
-                st.stop()
-
-        except Exception as error:
-
-            st.error(
-                "Erro ao executar a análise InvestIA."
-            )
-
-            st.exception(
-                error
-            )
-
-            st.stop()
-
-
-    if result is None:
-
-        st.error(
-            "A análise não retornou resultado."
-        )
-
-        st.stop()
-
-
-    # ======================================================
-    # RESULTADOS
-    # ======================================================
-
-    score = safe_int(
-        get_value(
-            result,
-            "score",
-            default=0,
-        )
-    )
-
-
-    classification = get_value(
-        result,
-        "classification",
-        default="NEUTRO",
-    )
-
-
-    signal = get_value(
-        result,
-        "signal",
-        default="NEUTRO",
-    )
-
-
-    qualified_signal = get_value(
-        result,
-        "qualified_signal",
-        default=signal,
-    )
-
-
-    signal_level = get_value(
-        result,
-        "signal_level",
-        default="Neutro",
-    )
-
-
-    signal_icon = get_value(
-        result,
-        "signal_icon",
-        default="🟡",
-    )
-
-
-    trend = get_value(
-        result,
-        "trend",
-        "tendencia",
-        default="Neutra",
-    )
-
-
-    recommendation = get_value(
-        result,
-        "recommendation",
-        "recomendacao",
-        default="Aguardar",
-    )
-
-
-    risk = get_value(
-        result,
-        "risk",
-        "risco",
-        default="Moderado",
-    )
-
-
-    risk_score = safe_int(
-        get_value(
-            result,
-            "risk_score",
-            default=0,
-        )
-    )
-
-
-    rsi_status = get_value(
-        result,
-        "rsi_status",
-        default="Neutro",
-    )
-
-
-    reasons = get_value(
-        result,
-        "reasons",
-        "justificativas",
-        default=[],
-    )
-
-
-    alerts = get_value(
-        result,
-        "alerts",
-        default=[],
-    )
-
-
-    breakdown = get_value(
-        result,
-        "breakdown",
-        default={},
-    )
-
-
-    executive_summary = get_value(
-        result,
-        "executive_summary",
-        default="",
-    )
-
-
-    # ======================================================
-    # DASHBOARD
-    # ======================================================
-
-    st.divider()
-
-    st.header(
-        f"📊 Dashboard Executivo — {asset}"
-    )
-
-
-    # ======================================================
-    # PAINEL PRINCIPAL
-    # ======================================================
-
-    st.subheader(
-        "🎯 Visão Geral"
-    )
-
-
-    main1, main2, main3, main4, main5 = st.columns(
-        5
-    )
-
-
-    with main1:
-
-        st.metric(
-            "Preço",
-            format_currency(
+def analyze_asset(
+    data,
+    asset=None,
+):
+    """
+    Executa a análise completa do ativo.
+
+    Parâmetros:
+        data:
+            Dicionário contendo:
                 price
-            ),
-        )
+                rsi
+                ma21
+                ma200
+                volatility
 
+        asset:
+            Código do ativo.
 
-    with main2:
-
-        st.metric(
-            "Score",
-            f"{score}/100",
-        )
-
-
-    with main3:
-
-        st.metric(
-            "Tendência",
-            str(trend),
-        )
-
-
-    with main4:
-
-        st.metric(
-            "Risco",
-            f"{risk_icon(risk)} {risk}",
-        )
-
-
-    with main5:
-
-        st.metric(
-            "Recomendação",
-            str(recommendation),
-        )
-
+    Retorno:
+        Dicionário completo para o Dashboard.
+    """
 
     # ======================================================
-    # SINAL
+    # VALIDAÇÃO
     # ======================================================
 
-    st.divider()
+    if not validate_analysis_data(data):
 
-    signal_col1, signal_col2 = st.columns(
-        [2, 1]
+        raise ValueError(
+            "Dados insuficientes para realizar a análise."
+        )
+
+    # ======================================================
+    # DADOS
+    # ======================================================
+
+    price = safe_float(
+        data.get("price")
     )
 
-
-    with signal_col1:
-
-        st.subheader(
-            "🎯 Sinal InvestIA"
-        )
-
-        st.markdown(
-            f"# {signal_icon} {qualified_signal}"
-        )
-
-        st.write(
-            get_signal_message(
-                recommendation,
-                risk,
-            )
-        )
-
-
-    with signal_col2:
-
-        st.subheader(
-            "Nível do sinal"
-        )
-
-        st.metric(
-            "Confiança operacional",
-            str(signal_level),
-        )
-
-        st.caption(
-            f"Sinal base: {signal}"
-        )
-
-
-    # ======================================================
-    # RESUMO EXECUTIVO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🤖 Resumo Executivo"
+    rsi = safe_float(
+        data.get("rsi")
     )
 
+    ma21 = safe_float(
+        data.get("ma21")
+    )
 
-    if executive_summary:
+    ma200 = safe_float(
+        data.get("ma200")
+    )
 
-        st.success(
-            executive_summary
+    volatility = safe_float(
+        data.get("volatility"),
+        0,
+    )
+
+    # ======================================================
+    # SCORE INVESTIA
+    # ======================================================
+
+    score_details = calculate_score_details(
+        {
+            "price": price,
+            "ma21": ma21,
+            "ma200": ma200,
+            "rsi": rsi,
+        }
+    )
+
+    score = score_details.get(
+        "score",
+        0,
+    )
+
+    classification = score_details.get(
+        "classification",
+        "NEUTRO",
+    )
+
+    base_signal = normalize_signal(
+        score_details.get(
+            "signal",
+            "NEUTRO",
+        )
+    )
+
+    breakdown = score_details.get(
+        "breakdown",
+        {},
+    )
+
+    # ======================================================
+    # ANÁLISE DOS INDICADORES
+    # ======================================================
+
+    ma21_analysis = analyze_ma21(
+        price,
+        ma21,
+    )
+
+    ma200_analysis = analyze_ma200(
+        price,
+        ma200,
+    )
+
+    rsi_analysis = analyze_rsi(
+        rsi,
+    )
+
+    # ======================================================
+    # TENDÊNCIA
+    # ======================================================
+
+    trend = determine_trend(
+        price,
+        ma21,
+        ma200,
+    )
+
+    # ======================================================
+    # CONFIRMAÇÕES
+    # ======================================================
+
+    confirmation_data = calculate_confirmations(
+        ma21_analysis,
+        ma200_analysis,
+        rsi_analysis,
+    )
+
+    positive_confirmations = confirmation_data[
+        "positive"
+    ]
+
+    negative_confirmations = confirmation_data[
+        "negative"
+    ]
+
+    neutral_confirmations = confirmation_data[
+        "neutral"
+    ]
+
+    # ======================================================
+    # AJUSTE DO SINAL
+    # ======================================================
+
+    signal = base_signal
+
+    # ------------------------------------------------------
+    # Se o Score indica compra, mas existem indicadores
+    # negativos relevantes, reduzimos a confiança.
+    # ------------------------------------------------------
+
+    if signal == "POSITIVO":
+
+        if (
+            negative_confirmations
+            >= 2
+        ):
+
+            signal = "NEUTRO"
+
+    # ------------------------------------------------------
+    # Se o Score indica venda, mas existem indicadores
+    # positivos relevantes, reduzimos a confiança.
+    # ------------------------------------------------------
+
+    elif signal == "NEGATIVO":
+
+        if (
+            positive_confirmations
+            >= 2
+        ):
+
+            signal = "NEUTRO"
+
+    # ======================================================
+    # CONFIRMAÇÕES UTILIZADAS PELO SINAL
+    # ======================================================
+
+    if signal == "POSITIVO":
+
+        confirmations = (
+            positive_confirmations
+        )
+
+    elif signal == "NEGATIVO":
+
+        confirmations = (
+            negative_confirmations
         )
 
     else:
 
-        st.info(
-            "Resumo executivo não disponível."
+        confirmations = max(
+            positive_confirmations,
+            negative_confirmations,
         )
 
+    # ======================================================
+    # FORÇA
+    # ======================================================
+
+    strength = determine_signal_strength(
+        score,
+        confirmations,
+        signal,
+    )
+
+    signal_level = strength[
+        "level"
+    ]
+
+    signal_icon = strength[
+        "icon"
+    ]
+
+    # ======================================================
+    # SINAL QUALIFICADO
+    # ======================================================
+
+    qualified_signal = determine_qualified_signal(
+        signal,
+        signal_level,
+    )
+
+    # ======================================================
+    # RECOMENDAÇÃO
+    # ======================================================
+
+    recommendation = determine_recommendation(
+        score,
+        signal,
+        signal_level,
+        trend,
+    )
 
     # ======================================================
     # RISCO
     # ======================================================
 
-    st.divider()
-
-    st.subheader(
-        "🛡️ Gestão de Risco"
+    risk = determine_risk(
+        score,
+        signal,
+        trend,
+        confirmations,
     )
-
-
-    risk_col1, risk_col2, risk_col3 = st.columns(
-        3
-    )
-
-
-    with risk_col1:
-
-        st.metric(
-            "Nível de risco",
-            f"{risk_icon(risk)} {risk}",
-        )
-
-
-    with risk_col2:
-
-        st.metric(
-            "Índice de risco",
-            f"{risk_score}/100",
-        )
-
-
-    with risk_col3:
-
-        st.metric(
-            "RSI",
-            f'{safe_float(analysis_data["rsi"]):.2f}',
-        )
-
-
-    st.info(
-        get_risk_message(
-            risk
-        )
-    )
-
 
     # ======================================================
-    # ALERTAS
+    # STATUS DO RSI
     # ======================================================
 
-    st.divider()
-
-    st.subheader(
-        "⚠️ Alertas Técnicos"
+    rsi_status = rsi_analysis.get(
+        "status",
+        "Neutro",
     )
-
-
-    if not isinstance(
-        alerts,
-        list,
-    ):
-
-        alerts = [alerts]
-
-
-    alerts = [
-        alert
-        for alert in alerts
-        if alert
-    ]
-
-
-    if alerts:
-
-        for alert in alerts:
-
-            if "Nenhum alerta" in str(alert):
-
-                st.success(
-                    f"✅ {alert}"
-                )
-
-            else:
-
-                st.warning(
-                    f"⚠️ {alert}"
-                )
-
-    else:
-
-        st.success(
-            "✅ Nenhum alerta técnico relevante."
-        )
-
 
     # ======================================================
-    # INDICADORES
+    # JUSTIFICATIVAS
     # ======================================================
 
-    st.divider()
+    reasons = []
 
-    st.subheader(
-        "📈 Indicadores Técnicos"
+    reasons.append(
+        ma21_analysis["reason"]
     )
 
-
-    ind1, ind2, ind3, ind4 = st.columns(
-        4
+    reasons.append(
+        ma200_analysis["reason"]
     )
 
-
-    with ind1:
-
-        st.metric(
-            "MA21",
-            format_currency(
-                analysis_data["ma21"]
-            ),
-        )
-
-
-    with ind2:
-
-        st.metric(
-            "MA200",
-            format_currency(
-                analysis_data["ma200"]
-            ),
-        )
-
-
-    with ind3:
-
-        st.metric(
-            "RSI",
-            f'{safe_float(analysis_data["rsi"]):.2f}',
-        )
-
-
-    with ind4:
-
-        volatility_percent = (
-            safe_float(
-                analysis_data["volatility"]
-            )
-            * 100
-        )
-
-
-        st.metric(
-            "Volatilidade",
-            f"{volatility_percent:.2f}%",
-        )
-
-
-    # ======================================================
-    # GRÁFICO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "📊 Evolução do Preço"
+    reasons.append(
+        rsi_analysis["reason"]
     )
-
-
-    try:
-
-        fig = create_price_chart(
-            history,
-            indicators,
-        )
-
-
-        if fig is not None:
-
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-            )
-
-        else:
-
-            st.warning(
-                "Não foi possível gerar o gráfico."
-            )
-
-
-    except Exception as error:
-
-        st.warning(
-            "O gráfico não pôde ser gerado."
-        )
-
-        st.exception(
-            error
-        )
-
-
-    # ======================================================
-    # COMPOSIÇÃO DO SCORE
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🧠 Composição do Score InvestIA"
-    )
-
-
-    base_points = 50
-
-
-    if isinstance(
-        breakdown,
-        dict,
-    ):
-
-        base_points = breakdown.get(
-            "base",
-            50,
-        )
-
-
-    st.write(
-        f"**Base:** {base_points:+d} pontos"
-    )
-
-
-    score1, score2, score3 = st.columns(
-        3
-    )
-
 
     # ------------------------------------------------------
-    # MA21
+    # Confirmação geral
     # ------------------------------------------------------
 
-    with score1:
+    if signal == "POSITIVO":
 
-        ma21_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            ma21_data = breakdown.get(
-                "ma21",
-                {},
-            )
-
-
-        st.markdown(
-            "### 📏 MA21"
+        reasons.append(
+            f"{positive_confirmations} indicador(es) "
+            f"apresentam sinal positivo."
         )
 
+    elif signal == "NEGATIVO":
 
-        st.metric(
-            "Contribuição",
-            f'{ma21_data.get("points", 0):+d} pts',
-        )
-
-
-        st.write(
-            f'**Sinal:** '
-            f'{ma21_data.get("signal", "Neutro")}'
-        )
-
-
-        st.caption(
-            ma21_data.get(
-                "reason",
-                "Sem informação.",
-            )
-        )
-
-
-    # ------------------------------------------------------
-    # MA200
-    # ------------------------------------------------------
-
-    with score2:
-
-        ma200_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            ma200_data = breakdown.get(
-                "ma200",
-                {},
-            )
-
-
-        st.markdown(
-            "### 📐 MA200"
-        )
-
-
-        st.metric(
-            "Contribuição",
-            f'{ma200_data.get("points", 0):+d} pts',
-        )
-
-
-        st.write(
-            f'**Sinal:** '
-            f'{ma200_data.get("signal", "Neutro")}'
-        )
-
-
-        st.caption(
-            ma200_data.get(
-                "reason",
-                "Sem informação.",
-            )
-        )
-
-
-    # ------------------------------------------------------
-    # RSI
-    # ------------------------------------------------------
-
-    with score3:
-
-        rsi_data = {}
-
-
-        if isinstance(
-            breakdown,
-            dict,
-        ):
-
-            rsi_data = breakdown.get(
-                "rsi",
-                {},
-            )
-
-
-        st.markdown(
-            "### 📊 RSI"
-        )
-
-
-        st.metric(
-            "Contribuição",
-            f'{rsi_data.get("points", 0):+d} pts',
-        )
-
-
-        st.write(
-            f'**Sinal:** '
-            f'{rsi_data.get("signal", "Neutro")}'
-        )
-
-
-        st.caption(
-            rsi_data.get(
-                "reason",
-                "Sem informação.",
-            )
-        )
-
-
-    # ======================================================
-    # SCORE FINAL
-    # ======================================================
-
-    raw_score = None
-
-
-    if isinstance(
-        breakdown,
-        dict,
-    ):
-
-        raw_score = breakdown.get(
-            "raw_score"
-        )
-
-
-    if raw_score is not None:
-
-        st.success(
-            f"**Score InvestIA: {score}/100** "
-            f"| Cálculo bruto: {raw_score}"
+        reasons.append(
+            f"{negative_confirmations} indicador(es) "
+            f"apresentam sinal negativo."
         )
 
     else:
 
-        st.success(
-            f"**Score InvestIA: {score}/100**"
+        reasons.append(
+            "Os indicadores apresentam sinais "
+            "sem confirmação direcional suficiente."
         )
-
 
     # ======================================================
-    # ANÁLISE DETALHADA
+    # RESUMO EXECUTIVO
     # ======================================================
 
-    st.divider()
-
-    st.subheader(
-        "🔎 Análise Detalhada"
+    executive_summary = build_executive_summary(
+        asset,
+        score,
+        trend,
+        signal,
+        qualified_signal,
+        recommendation,
+        risk,
+        confirmations,
     )
-
-
-    detail1, detail2 = st.columns(
-        2
-    )
-
-
-    with detail1:
-
-        st.markdown(
-            "### Fundamentação"
-        )
-
-
-        if reasons:
-
-            if not isinstance(
-                reasons,
-                list,
-            ):
-
-                reasons = [reasons]
-
-
-            for reason in reasons:
-
-                st.write(
-                    f"✔ {reason}"
-                )
-
-        else:
-
-            st.info(
-                "Nenhuma justificativa foi retornada."
-            )
-
-
-    with detail2:
-
-        st.markdown(
-            "### Situação Técnica"
-        )
-
-
-        st.write(
-            f"**Classificação:** {classification}"
-        )
-
-
-        st.write(
-            f"**Tendência:** {trend}"
-        )
-
-
-        st.write(
-            f"**RSI:** {rsi_status}"
-        )
-
-
-        st.write(
-            f"**Sinal:** {qualified_signal}"
-        )
-
-
-        st.write(
-            f"**Risco:** "
-            f"{risk_icon(risk)} {risk}"
-        )
-
-
-        st.write(
-            f"**Recomendação:** {recommendation}"
-        )
-
 
     # ======================================================
-    # RESUMO FINAL
+    # RETORNO
     # ======================================================
 
-    st.divider()
+    return {
 
-    st.subheader(
-        "📋 Resumo da Análise"
-    )
+        # --------------------------------------------------
+        # IDENTIFICAÇÃO
+        # --------------------------------------------------
 
+        "asset":
+            asset,
 
-    summary1, summary2 = st.columns(
-        2
-    )
+        # --------------------------------------------------
+        # SCORE
+        # --------------------------------------------------
 
+        "score":
+            score,
 
-    with summary1:
+        "classification":
+            classification,
 
-        st.write(
-            f"**Ativo:** {asset}"
-        )
+        # --------------------------------------------------
+        # SINAL
+        # --------------------------------------------------
 
+        "signal":
+            signal,
 
-        st.write(
-            f"**Preço:** "
-            f"{format_currency(price)}"
-        )
+        "qualified_signal":
+            qualified_signal,
 
+        "signal_level":
+            signal_level,
 
-        st.write(
-            f"**Score:** {score}/100"
-        )
+        "signal_icon":
+            signal_icon,
 
+        # --------------------------------------------------
+        # TENDÊNCIA
+        # --------------------------------------------------
 
-        st.write(
-            f"**Classificação:** {classification}"
-        )
+        "trend":
+            trend,
 
+        "tendencia":
+            trend,
 
-    with summary2:
+        # --------------------------------------------------
+        # RECOMENDAÇÃO
+        # --------------------------------------------------
 
-        st.write(
-            f"**Tendência:** {trend}"
-        )
+        "recommendation":
+            recommendation,
 
+        "recomendacao":
+            recommendation,
 
-        st.write(
-            f"**Sinal:** {qualified_signal}"
-        )
+        # --------------------------------------------------
+        # RISCO
+        # --------------------------------------------------
 
+        "risk":
+            risk,
 
-        st.write(
-            f"**Risco:** "
-            f"{risk_icon(risk)} {risk}"
-        )
+        "risco":
+            risk,
 
+        # --------------------------------------------------
+        # RSI
+        # --------------------------------------------------
 
-        st.write(
-            f"**Recomendação:** {recommendation}"
-        )
+        "rsi_status":
+            rsi_status,
+
+        # --------------------------------------------------
+        # CONFIRMAÇÕES
+        # --------------------------------------------------
+
+        "confirmations":
+            confirmations,
+
+        "positive_confirmations":
+            positive_confirmations,
+
+        "negative_confirmations":
+            negative_confirmations,
+
+        "neutral_confirmations":
+            neutral_confirmations,
+
+        # --------------------------------------------------
+        # INDICADORES
+        # --------------------------------------------------
+
+        "indicator_analysis": {
+
+            "ma21":
+                ma21_analysis,
+
+            "ma200":
+                ma200_analysis,
+
+            "rsi":
+                rsi_analysis,
+
+        },
+
+        # --------------------------------------------------
+        # VOLATILIDADE
+        # --------------------------------------------------
+
+        "volatility":
+            volatility,
+
+        # --------------------------------------------------
+        # JUSTIFICATIVAS
+        # --------------------------------------------------
+
+        "reasons":
+            reasons,
+
+        "justificativas":
+            reasons,
+
+        # --------------------------------------------------
+        # BREAKDOWN
+        # --------------------------------------------------
+
+        "breakdown":
+            breakdown,
+
+        # --------------------------------------------------
+        # RESUMO
+        # --------------------------------------------------
+
+        "executive_summary":
+            executive_summary,
+
+    }
 
 
 # ==========================================================
-# TELA INICIAL
+# FUNÇÃO DE TESTE
 # ==========================================================
 
-else:
+def get_signal_summary(result):
+    """
+    Retorna somente os principais elementos do sinal.
+    """
 
-    st.info(
-        "Digite um ativo e clique em "
-        "🔎 Analisar ativo."
-    )
+    if not isinstance(result, dict):
+        return {}
 
+    return {
 
-    st.markdown(
-        """
-### Como utilizar
+        "score":
+            result.get(
+                "score",
+                0,
+            ),
 
-1. Informe o código do ativo.
-2. Escolha o período de análise.
-3. Clique em **Analisar ativo**.
-4. Consulte o Score, tendência, risco,
-   alertas e recomendação.
+        "classification":
+            result.get(
+                "classification",
+                "NEUTRO",
+            ),
 
-**Exemplos:** PETR4, VALE3, ITUB4.
-"""
-    )
+        "signal":
+            result.get(
+                "signal",
+                "NEUTRO",
+            ),
+
+        "qualified_signal":
+            result.get(
+                "qualified_signal",
+                "AGUARDAR",
+            ),
+
+        "signal_level":
+            result.get(
+                "signal_level",
+                "Aguardar",
+            ),
+
+        "trend":
+            result.get(
+                "trend",
+                "Neutra",
+            ),
+
+        "recommendation":
+            result.get(
+                "recommendation",
+                "Aguardar",
+            ),
+
+        "risk":
+            result.get(
+                "risk",
+                "Moderado",
+            ),
+
+    }
