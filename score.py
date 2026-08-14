@@ -3,7 +3,7 @@ InvestIA PRO
 Motor de Score
 
 Versão: v0.6
-Fase: 2.4 - Explicabilidade do Score
+Fase: 2.7.6 - Correção do Breakdown do Score
 """
 
 from config import (
@@ -23,6 +23,11 @@ def clamp_score(score):
     Mantém o Score entre 0 e 100.
     """
 
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        score = 0
+
     return max(
         0,
         min(
@@ -33,30 +38,22 @@ def clamp_score(score):
 
 
 # ==========================================================
-# CONTRIBUIÇÃO DOS INDICADORES
+# VALIDAÇÃO DOS DADOS
 # ==========================================================
 
-def get_score_breakdown(data):
+def validate_score_data(data):
     """
-    Calcula a contribuição individual
-    de cada indicador para o Score.
-
-    Score base:
-        50 pontos
-
-    MA21:
-        +10 / -10
-
-    MA200:
-        +20 / -20
-
-    RSI:
-        +10 / -10 / 0
+    Valida os dados necessários para o cálculo do Score.
     """
 
     if data is None:
         raise ValueError(
-            "Dados não fornecidos para o detalhamento do Score."
+            "Dados não fornecidos para o Score."
+        )
+
+    if not isinstance(data, dict):
+        raise ValueError(
+            "Os dados do Score devem estar em formato de dicionário."
         )
 
     required = [
@@ -79,10 +76,56 @@ def get_score_breakdown(data):
             + ", ".join(missing)
         )
 
-    price = float(data["price"])
-    ma21 = float(data["ma21"])
-    ma200 = float(data["ma200"])
-    rsi = float(data["rsi"])
+
+# ==========================================================
+# CONTRIBUIÇÃO DOS INDICADORES
+# ==========================================================
+
+def get_score_breakdown(data):
+    """
+    Calcula detalhadamente a contribuição
+    de cada indicador para o Score InvestIA.
+
+    Score base:
+        50 pontos
+
+    MA21:
+        +10 / -10
+
+    MA200:
+        +20 / -20
+
+    RSI:
+        +10 / -10 / 0
+
+    Exemplo:
+
+        Preço = 41.82
+        MA21  = 41.67
+        MA200 = 38.98
+        RSI   = 45.42
+
+        50 + 10 + 20 + 0 = 80
+    """
+
+    validate_score_data(data)
+
+    # ======================================================
+    # CONVERSÃO
+    # ======================================================
+
+    try:
+
+        price = float(data["price"])
+        ma21 = float(data["ma21"])
+        ma200 = float(data["ma200"])
+        rsi = float(data["rsi"])
+
+    except (TypeError, ValueError) as error:
+
+        raise ValueError(
+            "Os valores dos indicadores precisam ser numéricos."
+        ) from error
 
     # ======================================================
     # BASE
@@ -194,34 +237,89 @@ def get_score_breakdown(data):
     )
 
     # ======================================================
-    # RETORNO
+    # BREAKDOWN COMPLETO
     # ======================================================
 
     return {
 
+        # --------------------------------------------------
+        # BASE
+        # --------------------------------------------------
+
         "base": base,
 
+        # --------------------------------------------------
+        # MA21
+        # --------------------------------------------------
+
         "ma21": {
+
+            "value": ma21,
+
             "points": ma21_points,
+
             "signal": ma21_signal,
+
             "reason": ma21_reason,
+
         },
+
+        # --------------------------------------------------
+        # MA200
+        # --------------------------------------------------
 
         "ma200": {
+
+            "value": ma200,
+
             "points": ma200_points,
+
             "signal": ma200_signal,
+
             "reason": ma200_reason,
+
         },
 
+        # --------------------------------------------------
+        # RSI
+        # --------------------------------------------------
+
         "rsi": {
+
+            "value": rsi,
+
             "points": rsi_points,
+
             "signal": rsi_signal,
+
             "reason": rsi_reason,
+
         },
+
+        # --------------------------------------------------
+        # VALORES UTILIZADOS
+        # --------------------------------------------------
+
+        "values": {
+
+            "price": price,
+
+            "ma21": ma21,
+
+            "ma200": ma200,
+
+            "rsi": rsi,
+
+        },
+
+        # --------------------------------------------------
+        # CÁLCULO
+        # --------------------------------------------------
 
         "raw_score": raw_score,
 
         "score": final_score,
+
     }
 
 
@@ -231,7 +329,7 @@ def get_score_breakdown(data):
 
 def calculate_investia_score(data):
     """
-    Calcula o Score InvestIA de 0 a 100.
+    Calcula somente o Score InvestIA.
     """
 
     breakdown = get_score_breakdown(
@@ -297,8 +395,12 @@ def classify_signal(score):
 
 def calculate_score_details(data):
     """
-    Retorna o Score completo com
-    classificação, sinal e breakdown.
+    Retorna o Score completo com:
+
+    - Score
+    - Classificação
+    - Sinal
+    - Breakdown
     """
 
     breakdown = get_score_breakdown(
@@ -312,11 +414,62 @@ def calculate_score_details(data):
         "score": score,
 
         "classification":
-            classify_score(score),
+            classify_score(
+                score
+            ),
 
         "signal":
-            classify_signal(score),
+            classify_signal(
+                score
+            ),
 
         "breakdown":
             breakdown,
+
+    }
+
+
+# ==========================================================
+# RESUMO DO BREAKDOWN
+# ==========================================================
+
+def get_score_summary(data):
+    """
+    Retorna um resumo textual do cálculo
+    para utilização no Dashboard Executivo.
+    """
+
+    breakdown = get_score_breakdown(
+        data
+    )
+
+    return {
+
+        "base":
+            breakdown["base"],
+
+        "ma21_points":
+            breakdown["ma21"]["points"],
+
+        "ma21_signal":
+            breakdown["ma21"]["signal"],
+
+        "ma200_points":
+            breakdown["ma200"]["points"],
+
+        "ma200_signal":
+            breakdown["ma200"]["signal"],
+
+        "rsi_points":
+            breakdown["rsi"]["points"],
+
+        "rsi_signal":
+            breakdown["rsi"]["signal"],
+
+        "raw_score":
+            breakdown["raw_score"],
+
+        "score":
+            breakdown["score"],
+
     }
