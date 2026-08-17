@@ -3,11 +3,10 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.8.3 - Dashboard Executivo
+Fase: 2.8.4 - Consolidação do Dashboard Executivo
 """
 
 import streamlit as st
-import pandas as pd
 
 from market import (
     get_market_data,
@@ -46,12 +45,23 @@ st.set_page_config(
 
 
 # ==========================================================
+# CABEÇALHO
+# ==========================================================
+
+st.title("📈 InvestIA PRO")
+
+st.caption(
+    "Análise inteligente de ativos financeiros"
+)
+
+
+# ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
 def normalize_asset_input(asset):
     """
-    Normaliza o código do ativo.
+    Normaliza o código informado pelo usuário.
     """
 
     if asset is None:
@@ -74,10 +84,16 @@ def get_indicator_value(
     Obtém um indicador com segurança.
     """
 
-    if not isinstance(indicators, dict):
+    if not isinstance(
+        indicators,
+        dict,
+    ):
         return default
 
-    value = indicators.get(key, default)
+    value = indicators.get(
+        key,
+        default,
+    )
 
     return value
 
@@ -88,233 +104,28 @@ def get_analysis_value(
     default=None,
 ):
     """
-    Obtém valores do resultado da análise
-    aceitando nomes alternativos.
+    Obtém valores da análise aceitando
+    nomes alternativos.
     """
 
-    if not isinstance(result, dict):
+    if not isinstance(
+        result,
+        dict,
+    ):
         return default
 
     for key in keys:
 
         if key in result:
 
-            value = result[key]
-
-            if value is not None:
-                return value
+            return result[key]
 
     return default
 
 
-def normalize_market_data(
-    market_data,
-    asset,
-):
-    """
-    Normaliza o retorno do market.py.
-
-    Aceita:
-
-    1. DataFrame diretamente
-    2. Dicionário contendo:
-       {
-           "asset": ...,
-           "price": ...,
-           "history": DataFrame
-       }
-
-    Retorna sempre um dicionário padronizado.
-    """
-
-    # ------------------------------------------------------
-    # DataFrame diretamente
-    # ------------------------------------------------------
-
-    if isinstance(
-        market_data,
-        pd.DataFrame,
-    ):
-
-        if market_data.empty:
-            return None
-
-        return {
-            "asset": asset,
-            "price": None,
-            "history": market_data,
-        }
-
-    # ------------------------------------------------------
-    # Dicionário
-    # ------------------------------------------------------
-
-    if isinstance(
-        market_data,
-        dict,
-    ):
-
-        normalized = dict(
-            market_data
-        )
-
-        history = normalized.get(
-            "history"
-        )
-
-        # ----------------------------------------------
-        # Caso history exista
-        # ----------------------------------------------
-
-        if isinstance(
-            history,
-            pd.DataFrame,
-        ):
-
-            if history.empty:
-                return None
-
-            normalized["history"] = history
-
-        # ----------------------------------------------
-        # Caso o próprio dicionário contenha DataFrame
-        # em outro campo
-        # ----------------------------------------------
-
-        elif history is None:
-
-            for key in [
-                "data",
-                "df",
-                "historical",
-            ]:
-
-                candidate = normalized.get(
-                    key
-                )
-
-                if isinstance(
-                    candidate,
-                    pd.DataFrame,
-                ):
-
-                    if not candidate.empty:
-
-                        normalized["history"] = (
-                            candidate
-                        )
-
-                        break
-
-        # ----------------------------------------------
-        # Asset
-        # ----------------------------------------------
-
-        if not normalized.get("asset"):
-
-            normalized["asset"] = asset
-
-        return normalized
-
-    return None
-
-
-def normalize_prepared_data(
-    prepared_data,
-    asset,
-):
-    """
-    Garante que o objeto preparado pelo market.py
-    possua os campos mínimos esperados pelas demais
-    camadas da aplicação.
-    """
-
-    if isinstance(
-        prepared_data,
-        pd.DataFrame,
-    ):
-
-        if prepared_data.empty:
-            return None
-
-        return {
-            "asset": asset,
-            "price": None,
-            "history": prepared_data,
-        }
-
-    if not isinstance(
-        prepared_data,
-        dict,
-    ):
-
-        return None
-
-    data = dict(
-        prepared_data
-    )
-
-    # ------------------------------------------------------
-    # Asset
-    # ------------------------------------------------------
-
-    if not data.get("asset"):
-
-        data["asset"] = asset
-
-    # ------------------------------------------------------
-    # History
-    # ------------------------------------------------------
-
-    history = data.get(
-        "history"
-    )
-
-    if not isinstance(
-        history,
-        pd.DataFrame,
-    ):
-
-        for key in [
-            "data",
-            "df",
-            "historical",
-        ]:
-
-            candidate = data.get(
-                key
-            )
-
-            if isinstance(
-                candidate,
-                pd.DataFrame,
-            ):
-
-                history = candidate
-
-                data["history"] = (
-                    candidate
-                )
-
-                break
-
-    if not isinstance(
-        history,
-        pd.DataFrame,
-    ):
-
-        return None
-
-    if history.empty:
-
-        return None
-
-    return data
-
-
-def safe_numeric(
+def safe_number(
     value,
-    default=None,
+    default=0.0,
 ):
     """
     Converte valores numéricos com segurança.
@@ -325,12 +136,7 @@ def safe_numeric(
         if value is None:
             return default
 
-        number = float(value)
-
-        if pd.isna(number):
-            return default
-
-        return number
+        return float(value)
 
     except (
         TypeError,
@@ -340,107 +146,47 @@ def safe_numeric(
         return default
 
 
-def safe_text(
-    value,
-    default="N/A",
-):
+def format_score(value):
     """
-    Converte qualquer valor para texto.
+    Formata o Score de maneira segura.
     """
 
-    if value is None:
-        return default
-
-    text = str(value).strip()
-
-    if not text:
-        return default
-
-    return text
-
-
-def get_history_from_data(
-    data,
-):
-    """
-    Recupera o histórico de forma segura.
-    """
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        return None
-
-    history = data.get(
-        "history"
+    value = safe_number(
+        value,
+        0,
     )
 
-    if isinstance(
-        history,
-        pd.DataFrame,
-    ):
-
-        return history
-
-    return None
+    return f"{int(round(value))}/100"
 
 
-def build_analysis_data(
-    price,
-    indicators,
-):
+def format_rsi(value):
     """
-    Monta o objeto utilizado pelo analysis.py.
+    Formata RSI.
     """
 
-    return {
+    value = safe_number(
+        value,
+        0,
+    )
 
-        "price":
-            price,
+    return f"{value:.2f}"
 
-        "rsi":
-            get_indicator_value(
-                indicators,
-                "rsi",
-            ),
 
-        "ma21":
-            get_indicator_value(
-                indicators,
-                "ma21",
-            ),
+def format_volatility(value):
+    """
+    Converte volatilidade decimal para percentual.
+    """
 
-        "ma200":
-            get_indicator_value(
-                indicators,
-                "ma200",
-            ),
+    value = safe_number(
+        value,
+        0,
+    )
 
-        "volatility":
-            get_indicator_value(
-                indicators,
-                "volatility",
-            ),
-    }
+    return f"{value * 100:.2f}%"
 
 
 # ==========================================================
-# CABEÇALHO
-# ==========================================================
-
-st.title(
-    "📈 InvestIA PRO"
-)
-
-st.caption(
-    "Análise inteligente de ativos financeiros"
-)
-
-
-# ==========================================================
-# ENTRADA
+# ENTRADA DO USUÁRIO
 # ==========================================================
 
 col_input, col_period = st.columns(
@@ -454,6 +200,7 @@ with col_input:
         "Digite o código do ativo",
         value="PETR4",
         max_chars=20,
+        placeholder="Ex.: PETR4, VALE3, ITUB4",
     )
 
 
@@ -483,6 +230,10 @@ analyze_button = st.button(
 
 if analyze_button:
 
+    # ======================================================
+    # NORMALIZAÇÃO
+    # ======================================================
+
     asset = normalize_asset_input(
         asset_input
     )
@@ -500,11 +251,11 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # BUSCA DE MERCADO
+    # BUSCA DE DADOS
     # ======================================================
 
     with st.spinner(
-        "Buscando dados do mercado..."
+        f"Buscando dados de {asset}..."
     ):
 
         try:
@@ -517,8 +268,13 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Não foi possível obter os dados "
-                f"para {asset}."
+                "Não foi possível consultar "
+                "os dados do mercado."
+            )
+
+            st.caption(
+                "Verifique se o ativo existe ou "
+                "tente novamente em alguns instantes."
             )
 
             with st.expander(
@@ -532,33 +288,23 @@ if analyze_button:
             st.stop()
 
     # ======================================================
-    # NORMALIZAÇÃO DO RETORNO
+    # VALIDAÇÃO DO RETORNO DO MARKET
     # ======================================================
-
-    market_data = normalize_market_data(
-        market_data,
-        asset,
-    )
 
     if market_data is None:
 
         st.error(
-            f"Não foi possível obter dados "
-            f"para {asset}."
-        )
-
-        st.info(
-            "Verifique o código do ativo e tente novamente."
+            f"Não foi possível obter dados para {asset}."
         )
 
         st.stop()
 
     # ======================================================
-    # PREPARAÇÃO
+    # PREPARAÇÃO DOS DADOS
     # ======================================================
 
     with st.spinner(
-        "Preparando dados..."
+        "Preparando dados do mercado..."
     ):
 
         try:
@@ -570,7 +316,8 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao preparar os dados do mercado."
+                "Erro ao preparar os dados "
+                "do mercado."
             )
 
             with st.expander(
@@ -584,34 +331,36 @@ if analyze_button:
             st.stop()
 
     # ======================================================
-    # NORMALIZAÇÃO FINAL
+    # VALIDAÇÃO DA PREPARAÇÃO
     # ======================================================
-
-    prepared_data = normalize_prepared_data(
-        prepared_data,
-        asset,
-    )
 
     if prepared_data is None:
 
         st.error(
             "Os dados do mercado não puderam "
-            "ser preparados corretamente."
+            "ser preparados."
+        )
+
+        st.stop()
+
+    if not isinstance(
+        prepared_data,
+        dict,
+    ):
+
+        st.error(
+            "O módulo de mercado retornou "
+            "um formato de dados inválido."
         )
 
         st.stop()
 
     # ======================================================
-    # GARANTIR AS CHAVES PRINCIPAIS
+    # HISTÓRICO
     # ======================================================
 
-    prepared_data.setdefault(
-        "asset",
-        asset,
-    )
-
-    history = get_history_from_data(
-        prepared_data
+    history = prepared_data.get(
+        "history"
     )
 
     if history is None:
@@ -622,16 +371,27 @@ if analyze_button:
 
         st.stop()
 
-    if history.empty:
+    try:
+
+        if history.empty:
+
+            st.error(
+                "O histórico do ativo está vazio."
+            )
+
+            st.stop()
+
+    except AttributeError:
 
         st.error(
-            "O histórico do ativo está vazio."
+            "O histórico retornado possui "
+            "um formato inválido."
         )
 
         st.stop()
 
     # ======================================================
-    # PREÇO
+    # PREÇO ATUAL
     # ======================================================
 
     with st.spinner(
@@ -661,50 +421,27 @@ if analyze_button:
 
             st.stop()
 
-    price = safe_numeric(
-        price
-    )
-
-    # ------------------------------------------------------
-    # Fallback para o último fechamento
-    # ------------------------------------------------------
-
-    if price is None:
-
-        try:
-
-            if "Close" in history.columns:
-
-                price = safe_numeric(
-                    history["Close"]
-                    .dropna()
-                    .iloc[-1]
-                )
-
-            elif "close" in history.columns:
-
-                price = safe_numeric(
-                    history["close"]
-                    .dropna()
-                    .iloc[-1]
-                )
-
-        except Exception:
-
-            price = None
-
     if price is None:
 
         st.error(
-            "Não foi possível determinar "
-            "o preço atual."
+            "O preço atual não está disponível."
         )
 
         st.stop()
 
-    # Garantir preço no objeto
-    prepared_data["price"] = price
-    prepared_data["asset"] = asset
+    price = safe_number(
+        price,
+        None,
+    )
+
+    if price is None:
+
+        st.error(
+            "O preço atual possui "
+            "um formato inválido."
+        )
+
+        st.stop()
 
     # ======================================================
     # INDICADORES
@@ -723,7 +460,8 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao calcular os indicadores técnicos."
+                "Erro ao calcular os "
+                "indicadores técnicos."
             )
 
             with st.expander(
@@ -736,26 +474,73 @@ if analyze_button:
 
             st.stop()
 
+    if indicators is None:
+
+        st.error(
+            "Os indicadores não foram calculados."
+        )
+
+        st.stop()
+
     if not isinstance(
         indicators,
         dict,
     ):
 
         st.error(
-            "Os indicadores não foram retornados "
-            "em formato válido."
+            "O módulo de indicadores retornou "
+            "um formato inválido."
         )
 
         st.stop()
 
     # ======================================================
+    # EXTRAÇÃO DOS INDICADORES
+    # ======================================================
+
+    rsi = get_indicator_value(
+        indicators,
+        "rsi",
+    )
+
+    ma21 = get_indicator_value(
+        indicators,
+        "ma21",
+    )
+
+    ma200 = get_indicator_value(
+        indicators,
+        "ma200",
+    )
+
+    volatility = get_indicator_value(
+        indicators,
+        "volatility",
+        default=0,
+    )
+
+    # ======================================================
     # DADOS PARA ANÁLISE
     # ======================================================
 
-    analysis_data = build_analysis_data(
-        price,
-        indicators,
-    )
+    analysis_data = {
+
+        "price":
+            price,
+
+        "rsi":
+            rsi,
+
+        "ma21":
+            ma21,
+
+        "ma200":
+            ma200,
+
+        "volatility":
+            volatility,
+
+    }
 
     # ======================================================
     # VALIDAÇÃO DOS INDICADORES
@@ -765,62 +550,24 @@ if analyze_button:
         analysis_data
     ):
 
-        st.warning(
-            "Os dados disponíveis não são suficientes "
-            "para realizar uma análise confiável."
+        st.error(
+            "Os dados técnicos são insuficientes "
+            "para realizar a análise."
         )
 
-        # Diagnóstico
-        st.subheader(
-            "🔎 Diagnóstico dos dados"
+        st.write(
+            "Indicadores recebidos:"
         )
 
-        diag1, diag2 = st.columns(
-            2
+        st.json(
+            {
+                "price": price,
+                "rsi": rsi,
+                "ma21": ma21,
+                "ma200": ma200,
+                "volatility": volatility,
+            }
         )
-
-        with diag1:
-
-            st.markdown(
-                "### Mercado"
-            )
-
-            st.success(
-                f"✓ {asset}"
-            )
-
-            st.write(
-                f"Preço: {format_currency(price)}"
-            )
-
-        with diag2:
-
-            st.markdown(
-                "### Indicadores"
-            )
-
-            for field in [
-                "rsi",
-                "ma21",
-                "ma200",
-                "volatility",
-            ]:
-
-                value = analysis_data.get(
-                    field
-                )
-
-                if value is None:
-
-                    st.error(
-                        f"✗ {field.upper()} indisponível"
-                    )
-
-                else:
-
-                    st.success(
-                        f"✓ {field.upper()}"
-                    )
 
         st.stop()
 
@@ -855,112 +602,95 @@ if analyze_button:
 
             st.stop()
 
+    # ======================================================
+    # VALIDAÇÃO DO RESULTADO
+    # ======================================================
+
+    if result is None:
+
+        st.error(
+            "A análise não retornou resultado."
+        )
+
+        st.stop()
+
     if not isinstance(
         result,
         dict,
     ):
 
         st.error(
-            "A análise não retornou um resultado válido."
+            "O motor de análise retornou "
+            "um formato inválido."
         )
 
         st.stop()
 
     # ======================================================
-    # EXTRAÇÃO DOS RESULTADOS
+    # RESULTADOS PRINCIPAIS
     # ======================================================
 
-    score = safe_numeric(
-        get_analysis_value(
-            result,
-            "score",
-            default=0,
-        ),
-        0,
+    score = get_analysis_value(
+        result,
+        "score",
+        default=0,
     )
 
-    classification = safe_text(
-        get_analysis_value(
-            result,
-            "classification",
-            default="NEUTRO",
-        ),
-        "NEUTRO",
+    classification = get_analysis_value(
+        result,
+        "classification",
+        default="NEUTRO",
     )
 
-    signal = safe_text(
-        get_analysis_value(
-            result,
-            "signal",
-            default="NEUTRO",
-        ),
-        "NEUTRO",
+    signal = get_analysis_value(
+        result,
+        "signal",
+        default="NEUTRO",
     )
 
-    qualified_signal = safe_text(
-        get_analysis_value(
-            result,
-            "qualified_signal",
-            default=signal,
-        ),
-        signal,
+    qualified_signal = get_analysis_value(
+        result,
+        "qualified_signal",
+        default=signal,
     )
 
-    signal_level = safe_text(
-        get_analysis_value(
-            result,
-            "signal_level",
-            default="Aguardar",
-        ),
-        "Aguardar",
+    signal_level = get_analysis_value(
+        result,
+        "signal_level",
+        default="Aguardar",
     )
 
-    signal_icon = safe_text(
-        get_analysis_value(
-            result,
-            "signal_icon",
-            default="🟡",
-        ),
-        "🟡",
+    signal_icon = get_analysis_value(
+        result,
+        "signal_icon",
+        default="🟡",
     )
 
-    trend = safe_text(
-        get_analysis_value(
-            result,
-            "trend",
-            "tendencia",
-            default="Neutra",
-        ),
-        "Neutra",
+    trend = get_analysis_value(
+        result,
+        "trend",
+        "tendencia",
+        default="Neutra",
     )
 
-    recommendation = safe_text(
-        get_analysis_value(
-            result,
-            "recommendation",
-            "recomendacao",
-            default="Aguardar",
-        ),
-        "Aguardar",
+    recommendation = get_analysis_value(
+        result,
+        "recommendation",
+        "recomendacao",
+        default="Aguardar",
     )
 
-    risk = safe_text(
-        get_analysis_value(
-            result,
-            "risk",
-            "risco",
-            default="Moderado",
-        ),
-        "Moderado",
+    risk = get_analysis_value(
+        result,
+        "risk",
+        "risco",
+        default="Moderado",
     )
 
-    rsi_status = safe_text(
-        get_analysis_value(
-            result,
-            "rsi_status",
-            default="Neutro",
-        ),
-        "Neutro",
+    rsi_status = get_analysis_value(
+        result,
+        "rsi_status",
+        default="Neutro",
     )
 
     reasons = get_analysis_value(
@@ -970,45 +700,26 @@ if analyze_button:
         default=[],
     )
 
-    if not isinstance(
-        reasons,
-        list,
-    ):
-
-        reasons = [
-            str(reasons)
-        ]
-
     breakdown = get_analysis_value(
         result,
         "breakdown",
         default={},
     )
 
-    if not isinstance(
-        breakdown,
-        dict,
-    ):
-
-        breakdown = {}
-
-    executive_summary = safe_text(
-        get_analysis_value(
-            result,
-            "executive_summary",
-            default="",
-        ),
-        "",
+    executive_summary = get_analysis_value(
+        result,
+        "executive_summary",
+        default="",
     )
 
     # ======================================================
-    # DASHBOARD EXECUTIVO
+    # DASHBOARD
     # ======================================================
 
     st.divider()
 
     st.header(
-        f"📊 Dashboard Executivo — {asset}"
+        f"📊 Análise do ativo: {asset}"
     )
 
     st.caption(
@@ -1016,91 +727,55 @@ if analyze_button:
     )
 
     # ======================================================
-    # VISÃO GERAL
+    # CARDS PRINCIPAIS
     # ======================================================
 
-    st.subheader(
-        "🎯 Visão Geral"
+    col1, col2, col3, col4 = st.columns(
+        4
     )
 
-    overview1, overview2, overview3, overview4 = (
-        st.columns(4)
-    )
-
-    with overview1:
+    with col1:
 
         st.metric(
-            "Preço",
+            "Preço atual",
             format_currency(
                 price
             ),
         )
 
-    with overview2:
+    with col2:
 
         st.metric(
             "Score InvestIA",
-            f"{int(round(score))}/100",
+            format_score(
+                score
+            ),
         )
 
-    with overview3:
+    with col3:
 
         st.metric(
             "Tendência",
-            trend,
+            str(trend),
         )
 
-    with overview4:
+    with col4:
 
         st.metric(
-            "Risco",
-            f"{risk_icon(risk)} {risk}",
+            "Recomendação",
+            str(recommendation),
         )
 
     # ======================================================
-    # SINAL INVESTIA
+    # CLASSIFICAÇÃO
     # ======================================================
 
-    st.divider()
-
-    st.subheader(
-        "🎯 Sinal InvestIA"
+    st.info(
+        f"**Classificação:** {classification} "
+        f"| **Sinal:** {qualified_signal} "
+        f"| **Nível:** "
+        f"{signal_icon} {signal_level}"
     )
-
-    signal_col1, signal_col2 = st.columns(
-        [2, 1]
-    )
-
-    with signal_col1:
-
-        if "COMPRA" in qualified_signal.upper():
-
-            st.success(
-                f"🟢 **{qualified_signal}**"
-            )
-
-        elif "VENDA" in qualified_signal.upper():
-
-            st.error(
-                f"🔴 **{qualified_signal}**"
-            )
-
-        else:
-
-            st.warning(
-                f"🟡 **{qualified_signal}**"
-            )
-
-        st.caption(
-            "Combinação técnica baseada nos indicadores disponíveis."
-        )
-
-    with signal_col2:
-
-        st.metric(
-            "Nível do sinal",
-            f"{signal_icon} {signal_level}",
-        )
 
     # ======================================================
     # RESUMO EXECUTIVO
@@ -1125,162 +800,6 @@ if analyze_button:
         )
 
     # ======================================================
-    # GESTÃO DE RISCO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🛡️ Gestão de Risco"
-    )
-
-    risk_col1, risk_col2, risk_col3 = st.columns(
-        3
-    )
-
-    with risk_col1:
-
-        st.metric(
-            "Nível de risco",
-            f"{risk_icon(risk)} {risk}",
-        )
-
-    with risk_col2:
-
-        st.metric(
-            "Score de segurança",
-            f"{max(0, 100 - abs(50 - score) * 2):.0f}/100",
-        )
-
-    with risk_col3:
-
-        rsi_value = safe_numeric(
-            analysis_data.get("rsi")
-        )
-
-        if rsi_value is not None:
-
-            st.metric(
-                "RSI",
-                f"{rsi_value:.2f}",
-            )
-
-        else:
-
-            st.metric(
-                "RSI",
-                "N/A",
-            )
-
-    st.info(
-        f"**Risco {risk.lower()}.** "
-        "Utilize os indicadores em conjunto e considere "
-        "o contexto operacional antes de tomar uma decisão."
-    )
-
-    # ======================================================
-    # ALERTAS TÉCNICOS
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "⚠️ Alertas Técnicos"
-    )
-
-    alerts = []
-
-    rsi_value = safe_numeric(
-        analysis_data.get("rsi")
-    )
-
-    ma21_value = safe_numeric(
-        analysis_data.get("ma21")
-    )
-
-    ma200_value = safe_numeric(
-        analysis_data.get("ma200")
-    )
-
-    volatility_value = safe_numeric(
-        analysis_data.get("volatility")
-    )
-
-    if rsi_value is not None:
-
-        if rsi_value >= 70:
-
-            alerts.append(
-                "RSI em região de sobrecompra."
-            )
-
-        elif rsi_value <= 30:
-
-            alerts.append(
-                "RSI em região de sobrevenda."
-            )
-
-    if (
-        price is not None
-        and ma21_value is not None
-    ):
-
-        if price > ma21_value:
-
-            alerts.append(
-                "Preço acima da MA21."
-            )
-
-        elif price < ma21_value:
-
-            alerts.append(
-                "Preço abaixo da MA21."
-            )
-
-    if (
-        price is not None
-        and ma200_value is not None
-    ):
-
-        if price > ma200_value:
-
-            alerts.append(
-                "Preço acima da MA200."
-            )
-
-        elif price < ma200_value:
-
-            alerts.append(
-                "Preço abaixo da MA200."
-            )
-
-    if volatility_value is not None:
-
-        volatility_percent = (
-            volatility_value * 100
-        )
-
-        if volatility_percent >= 3:
-
-            alerts.append(
-                "Volatilidade diária elevada."
-            )
-
-    if alerts:
-
-        for alert in alerts:
-
-            st.warning(
-                f"⚠️ {alert}"
-            )
-
-    else:
-
-        st.success(
-            "✅ Nenhum alerta técnico relevante identificado."
-        )
-
-    # ======================================================
     # INDICADORES TÉCNICOS
     # ======================================================
 
@@ -1299,7 +818,7 @@ if analyze_button:
         st.metric(
             "MA21",
             format_currency(
-                ma21_value
+                ma21
             ),
         )
 
@@ -1308,108 +827,30 @@ if analyze_button:
         st.metric(
             "MA200",
             format_currency(
-                ma200_value
+                ma200
             ),
         )
 
     with ind3:
 
-        if rsi_value is not None:
-
-            st.metric(
-                "RSI",
-                f"{rsi_value:.2f}",
-            )
-
-        else:
-
-            st.metric(
-                "RSI",
-                "N/A",
-            )
+        st.metric(
+            "RSI",
+            format_rsi(
+                rsi
+            ),
+        )
 
     with ind4:
 
-        if volatility_value is not None:
-
-            st.metric(
-                "Volatilidade",
-                f"{volatility_value * 100:.2f}%",
-            )
-
-        else:
-
-            st.metric(
-                "Volatilidade",
-                "N/A",
-            )
-
-    # ======================================================
-    # GRÁFICO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "📊 Evolução do Preço"
-    )
-
-    try:
-
-        # --------------------------------------------------
-        # Fase 2.8.3
-        #
-        # O charts.py atual recebe:
-        #
-        # create_price_chart(
-        #     history,
-        #     indicators
-        # )
-        # --------------------------------------------------
-
-        try:
-
-            fig = create_price_chart(
-                history,
-                indicators,
-            )
-
-        except TypeError:
-
-            # Compatibilidade com versões anteriores
-            fig = create_price_chart(
-                history
-            )
-
-        if fig is not None:
-
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-            )
-
-        else:
-
-            st.warning(
-                "O gráfico não pôde ser gerado."
-            )
-
-    except Exception as error:
-
-        st.warning(
-            "O gráfico não pôde ser gerado."
+        st.metric(
+            "Volatilidade",
+            format_volatility(
+                volatility
+            ),
         )
 
-        with st.expander(
-            "Detalhes técnicos do gráfico"
-        ):
-
-            st.exception(
-                error
-            )
-
     # ======================================================
-    # COMPOSIÇÃO DO SCORE
+    # SCORE EXPLICADO
     # ======================================================
 
     st.divider()
@@ -1419,17 +860,29 @@ if analyze_button:
     )
 
     st.caption(
-        "O Score é composto pela combinação dos indicadores técnicos."
+        "O Score começa em 50 pontos e recebe "
+        "ajustes conforme os indicadores técnicos."
     )
 
-    base_points = breakdown.get(
-        "base",
-        50,
+    base_points = 50
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        base_points = breakdown.get(
+            "base",
+            50,
+        )
+
+    st.write(
+        f"**Base:** {int(base_points):+d} pontos"
     )
 
-    raw_score = breakdown.get(
-        "raw_score"
-    )
+    # ======================================================
+    # COMPONENTES DO SCORE
+    # ======================================================
 
     bd1, bd2, bd3 = st.columns(
         3
@@ -1441,10 +894,17 @@ if analyze_button:
 
     with bd1:
 
-        ma21_data = breakdown.get(
-            "ma21",
-            {},
-        )
+        ma21_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma21_data = breakdown.get(
+                "ma21",
+                {},
+            )
 
         if not isinstance(
             ma21_data,
@@ -1453,27 +913,18 @@ if analyze_button:
 
             ma21_data = {}
 
-        ma21_points = safe_numeric(
-            ma21_data.get(
-                "points",
-                0,
-            ),
+        ma21_points = ma21_data.get(
+            "points",
             0,
         )
 
-        ma21_signal = safe_text(
-            ma21_data.get(
-                "signal",
-                "Neutro",
-            ),
+        ma21_signal = ma21_data.get(
+            "signal",
             "Neutro",
         )
 
-        ma21_reason = safe_text(
-            ma21_data.get(
-                "reason",
-                "Sem informação.",
-            ),
+        ma21_reason = ma21_data.get(
+            "reason",
             "Sem informação.",
         )
 
@@ -1500,10 +951,17 @@ if analyze_button:
 
     with bd2:
 
-        ma200_data = breakdown.get(
-            "ma200",
-            {},
-        )
+        ma200_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            ma200_data = breakdown.get(
+                "ma200",
+                {},
+            )
 
         if not isinstance(
             ma200_data,
@@ -1512,27 +970,18 @@ if analyze_button:
 
             ma200_data = {}
 
-        ma200_points = safe_numeric(
-            ma200_data.get(
-                "points",
-                0,
-            ),
+        ma200_points = ma200_data.get(
+            "points",
             0,
         )
 
-        ma200_signal = safe_text(
-            ma200_data.get(
-                "signal",
-                "Neutro",
-            ),
+        ma200_signal = ma200_data.get(
+            "signal",
             "Neutro",
         )
 
-        ma200_reason = safe_text(
-            ma200_data.get(
-                "reason",
-                "Sem informação.",
-            ),
+        ma200_reason = ma200_data.get(
+            "reason",
             "Sem informação.",
         )
 
@@ -1559,10 +1008,17 @@ if analyze_button:
 
     with bd3:
 
-        rsi_data = breakdown.get(
-            "rsi",
-            {},
-        )
+        rsi_data = {}
+
+        if isinstance(
+            breakdown,
+            dict,
+        ):
+
+            rsi_data = breakdown.get(
+                "rsi",
+                {},
+            )
 
         if not isinstance(
             rsi_data,
@@ -1571,27 +1027,18 @@ if analyze_button:
 
             rsi_data = {}
 
-        rsi_points = safe_numeric(
-            rsi_data.get(
-                "points",
-                0,
-            ),
+        rsi_points = rsi_data.get(
+            "points",
             0,
         )
 
-        rsi_signal = safe_text(
-            rsi_data.get(
-                "signal",
-                "Neutro",
-            ),
+        rsi_signal = rsi_data.get(
+            "signal",
             "Neutro",
         )
 
-        rsi_reason = safe_text(
-            rsi_data.get(
-                "reason",
-                "Sem informação.",
-            ),
+        rsi_reason = rsi_data.get(
+            "reason",
             "Sem informação.",
         )
 
@@ -1616,26 +1063,74 @@ if analyze_button:
     # SCORE FINAL
     # ======================================================
 
-    st.divider()
+    raw_score = None
+
+    if isinstance(
+        breakdown,
+        dict,
+    ):
+
+        raw_score = breakdown.get(
+            "raw_score"
+        )
 
     if raw_score is not None:
 
-        raw_score_value = safe_numeric(
-            raw_score,
-            score,
-        )
-
         st.success(
-            f"**Score final: {int(round(score))}/100** "
-            f"| Base: {base_points} | "
-            f"Score bruto: {raw_score_value:.0f}"
+            f"**Score final: {format_score(score)}** "
+            f"| Cálculo bruto: {raw_score}"
         )
 
     else:
 
         st.success(
-            f"**Score final: {int(round(score))}/100**"
+            f"**Score final: {format_score(score)}**"
         )
+
+    # ======================================================
+    # GRÁFICO
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "📊 Evolução do preço"
+    )
+
+    try:
+
+        fig = create_price_chart(
+            history
+        )
+
+        if fig is not None:
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+        else:
+
+            st.warning(
+                "Não foi possível gerar o gráfico "
+                "com o histórico disponível."
+            )
+
+    except Exception as error:
+
+        st.warning(
+            "O gráfico não pôde ser gerado, "
+            "mas a análise continua disponível."
+        )
+
+        with st.expander(
+            "Detalhes técnicos do gráfico"
+        ):
+
+            st.exception(
+                error
+            )
 
     # ======================================================
     # ANÁLISE DETALHADA
@@ -1647,7 +1142,7 @@ if analyze_button:
         "🔎 Análise Detalhada"
     )
 
-    detail_col1, detail_col2 = st.columns(
+    analysis_col1, analysis_col2 = st.columns(
         2
     )
 
@@ -1655,13 +1150,16 @@ if analyze_button:
     # FUNDAMENTAÇÃO
     # ------------------------------------------------------
 
-    with detail_col1:
+    with analysis_col1:
 
         st.markdown(
             "### Fundamentação"
         )
 
-        if reasons:
+        if isinstance(
+            reasons,
+            (list, tuple),
+        ) and reasons:
 
             for reason in reasons:
 
@@ -1669,17 +1167,24 @@ if analyze_button:
                     f"✔ {reason}"
                 )
 
+        elif reasons:
+
+            st.write(
+                str(reasons)
+            )
+
         else:
 
             st.info(
-                "Nenhuma justificativa foi retornada."
+                "Nenhuma justificativa "
+                "foi retornada."
             )
 
     # ------------------------------------------------------
     # GESTÃO DE RISCO
     # ------------------------------------------------------
 
-    with detail_col2:
+    with analysis_col2:
 
         st.markdown(
             "### 🛡️ Gestão de risco"
@@ -1690,7 +1195,7 @@ if analyze_button:
         )
 
         st.write(
-            f"**Score:** {int(round(score))}/100"
+            f"**Score:** {format_score(score)}"
         )
 
         st.write(
@@ -1730,15 +1235,18 @@ if analyze_button:
         )
 
         st.write(
-            f"**Preço:** {format_currency(price)}"
+            f"**Preço:** "
+            f"{format_currency(price)}"
         )
 
         st.write(
-            f"**Score:** {int(round(score))}/100"
+            f"**Score:** "
+            f"{format_score(score)}"
         )
 
         st.write(
-            f"**Classificação:** {classification}"
+            f"**Classificação:** "
+            f"{classification}"
         )
 
     with summary2:
@@ -1752,18 +1260,57 @@ if analyze_button:
         )
 
         st.write(
-            f"**Risco:** {risk_icon(risk)} {risk}"
+            f"**Risco:** "
+            f"{risk_icon(risk)} {risk}"
         )
 
         st.write(
-            f"**Recomendação:** {recommendation}"
+            f"**Recomendação:** "
+            f"{recommendation}"
         )
 
-else:
+    # ======================================================
+    # INFORMAÇÕES TÉCNICAS
+    # ======================================================
 
-    # ======================================================
-    # TELA INICIAL
-    # ======================================================
+    with st.expander(
+        "🔧 Informações técnicas"
+    ):
+
+        st.write(
+            f"**Ativo:** {asset}"
+        )
+
+        st.write(
+            f"**Período:** {period}"
+        )
+
+        st.write(
+            f"**Preço:** {price}"
+        )
+
+        st.write(
+            f"**MA21:** {ma21}"
+        )
+
+        st.write(
+            f"**MA200:** {ma200}"
+        )
+
+        st.write(
+            f"**RSI:** {rsi}"
+        )
+
+        st.write(
+            f"**Volatilidade:** {volatility}"
+        )
+
+
+# ==========================================================
+# TELA INICIAL
+# ==========================================================
+
+else:
 
     st.info(
         "Digite um ativo e clique em "
@@ -1777,10 +1324,30 @@ else:
 1. Informe o código do ativo.
 2. Escolha o período de análise.
 3. Clique em **Analisar ativo**.
-4. Consulte o Dashboard Executivo.
+4. Consulte o Score InvestIA, tendência,
+   risco e recomendação.
 
 ### Exemplos
 
 `PETR4` · `VALE3` · `ITUB4`
+
+---
+
+### 📊 O que o Dashboard apresenta
+
+- Preço atual
+- Score InvestIA
+- Classificação
+- Tendência
+- Sinal operacional
+- Recomendação
+- Nível de risco
+- RSI
+- MA21
+- MA200
+- Volatilidade
+- Composição do Score
+- Justificativas da análise
+- Evolução histórica do preço
 """
     )
