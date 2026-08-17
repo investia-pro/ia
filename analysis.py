@@ -1,9 +1,9 @@
 """
 InvestIA PRO
-Motor de Análise e Recomendação Operacional
+Motor de Análise
 
 Versão: v0.6
-Fase: 2.8.3 - Recomendação Operacional
+Fase: 2.8.4 - Consolidação do Dashboard Executivo
 """
 
 from score import (
@@ -12,25 +12,10 @@ from score import (
 
 
 # ==========================================================
-# CONFIGURAÇÕES
-# ==========================================================
-
-RSI_OVERSOLD_DEFAULT = 30
-RSI_OVERBOUGHT_DEFAULT = 70
-
-STRONG_SCORE = 80
-BUY_SCORE = 65
-NEUTRAL_SCORE = 50
-SELL_SCORE = 35
-
-STRONG_CONFIRMATIONS = 2
-
-
-# ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
-def safe_float(value, default=None):
+def _safe_float(value, default=None):
     """
     Converte um valor para float com segurança.
     """
@@ -42,14 +27,17 @@ def safe_float(value, default=None):
 
         return float(value)
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
 
         return default
 
 
-def safe_text(value, default=""):
+def _safe_text(value, default=""):
     """
-    Converte um valor para texto.
+    Converte um valor para texto com segurança.
     """
 
     if value is None:
@@ -58,221 +46,37 @@ def safe_text(value, default=""):
     return str(value)
 
 
-def normalize_signal(signal):
+def _get_breakdown_value(
+    breakdown,
+    indicator,
+    key,
+    default=None,
+):
     """
-    Normaliza diferentes formatos de sinal.
+    Obtém informações do breakdown do Score.
     """
 
-    if signal is None:
-        return "NEUTRO"
+    if not isinstance(
+        breakdown,
+        dict,
+    ):
+        return default
 
-    signal = (
-        str(signal)
-        .strip()
-        .upper()
+    data = breakdown.get(
+        indicator,
+        {},
     )
 
-    mapping = {
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return default
 
-        "POSITIVO": "POSITIVO",
-        "POSITIVE": "POSITIVO",
-        "COMPRA": "POSITIVO",
-        "BUY": "POSITIVO",
-
-        "NEGATIVO": "NEGATIVO",
-        "NEGATIVE": "NEGATIVO",
-        "VENDA": "NEGATIVO",
-        "SELL": "NEGATIVO",
-
-        "NEUTRO": "NEUTRO",
-        "NEUTRAL": "NEUTRO",
-        "AGUARDAR": "NEUTRO",
-    }
-
-    return mapping.get(
-        signal,
-        "NEUTRO",
+    return data.get(
+        key,
+        default,
     )
-
-
-# ==========================================================
-# VALIDAÇÃO
-# ==========================================================
-
-def validate_analysis_data(data):
-    """
-    Valida os campos necessários para análise.
-    """
-
-    if data is None:
-        return False
-
-    if not isinstance(data, dict):
-        return False
-
-    required = [
-        "price",
-        "rsi",
-        "ma21",
-        "ma200",
-    ]
-
-    for field in required:
-
-        if field not in data:
-            return False
-
-        if data[field] is None:
-            return False
-
-        if safe_float(data[field]) is None:
-            return False
-
-    return True
-
-
-# ==========================================================
-# ANÁLISE DA MA21
-# ==========================================================
-
-def analyze_ma21(price, ma21):
-    """
-    Analisa a posição do preço em relação à MA21.
-    """
-
-    if price > ma21:
-
-        return {
-
-            "signal": "POSITIVO",
-
-            "confirmation": True,
-
-            "reason":
-                "Preço acima da MA21, "
-                "indicando força de curto prazo.",
-        }
-
-    if price < ma21:
-
-        return {
-
-            "signal": "NEGATIVO",
-
-            "confirmation": True,
-
-            "reason":
-                "Preço abaixo da MA21, "
-                "indicando fraqueza de curto prazo.",
-        }
-
-    return {
-
-        "signal": "NEUTRO",
-
-        "confirmation": False,
-
-        "reason":
-            "Preço alinhado à MA21.",
-    }
-
-
-# ==========================================================
-# ANÁLISE DA MA200
-# ==========================================================
-
-def analyze_ma200(price, ma200):
-    """
-    Analisa a posição do preço em relação à MA200.
-    """
-
-    if price > ma200:
-
-        return {
-
-            "signal": "POSITIVO",
-
-            "confirmation": True,
-
-            "reason":
-                "Preço acima da MA200, "
-                "indicando tendência estrutural positiva.",
-        }
-
-    if price < ma200:
-
-        return {
-
-            "signal": "NEGATIVO",
-
-            "confirmation": True,
-
-            "reason":
-                "Preço abaixo da MA200, "
-                "indicando tendência estrutural negativa.",
-        }
-
-    return {
-
-        "signal": "NEUTRO",
-
-        "confirmation": False,
-
-        "reason":
-            "Preço alinhado à MA200.",
-    }
-
-
-# ==========================================================
-# ANÁLISE DO RSI
-# ==========================================================
-
-def analyze_rsi(rsi):
-    """
-    Analisa o RSI.
-    """
-
-    if rsi <= RSI_OVERSOLD_DEFAULT:
-
-        return {
-
-            "signal": "POSITIVO",
-
-            "confirmation": True,
-
-            "status": "Sobrevenda",
-
-            "reason":
-                "RSI em região de sobrevenda, "
-                "podendo indicar recuperação.",
-        }
-
-    if rsi >= RSI_OVERBOUGHT_DEFAULT:
-
-        return {
-
-            "signal": "NEGATIVO",
-
-            "confirmation": True,
-
-            "status": "Sobrecompra",
-
-            "reason":
-                "RSI em região de sobrecompra, "
-                "indicando atenção para possível correção.",
-        }
-
-    return {
-
-        "signal": "NEUTRO",
-
-        "confirmation": False,
-
-        "status": "Neutro",
-
-        "reason":
-            "RSI em região neutra.",
-    }
 
 
 # ==========================================================
@@ -285,303 +89,154 @@ def determine_trend(
     ma200,
 ):
     """
-    Determina a tendência utilizando MA21 e MA200.
+    Determina a tendência principal do ativo.
+
+    Critérios:
+
+    Positiva:
+        preço acima da MA21 e MA200
+
+    Negativa:
+        preço abaixo da MA21 e MA200
+
+    Mista:
+        sinais divergentes
     """
 
+    price = _safe_float(price)
+    ma21 = _safe_float(ma21)
+    ma200 = _safe_float(ma200)
+
     if (
-        price > ma21
-        and price > ma200
+        price is None
+        or ma21 is None
+        or ma200 is None
     ):
+
+        return "Neutra"
+
+    above_ma21 = price > ma21
+    above_ma200 = price > ma200
+
+    below_ma21 = price < ma21
+    below_ma200 = price < ma200
+
+    if above_ma21 and above_ma200:
 
         return "Positiva"
 
-    if (
-        price < ma21
-        and price < ma200
-    ):
+    if below_ma21 and below_ma200:
 
         return "Negativa"
+
+    if (
+        above_ma21
+        and below_ma200
+    ):
+
+        return "Mista"
+
+    if (
+        below_ma21
+        and above_ma200
+    ):
+
+        return "Mista"
 
     return "Neutra"
 
 
 # ==========================================================
-# CONFIRMAÇÕES
+# STATUS DO RSI
 # ==========================================================
 
-def calculate_confirmations(
-    ma21_analysis,
-    ma200_analysis,
-    rsi_analysis,
-):
+def determine_rsi_status(rsi):
     """
-    Conta sinais positivos, negativos e neutros.
+    Classifica o RSI.
+
+    <= 30:
+        Sobrevenda
+
+    >= 70:
+        Sobrecompra
+
+    30-70:
+        Neutro
     """
 
-    analyses = [
+    rsi = _safe_float(rsi)
 
-        ma21_analysis,
-        ma200_analysis,
-        rsi_analysis,
+    if rsi is None:
 
-    ]
+        return "Indisponível"
 
-    positive = sum(
+    if rsi <= 30:
 
-        1
+        return "Sobrevenda"
 
-        for item in analyses
+    if rsi >= 70:
 
-        if item.get("signal")
-        == "POSITIVO"
+        return "Sobrecompra"
 
-    )
-
-    negative = sum(
-
-        1
-
-        for item in analyses
-
-        if item.get("signal")
-        == "NEGATIVO"
-
-    )
-
-    neutral = sum(
-
-        1
-
-        for item in analyses
-
-        if item.get("signal")
-        == "NEUTRO"
-
-    )
-
-    return {
-
-        "positive":
-            positive,
-
-        "negative":
-            negative,
-
-        "neutral":
-            neutral,
-
-    }
+    return "Neutro"
 
 
 # ==========================================================
-# FORÇA DO SINAL
+# NÍVEL DO SINAL
 # ==========================================================
 
-def determine_signal_strength(
-    score,
-    confirmations,
-    signal,
-):
+def determine_signal_level(score):
     """
     Determina a força do sinal.
     """
 
-    if signal == "NEUTRO":
+    score = _safe_float(
+        score,
+        50,
+    )
 
-        return {
+    if score >= 80:
 
-            "level":
-                "Aguardar",
+        return "Forte"
 
-            "icon":
-                "🟡",
+    if score >= 65:
 
-            "description":
-                "Indicadores sem confirmação "
-                "direcional suficiente.",
-        }
+        return "Moderado"
 
-    if (
-        score >= STRONG_SCORE
-        and confirmations >= STRONG_CONFIRMATIONS
-    ):
+    if score >= 50:
 
-        return {
+        return "Aguardar"
 
-            "level":
-                "Forte",
+    if score >= 35:
 
-            "icon":
-                "🟢",
+        return "Moderado"
 
-            "description":
-                "Sinal confirmado por múltiplos "
-                "indicadores.",
-        }
-
-    if (
-        score >= BUY_SCORE
-        and confirmations >= 1
-    ):
-
-        return {
-
-            "level":
-                "Moderado",
-
-            "icon":
-                "🟢",
-
-            "description":
-                "Sinal favorável com confirmação "
-                "técnica parcial.",
-        }
-
-    if (
-        score <= SELL_SCORE
-        and confirmations >= 1
-    ):
-
-        return {
-
-            "level":
-                "Moderado",
-
-            "icon":
-                "🔴",
-
-            "description":
-                "Sinal desfavorável com confirmação "
-                "técnica parcial.",
-        }
-
-    return {
-
-        "level":
-            "Fraco",
-
-        "icon":
-            "🟡",
-
-        "description":
-            "Existe sinal, mas a confirmação "
-            "técnica é limitada.",
-    }
+    return "Forte"
 
 
 # ==========================================================
-# CONFIANÇA
+# ÍCONE DO SINAL
 # ==========================================================
 
-def calculate_confidence(
-    score,
-    signal,
-    confirmations,
-    contradictions,
-    trend,
-):
+def determine_signal_icon(score):
     """
-    Calcula a confiança interna do modelo.
-
-    A confiança representa a consistência
-    dos indicadores disponíveis.
-
-    Não representa probabilidade de retorno.
+    Define o ícone visual do sinal.
     """
 
-    confidence = 50
-
-    # ------------------------------------------------------
-    # SCORE
-    # ------------------------------------------------------
-
-    if (
-        score >= 80
-        or score <= 20
-    ):
-
-        confidence += 20
-
-    elif (
-        score >= 65
-        or score <= 35
-    ):
-
-        confidence += 10
-
-    # ------------------------------------------------------
-    # CONFIRMAÇÕES
-    # ------------------------------------------------------
-
-    confidence += (
-        confirmations * 10
+    score = _safe_float(
+        score,
+        50,
     )
 
-    # ------------------------------------------------------
-    # CONTRADIÇÕES
-    # ------------------------------------------------------
+    if score >= 65:
 
-    confidence -= (
-        contradictions * 15
-    )
+        return "🟢"
 
-    # ------------------------------------------------------
-    # TENDÊNCIA
-    # ------------------------------------------------------
+    if score <= 35:
 
-    if signal == "POSITIVO":
+        return "🔴"
 
-        if trend == "Positiva":
-            confidence += 10
-
-        elif trend == "Negativa":
-            confidence -= 10
-
-    elif signal == "NEGATIVO":
-
-        if trend == "Negativa":
-            confidence += 10
-
-        elif trend == "Positiva":
-            confidence -= 10
-
-    # ------------------------------------------------------
-    # LIMITAÇÃO
-    # ------------------------------------------------------
-
-    confidence = max(
-        0,
-        min(
-            100,
-            int(round(confidence)),
-        ),
-    )
-
-    # ------------------------------------------------------
-    # CLASSIFICAÇÃO
-    # ------------------------------------------------------
-
-    if confidence >= 80:
-
-        label = "Alta"
-
-    elif confidence >= 60:
-
-        label = "Moderada"
-
-    else:
-
-        label = "Baixa"
-
-    return {
-
-        "value":
-            confidence,
-
-        "label":
-            label,
-
-    }
+    return "🟡"
 
 
 # ==========================================================
@@ -589,289 +244,343 @@ def calculate_confidence(
 # ==========================================================
 
 def determine_qualified_signal(
-    signal,
-    strength_level,
+    score,
+    trend,
 ):
     """
-    Define o sinal qualificado.
+    Gera o sinal operacional consolidado.
+
+    O Score continua sendo o principal
+    componente da decisão.
+
+    A tendência é utilizada como
+    confirmação contextual.
     """
 
-    if signal == "POSITIVO":
+    score = _safe_float(
+        score,
+        50,
+    )
 
-        if strength_level == "Forte":
-            return "COMPRA FORTE"
+    trend = _safe_text(
+        trend,
+        "Neutra",
+    )
 
-        if strength_level == "Moderado":
-            return "COMPRA"
+    if score >= 80:
 
-        return "COMPRA FRACA"
+        return "COMPRA"
 
-    if signal == "NEGATIVO":
+    if score >= 65:
 
-        if strength_level == "Forte":
-            return "VENDA FORTE"
+        if trend == "Negativa":
 
-        if strength_level == "Moderado":
-            return "VENDA"
+            return "COMPRA COM CAUTELA"
 
-        return "VENDA FRACA"
+        return "COMPRA"
+
+    if score <= 35:
+
+        return "VENDA"
+
+    if score < 50:
+
+        return "VENDA COM CAUTELA"
 
     return "AGUARDAR"
 
 
 # ==========================================================
-# RECOMENDAÇÃO OPERACIONAL
+# RECOMENDAÇÃO
 # ==========================================================
 
-def determine_operational_recommendation(
+def determine_recommendation(
     score,
-    signal,
-    strength_level,
-    confidence_label,
     trend,
-    confirmations,
-    contradictions,
+    volatility,
 ):
     """
-    Converte o sinal técnico em recomendação operacional.
+    Gera a recomendação final.
 
-    A recomendação é deliberadamente mais conservadora
-    que o sinal.
+    O score define a direção principal.
+    Tendência e volatilidade servem como
+    filtros de contexto.
     """
 
-    # ======================================================
-    # CENÁRIO POSITIVO
-    # ======================================================
+    score = _safe_float(
+        score,
+        50,
+    )
 
-    if signal == "POSITIVO":
+    volatility = _safe_float(
+        volatility,
+        0,
+    )
 
-        # ----------------------------------------------
-        # COMPRA FORTE
-        # ----------------------------------------------
+    trend = _safe_text(
+        trend,
+        "Neutra",
+    )
 
-        if (
-            strength_level == "Forte"
-            and confidence_label == "Alta"
-            and trend == "Positiva"
-            and confirmations >= 2
-            and contradictions == 0
-        ):
+    # ------------------------------------------------------
+    # Score muito forte
+    # ------------------------------------------------------
 
-            return {
+    if score >= 80:
 
-                "recommendation":
-                    "Compra",
+        if volatility >= 0.04:
 
-                "action":
-                    "Entrada favorável",
+            return "Compra com cautela"
 
-                "icon":
-                    "🟢",
+        return "Compra"
 
-                "reason":
-                    "Cenário positivo confirmado "
-                    "por múltiplos indicadores.",
-            }
+    # ------------------------------------------------------
+    # Score positivo
+    # ------------------------------------------------------
 
-        # ----------------------------------------------
-        # COMPRA MODERADA
-        # ----------------------------------------------
+    if score >= 65:
 
-        if (
-            strength_level in [
-                "Forte",
-                "Moderado",
-            ]
-            and confidence_label in [
-                "Alta",
-                "Moderada",
-            ]
-            and confirmations >= 1
-        ):
+        if trend == "Negativa":
 
-            return {
+            return "Aguardar confirmação"
 
-                "recommendation":
-                    "Compra Moderada",
+        if volatility >= 0.04:
 
-                "action":
-                    "Entrada com cautela",
+            return "Compra com cautela"
 
-                "icon":
-                    "🟢",
+        return "Compra"
 
-                "reason":
-                    "Cenário favorável, porém "
-                    "com confirmação parcial.",
-            }
+    # ------------------------------------------------------
+    # Score negativo
+    # ------------------------------------------------------
 
-        # ----------------------------------------------
-        # COMPRA FRACA
-        # ----------------------------------------------
+    if score <= 35:
 
-        return {
+        return "Venda"
 
-            "recommendation":
-                "Aguardar Confirmação",
+    # ------------------------------------------------------
+    # Zona intermediária
+    # ------------------------------------------------------
 
-            "action":
-                "Não antecipar entrada",
+    if score < 50:
 
-            "icon":
-                "🟡",
+        return "Venda com cautela"
 
-            "reason":
-                "O viés é positivo, mas a "
-                "confirmação ainda é insuficiente.",
-        }
-
-    # ======================================================
-    # CENÁRIO NEGATIVO
-    # ======================================================
-
-    if signal == "NEGATIVO":
-
-        # ----------------------------------------------
-        # VENDA FORTE
-        # ----------------------------------------------
-
-        if (
-            strength_level == "Forte"
-            and confidence_label == "Alta"
-            and trend == "Negativa"
-            and confirmations >= 2
-            and contradictions == 0
-        ):
-
-            return {
-
-                "recommendation":
-                    "Venda",
-
-                "action":
-                    "Redução de exposição",
-
-                "icon":
-                    "🔴",
-
-                "reason":
-                    "Cenário negativo confirmado "
-                    "por múltiplos indicadores.",
-            }
-
-        # ----------------------------------------------
-        # VENDA MODERADA
-        # ----------------------------------------------
-
-        if (
-            strength_level in [
-                "Forte",
-                "Moderado",
-            ]
-            and confidence_label in [
-                "Alta",
-                "Moderada",
-            ]
-            and confirmations >= 1
-        ):
-
-            return {
-
-                "recommendation":
-                    "Reduzir Exposição",
-
-                "action":
-                    "Reduzir risco",
-
-                "icon":
-                    "🔴",
-
-                "reason":
-                    "Cenário desfavorável com "
-                    "confirmação parcial.",
-            }
-
-        # ----------------------------------------------
-        # VENDA FRACA
-        # ----------------------------------------------
-
-        return {
-
-            "recommendation":
-                "Aguardar Confirmação",
-
-            "action":
-                "Evitar decisão precipitada",
-
-            "icon":
-                "🟡",
-
-            "reason":
-                "O viés é negativo, mas a "
-                "confirmação ainda é insuficiente.",
-        }
-
-    # ======================================================
-    # CENÁRIO NEUTRO
-    # ======================================================
-
-    return {
-
-        "recommendation":
-            "Aguardar",
-
-        "action":
-            "Sem ação",
-
-        "icon":
-            "🟡",
-
-        "reason":
-            "Os indicadores não apresentam "
-            "direção suficientemente clara.",
-    }
+    return "Aguardar"
 
 
 # ==========================================================
-# RISCO
+# GESTÃO DE RISCO
 # ==========================================================
 
 def determine_risk(
+    volatility,
     score,
-    signal,
     trend,
-    confirmations,
-    contradictions,
 ):
     """
-    Determina o nível de risco da leitura.
+    Classifica o risco operacional.
+
+    Volatilidade:
+        < 2%   = Baixo
+        < 4%   = Moderado
+        >= 4%  = Alto
+
+    Divergência entre Score e tendência
+    pode elevar o risco.
     """
 
-    if signal == "NEUTRO":
+    volatility = _safe_float(
+        volatility,
+        0,
+    )
 
-        return "Moderado"
+    score = _safe_float(
+        score,
+        50,
+    )
+
+    trend = _safe_text(
+        trend,
+        "Neutra",
+    )
+
+    # ------------------------------------------------------
+    # Volatilidade
+    # ------------------------------------------------------
+
+    if volatility >= 0.04:
+
+        risk = "Alto"
+
+    elif volatility >= 0.02:
+
+        risk = "Moderado"
+
+    else:
+
+        risk = "Baixo"
+
+    # ------------------------------------------------------
+    # Divergência
+    # ------------------------------------------------------
+
+    divergence = (
+
+        (
+            score >= 65
+            and trend == "Negativa"
+        )
+
+        or
+
+        (
+            score <= 35
+            and trend == "Positiva"
+        )
+
+    )
+
+    if divergence:
+
+        if risk == "Baixo":
+
+            risk = "Moderado"
+
+        elif risk == "Moderado":
+
+            risk = "Alto"
+
+    return risk
+
+
+# ==========================================================
+# JUSTIFICATIVAS
+# ==========================================================
+
+def build_reasons(
+    price,
+    ma21,
+    ma200,
+    rsi,
+    trend,
+    risk,
+):
+    """
+    Gera as justificativas utilizadas
+    na seção de análise detalhada.
+    """
+
+    reasons = []
+
+    price = _safe_float(price)
+    ma21 = _safe_float(ma21)
+    ma200 = _safe_float(ma200)
+    rsi = _safe_float(rsi)
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
 
     if (
-        signal == "POSITIVO"
-        and trend == "Positiva"
-        and confirmations >= 2
-        and contradictions == 0
-        and score >= 80
+        price is not None
+        and ma21 is not None
     ):
 
-        return "Baixo"
+        if price > ma21:
+
+            reasons.append(
+                "O preço está acima da MA21, "
+                "indicando força de curto prazo."
+            )
+
+        elif price < ma21:
+
+            reasons.append(
+                "O preço está abaixo da MA21, "
+                "indicando pressão no curto prazo."
+            )
+
+        else:
+
+            reasons.append(
+                "O preço está alinhado à MA21."
+            )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
 
     if (
-        signal == "NEGATIVO"
-        and trend == "Negativa"
-        and confirmations >= 2
-        and contradictions == 0
-        and score <= 20
+        price is not None
+        and ma200 is not None
     ):
 
-        return "Alto"
+        if price > ma200:
 
-    return "Moderado"
+            reasons.append(
+                "O preço está acima da MA200, "
+                "favorecendo a tendência de longo prazo."
+            )
+
+        elif price < ma200:
+
+            reasons.append(
+                "O preço está abaixo da MA200, "
+                "indicando fraqueza em relação à tendência "
+                "de longo prazo."
+            )
+
+        else:
+
+            reasons.append(
+                "O preço está alinhado à MA200."
+            )
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    if rsi is not None:
+
+        if rsi <= 30:
+
+            reasons.append(
+                f"RSI em {rsi:.2f}, "
+                "indicando região de sobrevenda."
+            )
+
+        elif rsi >= 70:
+
+            reasons.append(
+                f"RSI em {rsi:.2f}, "
+                "indicando região de sobrecompra."
+            )
+
+        else:
+
+            reasons.append(
+                f"RSI em {rsi:.2f}, "
+                "permanecendo em região neutra."
+            )
+
+    # ------------------------------------------------------
+    # TENDÊNCIA
+    # ------------------------------------------------------
+
+    reasons.append(
+        f"Tendência técnica identificada: {trend}."
+    )
+
+    # ------------------------------------------------------
+    # RISCO
+    # ------------------------------------------------------
+
+    reasons.append(
+        f"Nível de risco operacional: {risk}."
+    )
+
+    return reasons
 
 
 # ==========================================================
@@ -880,57 +589,54 @@ def determine_risk(
 
 def build_executive_summary(
     asset,
+    price,
     score,
     trend,
-    signal,
+    risk,
     qualified_signal,
     recommendation,
-    confidence_label,
-    risk,
+    rsi,
 ):
     """
-    Gera o resumo executivo.
+    Constrói o resumo executivo apresentado
+    no Dashboard.
     """
 
-    asset = safe_text(
+    asset = _safe_text(
         asset,
         "Ativo",
     )
 
-    if signal == "POSITIVO":
+    price = _safe_float(
+        price,
+        0,
+    )
 
-        return (
-            f"{asset} apresenta viés técnico positivo, "
-            f"com Score InvestIA de {score}/100 e "
-            f"tendência {trend.lower()}. "
-            f"O sinal é {qualified_signal.lower()}, "
-            f"com confiança {confidence_label.lower()}. "
-            f"Recomendação operacional: "
-            f"{recommendation.lower()}. "
-            f"Nível de risco: {risk.lower()}."
-        )
+    score = _safe_float(
+        score,
+        50,
+    )
 
-    if signal == "NEGATIVO":
+    rsi = _safe_float(
+        rsi,
+    )
 
-        return (
-            f"{asset} apresenta viés técnico negativo, "
-            f"com Score InvestIA de {score}/100 e "
-            f"tendência {trend.lower()}. "
-            f"O sinal é {qualified_signal.lower()}, "
-            f"com confiança {confidence_label.lower()}. "
-            f"Recomendação operacional: "
-            f"{recommendation.lower()}. "
-            f"Nível de risco: {risk.lower()}."
-        )
+    if rsi is None:
+
+        rsi_text = "indisponível"
+
+    else:
+
+        rsi_text = f"{rsi:.2f}"
 
     return (
-        f"{asset} apresenta cenário técnico neutro, "
-        f"com Score InvestIA de {score}/100 e "
-        f"tendência {trend.lower()}. "
-        f"Não há confirmação suficiente para uma "
-        f"decisão direcional. "
-        f"Recomendação operacional: "
-        f"{recommendation.lower()}."
+        f"{asset} apresenta Score InvestIA de "
+        f"{int(round(score))}/100, com tendência "
+        f"{trend.lower()} e sinal {qualified_signal}. "
+        f"A recomendação atual é {recommendation.lower()}, "
+        f"considerando risco {risk.lower()}. "
+        f"O preço analisado é de R$ {price:,.2f} "
+        f"e o RSI está em {rsi_text}."
     )
 
 
@@ -944,42 +650,118 @@ def analyze_asset(
 ):
     """
     Executa a análise completa do ativo.
+
+    Entrada esperada:
+
+    {
+        "price": float,
+        "rsi": float,
+        "ma21": float,
+        "ma200": float,
+        "volatility": float
+    }
+
+    Retorno compatível com o app.py:
+    
+        score
+        classification
+        signal
+        qualified_signal
+        signal_level
+        signal_icon
+        trend
+        recommendation
+        risk
+        rsi_status
+        reasons
+        breakdown
+        executive_summary
     """
 
     # ======================================================
     # VALIDAÇÃO
     # ======================================================
 
-    if not validate_analysis_data(data):
+    if data is None:
 
         raise ValueError(
-            "Dados insuficientes para realizar a análise."
+            "Dados não fornecidos para análise."
+        )
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise TypeError(
+            "Os dados da análise devem ser "
+            "fornecidos como dicionário."
+        )
+
+    required = [
+        "price",
+        "rsi",
+        "ma21",
+        "ma200",
+    ]
+
+    missing = []
+
+    for field in required:
+
+        value = data.get(
+            field
+        )
+
+        if value is None:
+
+            missing.append(
+                field
+            )
+
+    if missing:
+
+        raise ValueError(
+            "Dados insuficientes para análise: "
+            + ", ".join(missing)
         )
 
     # ======================================================
-    # DADOS
+    # NORMALIZAÇÃO
     # ======================================================
 
-    price = safe_float(
+    price = _safe_float(
         data.get("price")
     )
 
-    rsi = safe_float(
+    rsi = _safe_float(
         data.get("rsi")
     )
 
-    ma21 = safe_float(
+    ma21 = _safe_float(
         data.get("ma21")
     )
 
-    ma200 = safe_float(
+    ma200 = _safe_float(
         data.get("ma200")
     )
 
-    volatility = safe_float(
+    volatility = _safe_float(
         data.get("volatility"),
         0,
     )
+
+    if (
+        price is None
+        or rsi is None
+        or ma21 is None
+        or ma200 is None
+    ):
+
+        raise ValueError(
+            "Um ou mais indicadores possuem "
+            "valores inválidos."
+        )
 
     # ======================================================
     # SCORE
@@ -996,7 +778,7 @@ def analyze_asset(
 
     score = score_details.get(
         "score",
-        0,
+        50,
     )
 
     classification = score_details.get(
@@ -1004,34 +786,14 @@ def analyze_asset(
         "NEUTRO",
     )
 
-    base_signal = normalize_signal(
-        score_details.get(
-            "signal",
-            "NEUTRO",
-        )
+    signal = score_details.get(
+        "signal",
+        "NEUTRO",
     )
 
     breakdown = score_details.get(
         "breakdown",
         {},
-    )
-
-    # ======================================================
-    # INDICADORES
-    # ======================================================
-
-    ma21_analysis = analyze_ma21(
-        price,
-        ma21,
-    )
-
-    ma200_analysis = analyze_ma200(
-        price,
-        ma200,
-    )
-
-    rsi_analysis = analyze_rsi(
-        rsi,
     )
 
     # ======================================================
@@ -1045,284 +807,99 @@ def analyze_asset(
     )
 
     # ======================================================
-    # CONFIRMAÇÕES
+    # RSI
     # ======================================================
 
-    confirmation_data = calculate_confirmations(
-        ma21_analysis,
-        ma200_analysis,
-        rsi_analysis,
+    rsi_status = determine_rsi_status(
+        rsi
     )
-
-    positive_confirmations = (
-        confirmation_data["positive"]
-    )
-
-    negative_confirmations = (
-        confirmation_data["negative"]
-    )
-
-    neutral_confirmations = (
-        confirmation_data["neutral"]
-    )
-
-    # ======================================================
-    # CONTRADIÇÕES
-    # ======================================================
-
-    if base_signal == "POSITIVO":
-
-        contradictions = (
-            negative_confirmations
-        )
-
-    elif base_signal == "NEGATIVO":
-
-        contradictions = (
-            positive_confirmations
-        )
-
-    else:
-
-        contradictions = 0
-
-    # ======================================================
-    # SINAL BASE
-    # ======================================================
-
-    signal = base_signal
-
-    # ------------------------------------------------------
-    # Duas ou mais contradições anulam o sinal.
-    # ------------------------------------------------------
-
-    if contradictions >= 2:
-
-        signal = "NEUTRO"
-
-    # ======================================================
-    # CONFIRMAÇÕES DO SINAL
-    # ======================================================
-
-    if signal == "POSITIVO":
-
-        confirmations = (
-            positive_confirmations
-        )
-
-    elif signal == "NEGATIVO":
-
-        confirmations = (
-            negative_confirmations
-        )
-
-    else:
-
-        confirmations = max(
-            positive_confirmations,
-            negative_confirmations,
-        )
-
-    # ======================================================
-    # FORÇA DO SINAL
-    # ======================================================
-
-    strength = determine_signal_strength(
-        score,
-        confirmations,
-        signal,
-    )
-
-    signal_level = strength[
-        "level"
-    ]
-
-    signal_icon = strength[
-        "icon"
-    ]
-
-    # ======================================================
-    # CONFIANÇA
-    # ======================================================
-
-    confidence = calculate_confidence(
-        score,
-        signal,
-        confirmations,
-        contradictions,
-        trend,
-    )
-
-    confidence_value = confidence[
-        "value"
-    ]
-
-    confidence_label = confidence[
-        "label"
-    ]
 
     # ======================================================
     # SINAL QUALIFICADO
     # ======================================================
 
     qualified_signal = determine_qualified_signal(
-        signal,
-        signal_level,
+        score,
+        trend,
     )
 
     # ======================================================
-    # RECOMENDAÇÃO OPERACIONAL
+    # NÍVEL DO SINAL
     # ======================================================
 
-    operational = (
-        determine_operational_recommendation(
-            score,
-            signal,
-            signal_level,
-            confidence_label,
-            trend,
-            confirmations,
-            contradictions,
-        )
+    signal_level = determine_signal_level(
+        score
     )
 
-    recommendation = operational[
-        "recommendation"
-    ]
+    signal_icon = determine_signal_icon(
+        score
+    )
 
-    action = operational[
-        "action"
-    ]
+    # ======================================================
+    # RECOMENDAÇÃO
+    # ======================================================
 
-    recommendation_icon = operational[
-        "icon"
-    ]
-
-    recommendation_reason = operational[
-        "reason"
-    ]
+    recommendation = determine_recommendation(
+        score,
+        trend,
+        volatility,
+    )
 
     # ======================================================
     # RISCO
     # ======================================================
 
     risk = determine_risk(
+        volatility,
         score,
-        signal,
         trend,
-        confirmations,
-        contradictions,
-    )
-
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    rsi_status = rsi_analysis.get(
-        "status",
-        "Neutro",
     )
 
     # ======================================================
     # JUSTIFICATIVAS
     # ======================================================
 
-    reasons = [
-
-        ma21_analysis[
-            "reason"
-        ],
-
-        ma200_analysis[
-            "reason"
-        ],
-
-        rsi_analysis[
-            "reason"
-        ],
-
-    ]
-
-    # ------------------------------------------------------
-    # CONFIRMAÇÃO
-    # ------------------------------------------------------
-
-    if signal == "POSITIVO":
-
-        reasons.append(
-            f"{positive_confirmations} indicador(es) "
-            f"apresentam confirmação positiva."
-        )
-
-    elif signal == "NEGATIVO":
-
-        reasons.append(
-            f"{negative_confirmations} indicador(es) "
-            f"apresentam confirmação negativa."
-        )
-
-    else:
-
-        reasons.append(
-            "Não existe confirmação direcional "
-            "suficiente para uma entrada."
-        )
-
-    # ------------------------------------------------------
-    # CONTRADIÇÕES
-    # ------------------------------------------------------
-
-    if contradictions > 0:
-
-        reasons.append(
-            f"Foram identificada(s) "
-            f"{contradictions} contradição(ões) "
-            f"em relação ao sinal principal."
-        )
+    reasons = build_reasons(
+        price,
+        ma21,
+        ma200,
+        rsi,
+        trend,
+        risk,
+    )
 
     # ======================================================
     # RESUMO EXECUTIVO
     # ======================================================
 
-    executive_summary = (
-        build_executive_summary(
-            asset,
-            score,
-            trend,
-            signal,
-            qualified_signal,
-            recommendation,
-            confidence_label,
-            risk,
-        )
+    executive_summary = build_executive_summary(
+        asset,
+        price,
+        score,
+        trend,
+        risk,
+        qualified_signal,
+        recommendation,
+        rsi,
     )
 
     # ======================================================
-    # RETORNO
+    # RETORNO FINAL
     # ======================================================
 
     return {
 
-        # --------------------------------------------------
-        # ATIVO
-        # --------------------------------------------------
-
         "asset":
             asset,
 
-        # --------------------------------------------------
-        # SCORE
-        # --------------------------------------------------
+        "price":
+            price,
 
         "score":
             score,
 
         "classification":
             classification,
-
-        # --------------------------------------------------
-        # SINAL
-        # --------------------------------------------------
 
         "signal":
             signal,
@@ -1336,142 +913,62 @@ def analyze_asset(
         "signal_icon":
             signal_icon,
 
-        # --------------------------------------------------
-        # CONFIANÇA
-        # --------------------------------------------------
-
-        "confidence":
-            confidence_value,
-
-        "confidence_value":
-            confidence_value,
-
-        "confidence_label":
-            confidence_label,
-
-        # --------------------------------------------------
-        # TENDÊNCIA
-        # --------------------------------------------------
-
         "trend":
             trend,
-
-        "tendencia":
-            trend,
-
-        # --------------------------------------------------
-        # RECOMENDAÇÃO
-        # --------------------------------------------------
 
         "recommendation":
             recommendation,
 
-        "recomendacao":
-            recommendation,
-
-        "recommendation_icon":
-            recommendation_icon,
-
-        "recommendation_action":
-            action,
-
-        "recommendation_reason":
-            recommendation_reason,
-
-        # --------------------------------------------------
-        # RISCO
-        # --------------------------------------------------
-
         "risk":
             risk,
-
-        "risco":
-            risk,
-
-        # --------------------------------------------------
-        # RSI
-        # --------------------------------------------------
 
         "rsi_status":
             rsi_status,
 
-        # --------------------------------------------------
-        # CONFIRMAÇÕES
-        # --------------------------------------------------
-
-        "confirmations":
-            confirmations,
-
-        "positive_confirmations":
-            positive_confirmations,
-
-        "negative_confirmations":
-            negative_confirmations,
-
-        "neutral_confirmations":
-            neutral_confirmations,
-
-        "contradictions":
-            contradictions,
-
-        # --------------------------------------------------
-        # INDICADORES
-        # --------------------------------------------------
-
-        "indicator_analysis": {
-
-            "ma21":
-                ma21_analysis,
-
-            "ma200":
-                ma200_analysis,
-
-            "rsi":
-                rsi_analysis,
-
-        },
-
-        # --------------------------------------------------
-        # VOLATILIDADE
-        # --------------------------------------------------
-
-        "volatility":
-            volatility,
-
-        # --------------------------------------------------
-        # JUSTIFICATIVAS
-        # --------------------------------------------------
-
         "reasons":
             reasons,
-
-        "justificativas":
-            reasons,
-
-        # --------------------------------------------------
-        # BREAKDOWN
-        # --------------------------------------------------
 
         "breakdown":
             breakdown,
 
-        # --------------------------------------------------
-        # RESUMO EXECUTIVO
-        # --------------------------------------------------
-
         "executive_summary":
             executive_summary,
+
+        "indicators": {
+
+            "price":
+                price,
+
+            "ma21":
+                ma21,
+
+            "ma200":
+                ma200,
+
+            "rsi":
+                rsi,
+
+            "volatility":
+                volatility,
+
+        },
 
     }
 
 
 # ==========================================================
-# RESUMO DO SINAL
+# COMPATIBILIDADE
 # ==========================================================
 
-def get_signal_summary(result):
+def get_analysis_summary(
+    result,
+):
     """
-    Retorna somente os principais dados do sinal.
+    Retorna somente os principais dados
+    da análise.
+
+    Função auxiliar para futuras versões
+    do Dashboard.
     """
 
     if not isinstance(
@@ -1485,68 +982,35 @@ def get_signal_summary(result):
 
         "score":
             result.get(
-                "score",
-                0,
+                "score"
             ),
 
         "classification":
             result.get(
-                "classification",
-                "NEUTRO",
+                "classification"
             ),
 
         "signal":
             result.get(
-                "signal",
-                "NEUTRO",
-            ),
-
-        "qualified_signal":
-            result.get(
                 "qualified_signal",
-                "AGUARDAR",
-            ),
-
-        "signal_level":
-            result.get(
-                "signal_level",
-                "Aguardar",
-            ),
-
-        "confidence":
-            result.get(
-                "confidence",
-                0,
-            ),
-
-        "confidence_label":
-            result.get(
-                "confidence_label",
-                "Baixa",
+                result.get(
+                    "signal"
+                ),
             ),
 
         "trend":
             result.get(
-                "trend",
-                "Neutra",
-            ),
-
-        "recommendation":
-            result.get(
-                "recommendation",
-                "Aguardar",
-            ),
-
-        "recommendation_action":
-            result.get(
-                "recommendation_action",
-                "Sem ação",
+                "trend"
             ),
 
         "risk":
             result.get(
-                "risk",
-                "Moderado",
+                "risk"
+            ),
+
+        "recommendation":
+            result.get(
+                "recommendation"
             ),
 
     }
