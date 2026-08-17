@@ -3,7 +3,7 @@ InvestIA PRO
 Gráficos
 
 Versão: v0.6
-Fase: 2.7.3 - Alertas Visuais e Indicadores
+Fase: 2.8.4 - Consolidação do Dashboard Executivo
 """
 
 import pandas as pd
@@ -11,42 +11,62 @@ import plotly.graph_objects as go
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
+# PREPARAÇÃO DO HISTÓRICO
 # ==========================================================
-
-def _find_column(df, candidates):
-    """
-    Localiza uma coluna existente no DataFrame.
-
-    Aceita diferentes padrões de nomenclatura.
-    """
-
-    if df is None:
-        return None
-
-    for column in candidates:
-
-        if column in df.columns:
-            return column
-
-    return None
-
 
 def _prepare_history(history):
     """
-    Prepara o histórico para construção do gráfico.
+    Prepara o histórico para utilização nos gráficos.
+
+    Aceita:
+        - pandas.DataFrame
+        - dicionário contendo histórico
     """
 
     if history is None:
         return None
 
-    if not isinstance(history, pd.DataFrame):
+    # ------------------------------------------------------
+    # DataFrame
+    # ------------------------------------------------------
+
+    if isinstance(
+        history,
+        pd.DataFrame,
+    ):
+
+        df = history.copy()
+
+    # ------------------------------------------------------
+    # Dicionário
+    # ------------------------------------------------------
+
+    elif isinstance(
+        history,
+        dict,
+    ):
+
+        try:
+
+            df = pd.DataFrame(
+                history
+            )
+
+        except Exception:
+
+            return None
+
+    else:
+
         return None
 
-    if history.empty:
-        return None
+    # ------------------------------------------------------
+    # Verificação
+    # ------------------------------------------------------
 
-    data = history.copy()
+    if df.empty:
+
+        return None
 
     # ------------------------------------------------------
     # Índice
@@ -54,12 +74,32 @@ def _prepare_history(history):
 
     try:
 
-        data.index = pd.to_datetime(
-            data.index
-        )
+        if not isinstance(
+            df.index,
+            pd.DatetimeIndex,
+        ):
+
+            df.index = pd.to_datetime(
+                df.index,
+                errors="coerce",
+            )
 
     except Exception:
+
         pass
+
+    # ------------------------------------------------------
+    # Remover datas inválidas
+    # ------------------------------------------------------
+
+    if isinstance(
+        df.index,
+        pd.DatetimeIndex,
+    ):
+
+        df = df[
+            ~df.index.isna()
+        ]
 
     # ------------------------------------------------------
     # Ordenação
@@ -67,432 +107,151 @@ def _prepare_history(history):
 
     try:
 
-        data = data.sort_index()
+        df = df.sort_index()
 
     except Exception:
+
         pass
 
-    return data
-
-
-def _calculate_moving_average(
-    history,
-    window,
-):
-    """
-    Calcula uma média móvel diretamente do histórico.
-    """
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return None
-
-    try:
-
-        return history[
-            close_column
-        ].rolling(
-            window=window
-        ).mean()
-
-    except Exception:
-
-        return None
-
-
-def _add_price_trace(
-    fig,
-    history,
-):
-    """
-    Adiciona a série de preço.
-    """
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return False
-
-    fig.add_trace(
-        go.Scatter(
-            x=history.index,
-            y=history[close_column],
-            mode="lines",
-            name="Preço",
-            line=dict(
-                width=2,
-            ),
-            hovertemplate=(
-                "Data: %{x|%d/%m/%Y}"
-                "<br>Preço: R$ %{y:.2f}"
-                "<extra></extra>"
-            ),
-        )
-    )
-
-    return True
-
-
-def _add_ma21_trace(
-    fig,
-    history,
-):
-    """
-    Adiciona a média móvel de 21 períodos.
-    """
-
-    ma21 = _calculate_moving_average(
-        history,
-        21,
-    )
-
-    if ma21 is None:
-        return False
-
-    fig.add_trace(
-        go.Scatter(
-            x=history.index,
-            y=ma21,
-            mode="lines",
-            name="MA21",
-            line=dict(
-                dash="dot",
-                width=1.5,
-            ),
-            hovertemplate=(
-                "Data: %{x|%d/%m/%Y}"
-                "<br>MA21: R$ %{y:.2f}"
-                "<extra></extra>"
-            ),
-        )
-    )
-
-    return True
-
-
-def _add_ma200_trace(
-    fig,
-    history,
-):
-    """
-    Adiciona a média móvel de 200 períodos.
-    """
-
-    ma200 = _calculate_moving_average(
-        history,
-        200,
-    )
-
-    if ma200 is None:
-        return False
-
-    fig.add_trace(
-        go.Scatter(
-            x=history.index,
-            y=ma200,
-            mode="lines",
-            name="MA200",
-            line=dict(
-                dash="dash",
-                width=1.5,
-            ),
-            hovertemplate=(
-                "Data: %{x|%d/%m/%Y}"
-                "<br>MA200: R$ %{y:.2f}"
-                "<extra></extra>"
-            ),
-        )
-    )
-
-    return True
-
-
-def _add_current_price_line(
-    fig,
-    history,
-):
-    """
-    Adiciona uma referência horizontal
-    para o último preço.
-    """
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return
-
-    try:
-
-        current_price = float(
-            history[
-                close_column
-            ].dropna().iloc[-1]
-        )
-
-    except Exception:
-
-        return
-
-    fig.add_hline(
-        y=current_price,
-        line_dash="dot",
-        annotation_text=(
-            f"Preço atual: R$ {current_price:.2f}"
-        ),
-        annotation_position="top right",
-    )
-
-
-def _add_crossing_alert(
-    fig,
-    history,
-):
-    """
-    Identifica visualmente quando o preço
-    cruza a MA21.
-
-    A função utiliza o último ponto disponível.
-    """
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return
-
-    ma21 = _calculate_moving_average(
-        history,
-        21,
-    )
-
-    if ma21 is None:
-        return
-
-    try:
-
-        valid = pd.DataFrame(
-            {
-                "price": history[
-                    close_column
-                ],
-                "ma21": ma21,
-            }
-        ).dropna()
-
-        if len(valid) < 2:
-            return
-
-        previous = valid.iloc[-2]
-        current = valid.iloc[-1]
-
-        crossed_up = (
-            previous["price"]
-            <= previous["ma21"]
-            and
-            current["price"]
-            > current["ma21"]
-        )
-
-        crossed_down = (
-            previous["price"]
-            >= previous["ma21"]
-            and
-            current["price"]
-            < current["ma21"]
-        )
-
-        if crossed_up:
-
-            fig.add_annotation(
-                x=valid.index[-1],
-                y=current["price"],
-                text="⬆ Cruzamento MA21",
-                showarrow=True,
-                arrowhead=2,
-                ax=0,
-                ay=-40,
-            )
-
-        elif crossed_down:
-
-            fig.add_annotation(
-                x=valid.index[-1],
-                y=current["price"],
-                text="⬇ Cruzamento MA21",
-                showarrow=True,
-                arrowhead=2,
-                ax=0,
-                ay=40,
-            )
-
-    except Exception:
-
-        return
-
-
-def _add_trend_annotation(
-    fig,
-    history,
-):
-    """
-    Adiciona uma indicação simples da tendência
-    com base no preço versus MA21 e MA200.
-    """
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return
-
-    ma21 = _calculate_moving_average(
-        history,
-        21,
-    )
-
-    ma200 = _calculate_moving_average(
-        history,
-        200,
-    )
-
-    if ma21 is None or ma200 is None:
-        return
-
-    try:
-
-        data = pd.DataFrame(
-            {
-                "price": history[
-                    close_column
-                ],
-                "ma21": ma21,
-                "ma200": ma200,
-            }
-        ).dropna()
-
-        if data.empty:
-            return
-
-        last = data.iloc[-1]
-
-        price = float(
-            last["price"]
-        )
-
-        ma21_value = float(
-            last["ma21"]
-        )
-
-        ma200_value = float(
-            last["ma200"]
-        )
-
-        if (
-            price > ma21_value
-            and
-            price > ma200_value
-        ):
-
-            trend = "Tendência: POSITIVA"
-
-        elif (
-            price < ma21_value
-            and
-            price < ma200_value
-        ):
-
-            trend = "Tendência: NEGATIVA"
-
-        else:
-
-            trend = "Tendência: MODERADA"
-
-        fig.add_annotation(
-            x=1,
-            y=1,
-            xref="paper",
-            yref="paper",
-            text=trend,
-            showarrow=False,
-            xanchor="right",
-            yanchor="top",
-        )
-
-    except Exception:
-
-        return
+    return df
 
 
 # ==========================================================
-# GRÁFICO PRINCIPAL
+# LOCALIZAÇÃO DE COLUNAS
+# ==========================================================
+
+def _find_column(
+    dataframe,
+    names,
+):
+    """
+    Localiza uma coluna utilizando possíveis
+    nomes alternativos.
+    """
+
+    if dataframe is None:
+
+        return None
+
+    columns = list(
+        dataframe.columns
+    )
+
+    # ------------------------------------------------------
+    # Correspondência exata
+    # ------------------------------------------------------
+
+    for name in names:
+
+        if name in columns:
+
+            return name
+
+    # ------------------------------------------------------
+    # Correspondência case insensitive
+    # ------------------------------------------------------
+
+    normalized = {
+        str(column).lower(): column
+        for column in columns
+    }
+
+    for name in names:
+
+        key = str(
+            name
+        ).lower()
+
+        if key in normalized:
+
+            return normalized[key]
+
+    return None
+
+
+# ==========================================================
+# GRÁFICO DE PREÇO
 # ==========================================================
 
 def create_price_chart(
     history,
-    indicators=None,
 ):
     """
-    Cria o gráfico principal do ativo.
+    Cria o gráfico principal de evolução do preço.
 
-    Parâmetros
-    ----------
-    history : pandas.DataFrame
-        Histórico de preços.
+    O gráfico utiliza o fechamento do ativo.
 
-    indicators : dict, opcional
-        Indicadores técnicos.
-
-    Retorno
-    -------
-    plotly.graph_objects.Figure
+    Retorno:
+        plotly.graph_objects.Figure
+        ou None quando não houver dados válidos.
     """
 
-    history = _prepare_history(
+    # ======================================================
+    # PREPARAÇÃO
+    # ======================================================
+
+    df = _prepare_history(
         history
     )
 
-    if history is None:
+    if df is None:
+
         return None
 
+    # ======================================================
+    # COLUNA DE FECHAMENTO
+    # ======================================================
+
+    close_column = _find_column(
+        df,
+        [
+            "Close",
+            "close",
+            "Adj Close",
+            "adj close",
+            "Preço",
+            "price",
+        ],
+    )
+
+    if close_column is None:
+
+        return None
+
+    # ======================================================
+    # CONVERSÃO NUMÉRICA
+    # ======================================================
+
+    try:
+
+        prices = pd.to_numeric(
+            df[close_column],
+            errors="coerce",
+        )
+
+    except Exception:
+
+        return None
+
+    valid = prices.notna()
+
+    if not valid.any():
+
+        return None
+
+    prices = prices[
+        valid
+    ]
+
+    # ======================================================
+    # DATAS
+    # ======================================================
+
+    dates = prices.index
+
+    if len(dates) == 0:
+
+        return None
 
     # ======================================================
     # FIGURA
@@ -500,173 +259,449 @@ def create_price_chart(
 
     fig = go.Figure()
 
-
-    # ======================================================
-    # PREÇO
-    # ======================================================
-
-    price_added = _add_price_trace(
-        fig,
-        history,
-    )
-
-    if not price_added:
-        return None
-
-
-    # ======================================================
-    # MA21
-    # ======================================================
-
-    _add_ma21_trace(
-        fig,
-        history,
-    )
-
-
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    _add_ma200_trace(
-        fig,
-        history,
-    )
-
-
-    # ======================================================
-    # PREÇO ATUAL
-    # ======================================================
-
-    _add_current_price_line(
-        fig,
-        history,
-    )
-
-
-    # ======================================================
-    # ALERTA DE CRUZAMENTO
-    # ======================================================
-
-    _add_crossing_alert(
-        fig,
-        history,
-    )
-
-
-    # ======================================================
-    # TENDÊNCIA
-    # ======================================================
-
-    _add_trend_annotation(
-        fig,
-        history,
-    )
-
-
-    # ======================================================
-    # LAYOUT
-    # ======================================================
-
-    fig.update_layout(
-        title="Evolução do preço e médias móveis",
-        xaxis_title="Data",
-        yaxis_title="Preço (R$)",
-        hovermode="x unified",
-        height=550,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
-        margin=dict(
-            l=20,
-            r=20,
-            t=80,
-            b=20,
-        ),
-    )
-
-
-    # ======================================================
-    # EIXO X
-    # ======================================================
-
-    fig.update_xaxes(
-        rangeslider_visible=False,
-    )
-
-
-    # ======================================================
-    # EIXO Y
-    # ======================================================
-
-    fig.update_yaxes(
-        fixedrange=False,
-    )
-
-
-    return fig
-
-
-# ==========================================================
-# GRÁFICO SIMPLIFICADO
-# ==========================================================
-
-def create_simple_price_chart(
-    history,
-):
-    """
-    Cria uma versão simplificada do gráfico.
-    """
-
-    history = _prepare_history(
-        history
-    )
-
-    if history is None:
-        return None
-
-    close_column = _find_column(
-        history,
-        [
-            "Close",
-            "close",
-            "Adj Close",
-            "adj_close",
-        ],
-    )
-
-    if close_column is None:
-        return None
-
-    fig = go.Figure()
-
     fig.add_trace(
         go.Scatter(
-            x=history.index,
-            y=history[close_column],
+            x=dates,
+            y=prices,
             mode="lines",
             name="Preço",
-            line=dict(
-                width=2,
-            ),
+            line={
+                "width": 2,
+            },
             hovertemplate=(
-                "Data: %{x|%d/%m/%Y}"
+                "<b>%{x|%d/%m/%Y}</b>"
                 "<br>Preço: R$ %{y:.2f}"
                 "<extra></extra>"
             ),
         )
     )
 
+    # ======================================================
+    # LAYOUT
+    # ======================================================
+
     fig.update_layout(
-        title="Evolução do preço",
+
+        title={
+            "text": "Evolução do preço",
+            "x": 0.01,
+        },
+
         xaxis_title="Data",
+
         yaxis_title="Preço (R$)",
+
         hovermode="x unified",
-        height=500,
+
+        template="plotly_white",
+
+        height=450,
+
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0,
+        },
+
+    )
+
+    # ======================================================
+    # EIXO X
+    # ======================================================
+
+    fig.update_xaxes(
+        showgrid=True,
+        rangeslider_visible=False,
+    )
+
+    # ======================================================
+    # EIXO Y
+    # ======================================================
+
+    fig.update_yaxes(
+        showgrid=True,
+        tickprefix="R$ ",
+        tickformat=",.2f",
     )
 
     return fig
+
+
+# ==========================================================
+# GRÁFICO COM MÉDIAS MÓVEIS
+# ==========================================================
+
+def create_price_ma_chart(
+    history,
+):
+    """
+    Cria gráfico de preço com MA21 e MA200.
+
+    Função preparada para utilização nas
+    próximas evoluções do Dashboard.
+    """
+
+    df = _prepare_history(
+        history
+    )
+
+    if df is None:
+
+        return None
+
+    close_column = _find_column(
+        df,
+        [
+            "Close",
+            "close",
+            "Adj Close",
+            "adj close",
+        ],
+    )
+
+    if close_column is None:
+
+        return None
+
+    try:
+
+        df["__close__"] = pd.to_numeric(
+            df[close_column],
+            errors="coerce",
+        )
+
+    except Exception:
+
+        return None
+
+    df = df[
+        df["__close__"].notna()
+    ]
+
+    if df.empty:
+
+        return None
+
+    # ======================================================
+    # MÉDIAS
+    # ======================================================
+
+    df["__ma21__"] = (
+        df["__close__"]
+        .rolling(
+            window=21,
+            min_periods=1,
+        )
+        .mean()
+    )
+
+    df["__ma200__"] = (
+        df["__close__"]
+        .rolling(
+            window=200,
+            min_periods=1,
+        )
+        .mean()
+    )
+
+    # ======================================================
+    # FIGURA
+    # ======================================================
+
+    fig = go.Figure()
+
+    # ------------------------------------------------------
+    # PREÇO
+    # ------------------------------------------------------
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["__close__"],
+            mode="lines",
+            name="Preço",
+            line={
+                "width": 2,
+            },
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b>"
+                "<br>Preço: R$ %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["__ma21__"],
+            mode="lines",
+            name="MA21",
+            line={
+                "width": 1.5,
+                "dash": "dot",
+            },
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b>"
+                "<br>MA21: R$ %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["__ma200__"],
+            mode="lines",
+            name="MA200",
+            line={
+                "width": 1.5,
+            },
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b>"
+                "<br>MA200: R$ %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    # ======================================================
+    # LAYOUT
+    # ======================================================
+
+    fig.update_layout(
+
+        title={
+            "text": "Preço x Médias Móveis",
+            "x": 0.01,
+        },
+
+        xaxis_title="Data",
+
+        yaxis_title="Preço (R$)",
+
+        hovermode="x unified",
+
+        template="plotly_white",
+
+        height=450,
+
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0,
+        },
+
+    )
+
+    fig.update_xaxes(
+        showgrid=True,
+        rangeslider_visible=False,
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+        tickprefix="R$ ",
+        tickformat=",.2f",
+    )
+
+    return fig
+
+
+# ==========================================================
+# GRÁFICO DE VOLUME
+# ==========================================================
+
+def create_volume_chart(
+    history,
+):
+    """
+    Cria gráfico de volume negociado.
+
+    Retorna None caso o histórico não contenha
+    volume válido.
+    """
+
+    df = _prepare_history(
+        history
+    )
+
+    if df is None:
+
+        return None
+
+    volume_column = _find_column(
+        df,
+        [
+            "Volume",
+            "volume",
+        ],
+    )
+
+    if volume_column is None:
+
+        return None
+
+    try:
+
+        volume = pd.to_numeric(
+            df[volume_column],
+            errors="coerce",
+        )
+
+    except Exception:
+
+        return None
+
+    valid = volume.notna()
+
+    if not valid.any():
+
+        return None
+
+    volume = volume[
+        valid
+    ]
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            x=volume.index,
+            y=volume,
+            name="Volume",
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b>"
+                "<br>Volume: %{y:,.0f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    fig.update_layout(
+
+        title={
+            "text": "Volume negociado",
+            "x": 0.01,
+        },
+
+        xaxis_title="Data",
+
+        yaxis_title="Volume",
+
+        template="plotly_white",
+
+        height=350,
+
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+
+    )
+
+    fig.update_xaxes(
+        showgrid=True,
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+    )
+
+    return fig
+
+
+# ==========================================================
+# GRÁFICO PRINCIPAL DO DASHBOARD
+# ==========================================================
+
+def create_dashboard_chart(
+    history,
+):
+    """
+    Alias do gráfico principal.
+
+    Mantém compatibilidade para futuras versões
+    do app.py.
+    """
+
+    return create_price_chart(
+        history
+    )
+
+
+# ==========================================================
+# VALIDAÇÃO DO GRÁFICO
+# ==========================================================
+
+def validate_chart_data(
+    history,
+):
+    """
+    Verifica se existe histórico utilizável
+    para geração dos gráficos.
+    """
+
+    df = _prepare_history(
+        history
+    )
+
+    if df is None:
+
+        return False
+
+    close_column = _find_column(
+        df,
+        [
+            "Close",
+            "close",
+            "Adj Close",
+            "adj close",
+        ],
+    )
+
+    if close_column is None:
+
+        return False
+
+    try:
+
+        close = pd.to_numeric(
+            df[close_column],
+            errors="coerce",
+        )
+
+    except Exception:
+
+        return False
+
+    return close.notna().any()
