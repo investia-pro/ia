@@ -3,7 +3,7 @@ InvestIA PRO
 Indicadores Técnicos
 
 Versão: v0.6
-Fase: 2.9.1 - Tratamento Robusto de Dados
+Fase: 2.9.4 - Validação de Consistência dos Indicadores
 """
 
 import math
@@ -12,18 +12,36 @@ import pandas as pd
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
+# CONFIGURAÇÕES
 # ==========================================================
 
-def _safe_float(value, default=None):
+RSI_MIN = 0.0
+RSI_MAX = 100.0
+
+MIN_PRICE = 0.0
+MIN_VOLATILITY = 0.0
+
+MA21_PERIOD = 21
+MA200_PERIOD = 200
+RSI_PERIOD = 14
+
+
+# ==========================================================
+# CONVERSÃO NUMÉRICA
+# ==========================================================
+
+def _safe_float(
+    value,
+    default=None,
+):
     """
     Converte um valor para float com segurança.
 
-    Retorna default quando o valor é:
-    - None
-    - NaN
-    - infinito
-    - não numérico
+    Retorna default quando:
+        - valor é None;
+        - valor não é numérico;
+        - valor é NaN;
+        - valor é infinito.
     """
 
     try:
@@ -33,7 +51,9 @@ def _safe_float(value, default=None):
 
         value = float(value)
 
-        if not math.isfinite(value):
+        if not math.isfinite(
+            value
+        ):
             return default
 
         return value
@@ -46,24 +66,53 @@ def _safe_float(value, default=None):
         return default
 
 
-def _clean_history(history):
+# ==========================================================
+# VALIDAÇÃO NUMÉRICA
+# ==========================================================
+
+def _is_valid_number(
+    value,
+):
+    """
+    Verifica se um valor é numérico,
+    finito e válido.
+    """
+
+    return (
+        _safe_float(
+            value
+        )
+        is not None
+    )
+
+
+# ==========================================================
+# LIMPEZA DO HISTÓRICO
+# ==========================================================
+
+def _clean_history(
+    history,
+):
     """
     Limpa e valida o histórico de preços.
 
-    Mantém somente linhas válidas e garante
-    que a coluna Close seja numérica.
+    Garante a existência da coluna Close
+    e remove valores inválidos.
     """
 
     if history is None:
+
         return None
 
     if not isinstance(
         history,
         pd.DataFrame,
     ):
+
         return None
 
     if history.empty:
+
         return None
 
     data = history.copy()
@@ -78,24 +127,27 @@ def _clean_history(history):
     ]
 
     # ------------------------------------------------------
-    # PROCURA DA COLUNA CLOSE
+    # LOCALIZAÇÃO DO CLOSE
     # ------------------------------------------------------
 
     close_column = None
 
     for column in data.columns:
 
-        if str(column).lower() == "close":
+        if str(
+            column
+        ).lower() == "close":
 
             close_column = column
 
             break
 
     if close_column is None:
+
         return None
 
     # ------------------------------------------------------
-    # CONVERSÃO DO CLOSE
+    # CONVERSÃO
     # ------------------------------------------------------
 
     data["Close"] = pd.to_numeric(
@@ -104,7 +156,7 @@ def _clean_history(history):
     )
 
     # ------------------------------------------------------
-    # REMOÇÃO DE VALORES INVÁLIDOS
+    # REMOÇÃO DE INFINITOS
     # ------------------------------------------------------
 
     data = data.replace(
@@ -115,15 +167,30 @@ def _clean_history(history):
         pd.NA,
     )
 
+    # ------------------------------------------------------
+    # REMOÇÃO DE CLOSE INVÁLIDO
+    # ------------------------------------------------------
+
     data = data.dropna(
-        subset=["Close"]
+        subset=[
+            "Close"
+        ]
     )
 
     # ------------------------------------------------------
-    # VALIDAÇÃO FINAL
+    # PREÇOS POSITIVOS
+    # ------------------------------------------------------
+
+    data = data[
+        data["Close"] > 0
+    ]
+
+    # ------------------------------------------------------
+    # VERIFICAÇÃO FINAL
     # ------------------------------------------------------
 
     if data.empty:
+
         return None
 
     # ------------------------------------------------------
@@ -150,16 +217,14 @@ def _calculate_moving_average(
     window,
 ):
     """
-    Calcula média móvel simples (SMA).
+    Calcula a Média Móvel Simples (SMA).
 
-    Retorna None caso não existam dados
-    suficientes para o cálculo.
+    Retorna None quando não existem dados
+    suficientes.
     """
 
     if close is None:
-        return None
 
-    if len(close) < window:
         return None
 
     try:
@@ -172,12 +237,15 @@ def _calculate_moving_average(
         series = series.dropna()
 
         if len(series) < window:
+
             return None
 
-        value = series.rolling(
+        result = series.rolling(
             window=window,
             min_periods=window,
-        ).mean().iloc[-1]
+        ).mean()
+
+        value = result.iloc[-1]
 
         return _safe_float(
             value
@@ -194,17 +262,16 @@ def _calculate_moving_average(
 
 def _calculate_rsi(
     close,
-    period=14,
+    period=RSI_PERIOD,
 ):
     """
-    Calcula o RSI utilizando o método
-    tradicional de ganhos e perdas médias.
+    Calcula o RSI.
 
-    Retorna None quando não existem dados
-    suficientes.
+    O resultado é limitado entre 0 e 100.
     """
 
     if close is None:
+
         return None
 
     try:
@@ -215,10 +282,11 @@ def _calculate_rsi(
         ).dropna()
 
         # --------------------------------------------------
-        # RSI necessita de pelo menos period + 1 preços
+        # DADOS INSUFICIENTES
         # --------------------------------------------------
 
         if len(series) < period + 1:
+
             return None
 
         delta = series.diff()
@@ -241,30 +309,30 @@ def _calculate_rsi(
             min_periods=period,
         ).mean()
 
-        gain = average_gain.iloc[-1]
-        loss = average_loss.iloc[-1]
-
         gain = _safe_float(
-            gain
+            average_gain.iloc[-1]
         )
 
         loss = _safe_float(
-            loss
+            average_loss.iloc[-1]
         )
 
         if gain is None:
+
             return None
 
         if loss is None:
+
             return None
 
         # --------------------------------------------------
-        # Casos extremos
+        # MERCADO SEM PERDAS
         # --------------------------------------------------
 
         if loss == 0:
 
             if gain > 0:
+
                 return 100.0
 
             return 50.0
@@ -289,16 +357,17 @@ def _calculate_rsi(
         )
 
         if rsi is None:
+
             return None
 
         # --------------------------------------------------
-        # Limitação de segurança
+        # LIMITAÇÃO DE SEGURANÇA
         # --------------------------------------------------
 
         return max(
-            0.0,
+            RSI_MIN,
             min(
-                100.0,
+                RSI_MAX,
                 rsi,
             ),
         )
@@ -317,17 +386,12 @@ def _calculate_volatility(
 ):
     """
     Calcula a volatilidade histórica
-    utilizando o desvio padrão dos
-    retornos percentuais diários.
-
-    O resultado é decimal.
-
-    Exemplo:
-
-        0.02 = 2%
+    através do desvio padrão dos
+    retornos percentuais.
     """
 
     if close is None:
+
         return None
 
     try:
@@ -338,6 +402,7 @@ def _calculate_volatility(
         ).dropna()
 
         if len(series) < 2:
+
             return None
 
         returns = series.pct_change()
@@ -353,13 +418,24 @@ def _calculate_volatility(
         returns = returns.dropna()
 
         if returns.empty:
+
             return None
 
         volatility = returns.std()
 
-        return _safe_float(
+        volatility = _safe_float(
             volatility
         )
+
+        if volatility is None:
+
+            return None
+
+        if volatility < MIN_VOLATILITY:
+
+            return 0.0
+
+        return volatility
 
     except Exception:
 
@@ -374,11 +450,11 @@ def _get_last_price(
     close,
 ):
     """
-    Obtém o último preço válido
-    do histórico.
+    Obtém o último preço válido.
     """
 
     if close is None:
+
         return None
 
     try:
@@ -389,15 +465,356 @@ def _get_last_price(
         ).dropna()
 
         if series.empty:
+
             return None
 
-        return _safe_float(
+        value = _safe_float(
             series.iloc[-1]
         )
+
+        if value is None:
+
+            return None
+
+        if value <= MIN_PRICE:
+
+            return None
+
+        return value
 
     except Exception:
 
         return None
+
+
+# ==========================================================
+# VALIDAÇÃO DE CONSISTÊNCIA
+# ==========================================================
+
+def validate_indicator_consistency(
+    indicators,
+):
+    """
+    Valida a consistência dos indicadores
+    técnicos calculados.
+
+    Regras:
+
+        Preço:
+            > 0
+
+        MA21:
+            > 0
+
+        MA200:
+            > 0
+
+        RSI:
+            entre 0 e 100
+
+        Volatilidade:
+            >= 0
+    """
+
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+
+        return {
+
+            "valid": False,
+
+            "status": "INCONSISTENTE",
+
+            "status_icon": "🔴",
+
+            "invalid": [
+                "estrutura"
+            ],
+
+            "warnings": [],
+
+            "message":
+                "Estrutura dos indicadores inválida.",
+
+        }
+
+    invalid = []
+    warnings = []
+
+    # ======================================================
+    # PREÇO
+    # ======================================================
+
+    price = indicators.get(
+        "price"
+    )
+
+    if not _is_valid_number(
+        price
+    ):
+
+        invalid.append(
+            "price"
+        )
+
+    elif float(price) <= 0:
+
+        invalid.append(
+            "price"
+        )
+
+    # ======================================================
+    # MA21
+    # ======================================================
+
+    ma21 = indicators.get(
+        "ma21"
+    )
+
+    if ma21 is None:
+
+        warnings.append(
+            "ma21"
+        )
+
+    elif not _is_valid_number(
+        ma21
+    ):
+
+        invalid.append(
+            "ma21"
+        )
+
+    elif float(ma21) <= 0:
+
+        invalid.append(
+            "ma21"
+        )
+
+    # ======================================================
+    # MA200
+    # ======================================================
+
+    ma200 = indicators.get(
+        "ma200"
+    )
+
+    if ma200 is None:
+
+        warnings.append(
+            "ma200"
+        )
+
+    elif not _is_valid_number(
+        ma200
+    ):
+
+        invalid.append(
+            "ma200"
+        )
+
+    elif float(ma200) <= 0:
+
+        invalid.append(
+            "ma200"
+        )
+
+    # ======================================================
+    # RSI
+    # ======================================================
+
+    rsi = indicators.get(
+        "rsi"
+    )
+
+    if rsi is None:
+
+        invalid.append(
+            "rsi"
+        )
+
+    elif not _is_valid_number(
+        rsi
+    ):
+
+        invalid.append(
+            "rsi"
+        )
+
+    else:
+
+        rsi = float(
+            rsi
+        )
+
+        if (
+            rsi < RSI_MIN
+            or rsi > RSI_MAX
+        ):
+
+            invalid.append(
+                "rsi"
+            )
+
+    # ======================================================
+    # VOLATILIDADE
+    # ======================================================
+
+    volatility = indicators.get(
+        "volatility"
+    )
+
+    if volatility is None:
+
+        invalid.append(
+            "volatility"
+        )
+
+    elif not _is_valid_number(
+        volatility
+    ):
+
+        invalid.append(
+            "volatility"
+        )
+
+    elif float(volatility) < 0:
+
+        invalid.append(
+            "volatility"
+        )
+
+    # ======================================================
+    # CONSISTÊNCIA PREÇO x MÉDIAS
+    # ======================================================
+
+    if (
+        _is_valid_number(price)
+        and _is_valid_number(ma21)
+        and float(price) <= 0
+    ):
+
+        invalid.append(
+            "price"
+        )
+
+    if (
+        _is_valid_number(price)
+        and _is_valid_number(ma200)
+        and float(price) <= 0
+    ):
+
+        invalid.append(
+            "price"
+        )
+
+    # ======================================================
+    # REMOÇÃO DE DUPLICADOS
+    # ======================================================
+
+    invalid = list(
+        dict.fromkeys(
+            invalid
+        )
+    )
+
+    warnings = list(
+        dict.fromkeys(
+            warnings
+        )
+    )
+
+    # ======================================================
+    # STATUS
+    # ======================================================
+
+    if invalid:
+
+        return {
+
+            "valid": False,
+
+            "status":
+                "INCONSISTENTE",
+
+            "status_icon":
+                "🔴",
+
+            "invalid":
+                invalid,
+
+            "warnings":
+                warnings,
+
+            "message":
+                (
+                    "Foram encontrados "
+                    "indicadores com valores "
+                    "inconsistentes: "
+                    + ", ".join(
+                        invalid
+                    )
+                    + "."
+                ),
+
+        }
+
+    if warnings:
+
+        return {
+
+            "valid": True,
+
+            "status":
+                "PARCIAL",
+
+            "status_icon":
+                "🟡",
+
+            "invalid":
+                [],
+
+            "warnings":
+                warnings,
+
+            "message":
+                (
+                    "Os indicadores principais "
+                    "estão válidos, porém alguns "
+                    "indicadores não estão disponíveis: "
+                    + ", ".join(
+                        warnings
+                    )
+                    + "."
+                ),
+
+        }
+
+    return {
+
+        "valid": True,
+
+        "status":
+            "CONSISTENTE",
+
+        "status_icon":
+            "🟢",
+
+        "invalid":
+            [],
+
+        "warnings":
+            [],
+
+        "message":
+            (
+                "Todos os indicadores "
+                "foram validados com sucesso."
+            ),
+
+    }
 
 
 # ==========================================================
@@ -408,23 +825,12 @@ def calculate_indicators(
     market,
 ):
     """
-    Calcula os principais indicadores
-    técnicos utilizados pelo InvestIA PRO.
-
-    Indicadores:
-
-        - preço
-        - MA21
-        - MA200
-        - RSI
-        - volatilidade
-
-    O retorno mantém as chaves esperadas
-    pelo restante da aplicação.
+    Calcula os indicadores técnicos
+    utilizados pelo InvestIA PRO.
     """
 
     # ======================================================
-    # VALIDAÇÃO INICIAL
+    # VALIDAÇÃO DO MARKET
     # ======================================================
 
     if market is None:
@@ -433,28 +839,18 @@ def calculate_indicators(
             "Dados de mercado não fornecidos."
         )
 
-    # ======================================================
-    # COMPATIBILIDADE
-    # ======================================================
-    #
-    # O módulo espera um dicionário contendo
-    # o histórico em:
-    #
-    #     market["history"]
-    #
-    # Mantemos essa estrutura para compatibilidade
-    # com market.py e app.py.
-    #
-
     if not isinstance(
         market,
         dict,
     ):
 
         raise ValueError(
-            "Formato dos dados de mercado inválido. "
-            "Esperado um dicionário."
+            "Formato dos dados de mercado inválido."
         )
+
+    # ======================================================
+    # HISTÓRICO
+    # ======================================================
 
     history = market.get(
         "history"
@@ -467,7 +863,7 @@ def calculate_indicators(
         )
 
     # ======================================================
-    # LIMPEZA DO HISTÓRICO
+    # LIMPEZA
     # ======================================================
 
     history = _clean_history(
@@ -481,15 +877,17 @@ def calculate_indicators(
         )
 
     # ======================================================
-    # SÉRIE DE FECHAMENTO
+    # CLOSE
     # ======================================================
 
-    close = history["Close"]
+    close = history[
+        "Close"
+    ]
 
-    if close is None:
+    if close.empty:
 
         raise ValueError(
-            "Coluna de fechamento não encontrada."
+            "A série de fechamento está vazia."
         )
 
     # ======================================================
@@ -504,7 +902,7 @@ def calculate_indicators(
 
         raise ValueError(
             "Não foi possível determinar "
-            "o preço atual."
+            "um preço válido."
         )
 
     # ======================================================
@@ -513,7 +911,7 @@ def calculate_indicators(
 
     ma21 = _calculate_moving_average(
         close,
-        21,
+        MA21_PERIOD,
     )
 
     # ======================================================
@@ -522,7 +920,7 @@ def calculate_indicators(
 
     ma200 = _calculate_moving_average(
         close,
-        200,
+        MA200_PERIOD,
     )
 
     # ======================================================
@@ -531,7 +929,7 @@ def calculate_indicators(
 
     rsi = _calculate_rsi(
         close,
-        14,
+        RSI_PERIOD,
     )
 
     # ======================================================
@@ -543,7 +941,7 @@ def calculate_indicators(
     )
 
     # ======================================================
-    # DADOS DE IDENTIFICAÇÃO
+    # ATIVO
     # ======================================================
 
     asset = market.get(
@@ -565,10 +963,10 @@ def calculate_indicators(
     ).strip().upper()
 
     # ======================================================
-    # RETORNO
+    # RESULTADO
     # ======================================================
 
-    return {
+    indicators = {
 
         "asset":
             asset,
@@ -593,47 +991,145 @@ def calculate_indicators(
 
     }
 
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
+
+    consistency = validate_indicator_consistency(
+        indicators
+    )
+
+    indicators[
+        "consistency"
+    ] = consistency
+
+    indicators[
+        "indicators_valid"
+    ] = consistency[
+        "valid"
+    ]
+
+    indicators[
+        "indicators_status"
+    ] = consistency[
+        "status"
+    ]
+
+    indicators[
+        "indicators_status_icon"
+    ] = consistency[
+        "status_icon"
+    ]
+
+    indicators[
+        "invalid_indicators"
+    ] = consistency[
+        "invalid"
+    ]
+
+    indicators[
+        "indicator_warnings"
+    ] = consistency[
+        "warnings"
+    ]
+
+    return indicators
+
 
 # ==========================================================
-# VALIDAÇÃO DOS INDICADORES
+# VALIDAÇÃO GERAL
 # ==========================================================
 
 def validate_indicators(
     indicators,
 ):
     """
-    Verifica se os indicadores principais
-    possuem valores numéricos válidos.
+    Verifica se os indicadores essenciais
+    possuem valores válidos.
 
-    MA21 e MA200 podem ser None caso
-    o histórico seja insuficiente.
+    MA21 e MA200 podem ser None quando
+    não existe histórico suficiente.
     """
 
     if not isinstance(
         indicators,
         dict,
     ):
+
         return False
 
-    required = [
-        "price",
-        "rsi",
-        "volatility",
+    # ------------------------------------------------------
+    # PREÇO
+    # ------------------------------------------------------
+
+    price = indicators.get(
+        "price"
+    )
+
+    if not _is_valid_number(
+        price
+    ):
+
+        return False
+
+    if float(price) <= 0:
+
+        return False
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    rsi = indicators.get(
+        "rsi"
+    )
+
+    if not _is_valid_number(
+        rsi
+    ):
+
+        return False
+
+    rsi = float(
+        rsi
+    )
+
+    if (
+        rsi < RSI_MIN
+        or rsi > RSI_MAX
+    ):
+
+        return False
+
+    # ------------------------------------------------------
+    # VOLATILIDADE
+    # ------------------------------------------------------
+
+    volatility = indicators.get(
+        "volatility"
+    )
+
+    if not _is_valid_number(
+        volatility
+    ):
+
+        return False
+
+    if float(volatility) < 0:
+
+        return False
+
+    # ------------------------------------------------------
+    # CONSISTÊNCIA
+    # ------------------------------------------------------
+
+    consistency = validate_indicator_consistency(
+        indicators
+    )
+
+    return consistency[
+        "valid"
     ]
-
-    for field in required:
-
-        value = indicators.get(
-            field
-        )
-
-        if _safe_float(
-            value
-        ) is None:
-
-            return False
-
-    return True
 
 
 # ==========================================================
@@ -644,11 +1140,8 @@ def get_indicator_status(
     indicators,
 ):
     """
-    Retorna um resumo da disponibilidade
-    dos indicadores técnicos.
-
-    Útil para o Dashboard e para futuras
-    fases de monitoramento.
+    Retorna o status detalhado
+    dos indicadores.
     """
 
     if not isinstance(
@@ -658,65 +1151,126 @@ def get_indicator_status(
 
         return {
 
-            "valid": False,
+            "valid":
+                False,
 
-            "price": False,
+            "status":
+                "INCONSISTENTE",
 
-            "ma21": False,
+            "status_icon":
+                "🔴",
 
-            "ma200": False,
+            "price":
+                False,
 
-            "rsi": False,
+            "ma21":
+                False,
 
-            "volatility": False,
+            "ma200":
+                False,
+
+            "rsi":
+                False,
+
+            "volatility":
+                False,
+
+            "invalid":
+                [
+                    "estrutura"
+                ],
+
+            "warnings":
+                [],
 
         }
+
+    consistency = (
+        indicators.get(
+            "consistency"
+        )
+    )
+
+    if not isinstance(
+        consistency,
+        dict,
+    ):
+
+        consistency = validate_indicator_consistency(
+            indicators
+        )
 
     return {
 
         "valid":
-            validate_indicators(
-                indicators
+            consistency.get(
+                "valid",
+                False,
+            ),
+
+        "status":
+            consistency.get(
+                "status",
+                "INCONSISTENTE",
+            ),
+
+        "status_icon":
+            consistency.get(
+                "status_icon",
+                "🔴",
             ),
 
         "price":
-            _safe_float(
+            _is_valid_number(
                 indicators.get(
                     "price"
                 )
-            )
-            is not None,
+            ),
 
         "ma21":
-            _safe_float(
+            _is_valid_number(
                 indicators.get(
                     "ma21"
                 )
-            )
-            is not None,
+            ),
 
         "ma200":
-            _safe_float(
+            _is_valid_number(
                 indicators.get(
                     "ma200"
                 )
-            )
-            is not None,
+            ),
 
         "rsi":
-            _safe_float(
+            _is_valid_number(
                 indicators.get(
                     "rsi"
                 )
-            )
-            is not None,
+            ),
 
         "volatility":
-            _safe_float(
+            _is_valid_number(
                 indicators.get(
                     "volatility"
                 )
-            )
-            is not None,
+            ),
+
+        "invalid":
+            consistency.get(
+                "invalid",
+                [],
+            ),
+
+        "warnings":
+            consistency.get(
+                "warnings",
+                [],
+            ),
+
+        "message":
+            consistency.get(
+                "message",
+                "",
+            ),
 
     }
