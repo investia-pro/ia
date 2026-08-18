@@ -3,11 +3,13 @@ InvestIA PRO
 Motor de Análise
 
 Versão: v0.6
-Fase: 2.8.4 - Consolidação do Dashboard Executivo
+Fase: 2.9.3 - Confiabilidade do Score
 """
 
 from score import (
     calculate_score_details,
+    classify_score,
+    classify_signal,
 )
 
 
@@ -35,675 +37,73 @@ def _safe_float(value, default=None):
         return default
 
 
-def _safe_text(value, default=""):
+def _normalize_text(
+    value,
+    default="N/A",
+):
     """
-    Converte um valor para texto com segurança.
+    Normaliza textos retornados pela análise.
     """
 
     if value is None:
         return default
 
-    return str(value)
+    value = str(
+        value
+    ).strip()
 
-
-def _get_breakdown_value(
-    breakdown,
-    indicator,
-    key,
-    default=None,
-):
-    """
-    Obtém informações do breakdown do Score.
-    """
-
-    if not isinstance(
-        breakdown,
-        dict,
-    ):
+    if not value:
         return default
 
-    data = breakdown.get(
-        indicator,
-        {},
-    )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-        return default
-
-    return data.get(
-        key,
-        default,
-    )
+    return value
 
 
 # ==========================================================
-# TENDÊNCIA
+# VALIDAÇÃO DOS DADOS
 # ==========================================================
 
-def determine_trend(
-    price,
-    ma21,
-    ma200,
-):
+def validate_analysis_input(data):
     """
-    Determina a tendência principal do ativo.
-
-    Critérios:
-
-    Positiva:
-        preço acima da MA21 e MA200
-
-    Negativa:
-        preço abaixo da MA21 e MA200
-
-    Mista:
-        sinais divergentes
+    Valida os dados necessários para executar
+    a análise do ativo.
     """
-
-    price = _safe_float(price)
-    ma21 = _safe_float(ma21)
-    ma200 = _safe_float(ma200)
-
-    if (
-        price is None
-        or ma21 is None
-        or ma200 is None
-    ):
-
-        return "Neutra"
-
-    above_ma21 = price > ma21
-    above_ma200 = price > ma200
-
-    below_ma21 = price < ma21
-    below_ma200 = price < ma200
-
-    if above_ma21 and above_ma200:
-
-        return "Positiva"
-
-    if below_ma21 and below_ma200:
-
-        return "Negativa"
-
-    if (
-        above_ma21
-        and below_ma200
-    ):
-
-        return "Mista"
-
-    if (
-        below_ma21
-        and above_ma200
-    ):
-
-        return "Mista"
-
-    return "Neutra"
-
-
-# ==========================================================
-# STATUS DO RSI
-# ==========================================================
-
-def determine_rsi_status(rsi):
-    """
-    Classifica o RSI.
-
-    <= 30:
-        Sobrevenda
-
-    >= 70:
-        Sobrecompra
-
-    30-70:
-        Neutro
-    """
-
-    rsi = _safe_float(rsi)
-
-    if rsi is None:
-
-        return "Indisponível"
-
-    if rsi <= 30:
-
-        return "Sobrevenda"
-
-    if rsi >= 70:
-
-        return "Sobrecompra"
-
-    return "Neutro"
-
-
-# ==========================================================
-# NÍVEL DO SINAL
-# ==========================================================
-
-def determine_signal_level(score):
-    """
-    Determina a força do sinal.
-    """
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    if score >= 80:
-
-        return "Forte"
-
-    if score >= 65:
-
-        return "Moderado"
-
-    if score >= 50:
-
-        return "Aguardar"
-
-    if score >= 35:
-
-        return "Moderado"
-
-    return "Forte"
-
-
-# ==========================================================
-# ÍCONE DO SINAL
-# ==========================================================
-
-def determine_signal_icon(score):
-    """
-    Define o ícone visual do sinal.
-    """
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    if score >= 65:
-
-        return "🟢"
-
-    if score <= 35:
-
-        return "🔴"
-
-    return "🟡"
-
-
-# ==========================================================
-# SINAL QUALIFICADO
-# ==========================================================
-
-def determine_qualified_signal(
-    score,
-    trend,
-):
-    """
-    Gera o sinal operacional consolidado.
-
-    O Score continua sendo o principal
-    componente da decisão.
-
-    A tendência é utilizada como
-    confirmação contextual.
-    """
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    trend = _safe_text(
-        trend,
-        "Neutra",
-    )
-
-    if score >= 80:
-
-        return "COMPRA"
-
-    if score >= 65:
-
-        if trend == "Negativa":
-
-            return "COMPRA COM CAUTELA"
-
-        return "COMPRA"
-
-    if score <= 35:
-
-        return "VENDA"
-
-    if score < 50:
-
-        return "VENDA COM CAUTELA"
-
-    return "AGUARDAR"
-
-
-# ==========================================================
-# RECOMENDAÇÃO
-# ==========================================================
-
-def determine_recommendation(
-    score,
-    trend,
-    volatility,
-):
-    """
-    Gera a recomendação final.
-
-    O score define a direção principal.
-    Tendência e volatilidade servem como
-    filtros de contexto.
-    """
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    volatility = _safe_float(
-        volatility,
-        0,
-    )
-
-    trend = _safe_text(
-        trend,
-        "Neutra",
-    )
-
-    # ------------------------------------------------------
-    # Score muito forte
-    # ------------------------------------------------------
-
-    if score >= 80:
-
-        if volatility >= 0.04:
-
-            return "Compra com cautela"
-
-        return "Compra"
-
-    # ------------------------------------------------------
-    # Score positivo
-    # ------------------------------------------------------
-
-    if score >= 65:
-
-        if trend == "Negativa":
-
-            return "Aguardar confirmação"
-
-        if volatility >= 0.04:
-
-            return "Compra com cautela"
-
-        return "Compra"
-
-    # ------------------------------------------------------
-    # Score negativo
-    # ------------------------------------------------------
-
-    if score <= 35:
-
-        return "Venda"
-
-    # ------------------------------------------------------
-    # Zona intermediária
-    # ------------------------------------------------------
-
-    if score < 50:
-
-        return "Venda com cautela"
-
-    return "Aguardar"
-
-
-# ==========================================================
-# GESTÃO DE RISCO
-# ==========================================================
-
-def determine_risk(
-    volatility,
-    score,
-    trend,
-):
-    """
-    Classifica o risco operacional.
-
-    Volatilidade:
-        < 2%   = Baixo
-        < 4%   = Moderado
-        >= 4%  = Alto
-
-    Divergência entre Score e tendência
-    pode elevar o risco.
-    """
-
-    volatility = _safe_float(
-        volatility,
-        0,
-    )
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    trend = _safe_text(
-        trend,
-        "Neutra",
-    )
-
-    # ------------------------------------------------------
-    # Volatilidade
-    # ------------------------------------------------------
-
-    if volatility >= 0.04:
-
-        risk = "Alto"
-
-    elif volatility >= 0.02:
-
-        risk = "Moderado"
-
-    else:
-
-        risk = "Baixo"
-
-    # ------------------------------------------------------
-    # Divergência
-    # ------------------------------------------------------
-
-    divergence = (
-
-        (
-            score >= 65
-            and trend == "Negativa"
-        )
-
-        or
-
-        (
-            score <= 35
-            and trend == "Positiva"
-        )
-
-    )
-
-    if divergence:
-
-        if risk == "Baixo":
-
-            risk = "Moderado"
-
-        elif risk == "Moderado":
-
-            risk = "Alto"
-
-    return risk
-
-
-# ==========================================================
-# JUSTIFICATIVAS
-# ==========================================================
-
-def build_reasons(
-    price,
-    ma21,
-    ma200,
-    rsi,
-    trend,
-    risk,
-):
-    """
-    Gera as justificativas utilizadas
-    na seção de análise detalhada.
-    """
-
-    reasons = []
-
-    price = _safe_float(price)
-    ma21 = _safe_float(ma21)
-    ma200 = _safe_float(ma200)
-    rsi = _safe_float(rsi)
-
-    # ------------------------------------------------------
-    # MA21
-    # ------------------------------------------------------
-
-    if (
-        price is not None
-        and ma21 is not None
-    ):
-
-        if price > ma21:
-
-            reasons.append(
-                "O preço está acima da MA21, "
-                "indicando força de curto prazo."
-            )
-
-        elif price < ma21:
-
-            reasons.append(
-                "O preço está abaixo da MA21, "
-                "indicando pressão no curto prazo."
-            )
-
-        else:
-
-            reasons.append(
-                "O preço está alinhado à MA21."
-            )
-
-    # ------------------------------------------------------
-    # MA200
-    # ------------------------------------------------------
-
-    if (
-        price is not None
-        and ma200 is not None
-    ):
-
-        if price > ma200:
-
-            reasons.append(
-                "O preço está acima da MA200, "
-                "favorecendo a tendência de longo prazo."
-            )
-
-        elif price < ma200:
-
-            reasons.append(
-                "O preço está abaixo da MA200, "
-                "indicando fraqueza em relação à tendência "
-                "de longo prazo."
-            )
-
-        else:
-
-            reasons.append(
-                "O preço está alinhado à MA200."
-            )
-
-    # ------------------------------------------------------
-    # RSI
-    # ------------------------------------------------------
-
-    if rsi is not None:
-
-        if rsi <= 30:
-
-            reasons.append(
-                f"RSI em {rsi:.2f}, "
-                "indicando região de sobrevenda."
-            )
-
-        elif rsi >= 70:
-
-            reasons.append(
-                f"RSI em {rsi:.2f}, "
-                "indicando região de sobrecompra."
-            )
-
-        else:
-
-            reasons.append(
-                f"RSI em {rsi:.2f}, "
-                "permanecendo em região neutra."
-            )
-
-    # ------------------------------------------------------
-    # TENDÊNCIA
-    # ------------------------------------------------------
-
-    reasons.append(
-        f"Tendência técnica identificada: {trend}."
-    )
-
-    # ------------------------------------------------------
-    # RISCO
-    # ------------------------------------------------------
-
-    reasons.append(
-        f"Nível de risco operacional: {risk}."
-    )
-
-    return reasons
-
-
-# ==========================================================
-# RESUMO EXECUTIVO
-# ==========================================================
-
-def build_executive_summary(
-    asset,
-    price,
-    score,
-    trend,
-    risk,
-    qualified_signal,
-    recommendation,
-    rsi,
-):
-    """
-    Constrói o resumo executivo apresentado
-    no Dashboard.
-    """
-
-    asset = _safe_text(
-        asset,
-        "Ativo",
-    )
-
-    price = _safe_float(
-        price,
-        0,
-    )
-
-    score = _safe_float(
-        score,
-        50,
-    )
-
-    rsi = _safe_float(
-        rsi,
-    )
-
-    if rsi is None:
-
-        rsi_text = "indisponível"
-
-    else:
-
-        rsi_text = f"{rsi:.2f}"
-
-    return (
-        f"{asset} apresenta Score InvestIA de "
-        f"{int(round(score))}/100, com tendência "
-        f"{trend.lower()} e sinal {qualified_signal}. "
-        f"A recomendação atual é {recommendation.lower()}, "
-        f"considerando risco {risk.lower()}. "
-        f"O preço analisado é de R$ {price:,.2f} "
-        f"e o RSI está em {rsi_text}."
-    )
-
-
-# ==========================================================
-# ANÁLISE PRINCIPAL
-# ==========================================================
-
-def analyze_asset(
-    data,
-    asset=None,
-):
-    """
-    Executa a análise completa do ativo.
-
-    Entrada esperada:
-
-    {
-        "price": float,
-        "rsi": float,
-        "ma21": float,
-        "ma200": float,
-        "volatility": float
-    }
-
-    Retorno compatível com o app.py:
-    
-        score
-        classification
-        signal
-        qualified_signal
-        signal_level
-        signal_icon
-        trend
-        recommendation
-        risk
-        rsi_status
-        reasons
-        breakdown
-        executive_summary
-    """
-
-    # ======================================================
-    # VALIDAÇÃO
-    # ======================================================
-
-    if data is None:
-
-        raise ValueError(
-            "Dados não fornecidos para análise."
-        )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        raise TypeError(
-            "Os dados da análise devem ser "
-            "fornecidos como dicionário."
-        )
 
     required = [
         "price",
         "rsi",
         "ma21",
         "ma200",
+        "volatility",
     ]
+
+    if data is None:
+
+        return {
+
+            "valid": False,
+
+            "missing": required,
+
+            "message":
+                "Dados não fornecidos para análise.",
+
+        }
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        return {
+
+            "valid": False,
+
+            "missing": required,
+
+            "message":
+                "Formato de dados inválido para análise.",
+
+        }
 
     missing = []
 
@@ -719,81 +119,854 @@ def analyze_asset(
                 field
             )
 
+            continue
+
+        try:
+
+            float(value)
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            missing.append(
+                field
+            )
+
     if missing:
 
-        raise ValueError(
-            "Dados insuficientes para análise: "
-            + ", ".join(missing)
-        )
+        return {
 
-    # ======================================================
-    # NORMALIZAÇÃO
-    # ======================================================
+            "valid": False,
+
+            "missing": missing,
+
+            "message":
+                "Dados insuficientes para análise: "
+                + ", ".join(missing)
+                + ".",
+
+        }
+
+    return {
+
+        "valid": True,
+
+        "missing": [],
+
+        "message":
+            "Dados suficientes para análise.",
+
+    }
+
+
+# ==========================================================
+# TENDÊNCIA
+# ==========================================================
+
+def determine_trend(
+    price,
+    ma21,
+    ma200,
+):
+    """
+    Determina a tendência utilizando
+    preço, MA21 e MA200.
+    """
 
     price = _safe_float(
-        data.get("price")
-    )
-
-    rsi = _safe_float(
-        data.get("rsi")
+        price
     )
 
     ma21 = _safe_float(
-        data.get("ma21")
+        ma21
     )
 
     ma200 = _safe_float(
-        data.get("ma200")
-    )
-
-    volatility = _safe_float(
-        data.get("volatility"),
-        0,
+        ma200
     )
 
     if (
         price is None
-        or rsi is None
         or ma21 is None
         or ma200 is None
     ):
 
-        raise ValueError(
-            "Um ou mais indicadores possuem "
-            "valores inválidos."
+        return "Indisponível"
+
+    # ------------------------------------------------------
+    # TENDÊNCIA DE ALTA
+    # ------------------------------------------------------
+
+    if (
+        price > ma21
+        and price > ma200
+        and ma21 > ma200
+    ):
+
+        return "Alta"
+
+    # ------------------------------------------------------
+    # TENDÊNCIA DE BAIXA
+    # ------------------------------------------------------
+
+    if (
+        price < ma21
+        and price < ma200
+        and ma21 < ma200
+    ):
+
+        return "Baixa"
+
+    # ------------------------------------------------------
+    # TENDÊNCIA POSITIVA
+    # ------------------------------------------------------
+
+    if (
+        price > ma21
+        and price > ma200
+    ):
+
+        return "Alta Moderada"
+
+    # ------------------------------------------------------
+    # TENDÊNCIA NEGATIVA
+    # ------------------------------------------------------
+
+    if (
+        price < ma21
+        and price < ma200
+    ):
+
+        return "Baixa Moderada"
+
+    # ------------------------------------------------------
+    # TRANSIÇÃO
+    # ------------------------------------------------------
+
+    return "Transição"
+
+
+# ==========================================================
+# STATUS DO RSI
+# ==========================================================
+
+def determine_rsi_status(
+    rsi,
+):
+    """
+    Classifica o RSI.
+    """
+
+    rsi = _safe_float(
+        rsi
+    )
+
+    if rsi is None:
+
+        return "Indisponível"
+
+    if rsi <= 30:
+
+        return "Sobrevenda"
+
+    if rsi >= 70:
+
+        return "Sobrecompra"
+
+    if rsi >= 50:
+
+        return "Neutro / Positivo"
+
+    return "Neutro / Negativo"
+
+
+# ==========================================================
+# RISCO
+# ==========================================================
+
+def determine_risk(
+    volatility,
+    score,
+):
+    """
+    Classifica o risco considerando volatilidade
+    e Score.
+    """
+
+    volatility = _safe_float(
+        volatility
+    )
+
+    score = _safe_float(
+        score
+    )
+
+    if (
+        volatility is None
+        or score is None
+    ):
+
+        return "Indisponível"
+
+    volatility_percent = (
+        volatility * 100
+    )
+
+    # ------------------------------------------------------
+    # ALTO
+    # ------------------------------------------------------
+
+    if volatility_percent >= 4:
+
+        return "Alto"
+
+    # ------------------------------------------------------
+    # MODERADO
+    # ------------------------------------------------------
+
+    if volatility_percent >= 2:
+
+        return "Moderado"
+
+    # ------------------------------------------------------
+    # SCORE MUITO FRACO
+    # ------------------------------------------------------
+
+    if score < 35:
+
+        return "Alto"
+
+    # ------------------------------------------------------
+    # BAIXO
+    # ------------------------------------------------------
+
+    return "Baixo"
+
+
+# ==========================================================
+# RECOMENDAÇÃO
+# ==========================================================
+
+def determine_recommendation(
+    score,
+    signal,
+    trend,
+):
+    """
+    Determina a recomendação final.
+
+    A recomendação somente é gerada
+    quando o Score é confiável.
+    """
+
+    if score is None:
+
+        return "Indisponível"
+
+    signal = _normalize_text(
+        signal,
+        "NEUTRO",
+    )
+
+    trend = _normalize_text(
+        trend,
+        "Indisponível",
+    )
+
+    # ------------------------------------------------------
+    # SINAL POSITIVO
+    # ------------------------------------------------------
+
+    if signal == "POSITIVO":
+
+        if trend in [
+            "Alta",
+            "Alta Moderada",
+        ]:
+
+            return "Compra"
+
+        return "Aguardar confirmação"
+
+    # ------------------------------------------------------
+    # SINAL NEGATIVO
+    # ------------------------------------------------------
+
+    if signal == "NEGATIVO":
+
+        if trend in [
+            "Baixa",
+            "Baixa Moderada",
+        ]:
+
+            return "Venda / Redução"
+
+        return "Aguardar confirmação"
+
+    # ------------------------------------------------------
+    # NEUTRO
+    # ------------------------------------------------------
+
+    return "Aguardar"
+
+
+# ==========================================================
+# SINAL QUALIFICADO
+# ==========================================================
+
+def determine_qualified_signal(
+    signal,
+    trend,
+):
+    """
+    Qualifica o sinal considerando a tendência.
+    """
+
+    signal = _normalize_text(
+        signal,
+        "NEUTRO",
+    )
+
+    trend = _normalize_text(
+        trend,
+        "Indisponível",
+    )
+
+    if signal == "POSITIVO":
+
+        if trend == "Alta":
+
+            return "COMPRA FORTE"
+
+        if trend == "Alta Moderada":
+
+            return "COMPRA"
+
+        return "POSITIVO"
+
+    if signal == "NEGATIVO":
+
+        if trend == "Baixa":
+
+            return "VENDA FORTE"
+
+        if trend == "Baixa Moderada":
+
+            return "VENDA"
+
+        return "NEGATIVO"
+
+    return "NEUTRO"
+
+
+# ==========================================================
+# NÍVEL DO SINAL
+# ==========================================================
+
+def determine_signal_level(
+    score,
+):
+    """
+    Determina a intensidade do sinal.
+    """
+
+    score = _safe_float(
+        score
+    )
+
+    if score is None:
+
+        return "Indisponível"
+
+    if score >= 80:
+
+        return "Muito forte"
+
+    if score >= 65:
+
+        return "Forte"
+
+    if score >= 50:
+
+        return "Moderado"
+
+    if score >= 35:
+
+        return "Fraco"
+
+    return "Muito fraco"
+
+
+# ==========================================================
+# ÍCONE DO SINAL
+# ==========================================================
+
+def get_signal_icon(
+    signal,
+):
+    """
+    Retorna o ícone correspondente ao sinal.
+    """
+
+    signal = _normalize_text(
+        signal,
+        "NEUTRO",
+    ).upper()
+
+    if "POSITIVO" in signal:
+
+        return "🟢"
+
+    if "COMPRA" in signal:
+
+        return "🟢"
+
+    if "NEGATIVO" in signal:
+
+        return "🔴"
+
+    if "VENDA" in signal:
+
+        return "🔴"
+
+    return "🟡"
+
+
+# ==========================================================
+# JUSTIFICATIVAS
+# ==========================================================
+
+def build_reasons(
+    data,
+    breakdown,
+    trend,
+    rsi_status,
+):
+    """
+    Constrói as justificativas da análise.
+    """
+
+    reasons = []
+
+    if not isinstance(
+        breakdown,
+        dict,
+    ):
+
+        return reasons
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    ma21 = breakdown.get(
+        "ma21",
+        {},
+    )
+
+    if isinstance(
+        ma21,
+        dict,
+    ):
+
+        reason = ma21.get(
+            "reason"
         )
+
+        if reason:
+
+            reasons.append(
+                reason
+            )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    ma200 = breakdown.get(
+        "ma200",
+        {},
+    )
+
+    if isinstance(
+        ma200,
+        dict,
+    ):
+
+        reason = ma200.get(
+            "reason"
+        )
+
+        if reason:
+
+            reasons.append(
+                reason
+            )
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    rsi = breakdown.get(
+        "rsi",
+        {},
+    )
+
+    if isinstance(
+        rsi,
+        dict,
+    ):
+
+        reason = rsi.get(
+            "reason"
+        )
+
+        if reason:
+
+            reasons.append(
+                reason
+            )
+
+    # ------------------------------------------------------
+    # TENDÊNCIA
+    # ------------------------------------------------------
+
+    if trend:
+
+        reasons.append(
+            f"Tendência identificada: {trend}."
+        )
+
+    # ------------------------------------------------------
+    # RSI STATUS
+    # ------------------------------------------------------
+
+    if rsi_status:
+
+        reasons.append(
+            f"Status do RSI: {rsi_status}."
+        )
+
+    return reasons
+
+
+# ==========================================================
+# RESUMO EXECUTIVO
+# ==========================================================
+
+def build_executive_summary(
+    asset,
+    score,
+    classification,
+    signal,
+    trend,
+    risk,
+    recommendation,
+):
+    """
+    Gera o resumo executivo da análise.
+    """
+
+    asset = _normalize_text(
+        asset,
+        "Ativo",
+    )
+
+    if score is None:
+
+        return (
+            f"{asset}: não foi possível gerar "
+            "uma conclusão confiável porque "
+            "os dados necessários para o Score "
+            "estão incompletos."
+        )
+
+    return (
+        f"{asset} apresenta Score InvestIA de "
+        f"{score}/100, classificado como "
+        f"{classification}. "
+        f"A tendência atual é {trend}, "
+        f"com sinal {signal}. "
+        f"O nível de risco é {risk} "
+        f"e a recomendação é "
+        f"{recommendation}."
+    )
+
+
+# ==========================================================
+# ANÁLISE INDEFINIDA
+# ==========================================================
+
+def build_unreliable_analysis(
+    asset,
+    validation,
+    score_details,
+):
+    """
+    Retorna uma análise segura quando os dados
+    não são suficientes para gerar um Score confiável.
+    """
+
+    missing = validation.get(
+        "missing",
+        [],
+    )
+
+    invalid = validation.get(
+        "invalid",
+        [],
+    )
+
+    if missing:
+
+        data_problem = (
+            "Indicadores ausentes: "
+            + ", ".join(missing)
+            + "."
+        )
+
+    elif invalid:
+
+        data_problem = (
+            "Indicadores inválidos: "
+            + ", ".join(invalid)
+            + "."
+        )
+
+    else:
+
+        data_problem = (
+            "Os dados disponíveis não "
+            "foram considerados suficientes."
+        )
+
+    return {
+
+        "asset":
+            asset,
+
+        "score":
+            None,
+
+        "classification":
+            "INDEFINIDO",
+
+        "signal":
+            "INDEFINIDO",
+
+        "qualified_signal":
+            "INDEFINIDO",
+
+        "signal_level":
+            "Indisponível",
+
+        "signal_icon":
+            "⚪",
+
+        "trend":
+            "Indisponível",
+
+        "recommendation":
+            "Aguardar dados",
+
+        "risk":
+            "Indisponível",
+
+        "rsi_status":
+            "Indisponível",
+
+        "reasons": [
+
+            "A análise não possui "
+            "dados suficientes para "
+            "uma conclusão confiável.",
+
+            data_problem,
+
+        ],
+
+        "breakdown":
+            {},
+
+        "executive_summary":
+            (
+                f"{asset}: análise não disponível. "
+                f"{data_problem}"
+            ),
+
+        "score_reliable":
+            False,
+
+        "reliable":
+            False,
+
+        "analysis_reliable":
+            False,
+
+        "validation":
+            validation,
+
+        "score_validation":
+            score_details.get(
+                "validation",
+                validation,
+            ),
+
+        "missing_indicators":
+            missing,
+
+        "invalid_indicators":
+            invalid,
+
+        "status":
+            "DADOS INSUFICIENTES",
+
+        "status_icon":
+            "🔴",
+
+        "status_message":
+            (
+                "O Score não deve ser utilizado "
+                "para tomada de decisão enquanto "
+                "os dados estiverem incompletos."
+            ),
+
+    }
+
+
+# ==========================================================
+# ANÁLISE PRINCIPAL
+# ==========================================================
+
+def analyze_asset(
+    data,
+    asset=None,
+):
+    """
+    Executa a análise completa do ativo.
+
+    Fluxo:
+
+        1. Validação dos dados
+        2. Cálculo do Score
+        3. Validação da confiabilidade
+        4. Tendência
+        5. RSI
+        6. Risco
+        7. Recomendação
+        8. Justificativas
+        9. Resumo executivo
+    """
+
+    # ======================================================
+    # ATIVO
+    # ======================================================
+
+    if asset is None:
+
+        if isinstance(
+            data,
+            dict,
+        ):
+
+            asset = data.get(
+                "asset"
+            )
+
+    asset = _normalize_text(
+        asset,
+        "ATIVO",
+    ).upper()
+
+    # ======================================================
+    # VALIDAÇÃO
+    # ======================================================
+
+    validation = validate_analysis_input(
+        data
+    )
 
     # ======================================================
     # SCORE
     # ======================================================
 
     score_details = calculate_score_details(
-        {
-            "price": price,
-            "ma21": ma21,
-            "ma200": ma200,
-            "rsi": rsi,
-        }
+        data
     )
 
+    # ======================================================
+    # SCORE NÃO CONFIÁVEL
+    # ======================================================
+
+    if not score_details.get(
+        "score_reliable",
+        False,
+    ):
+
+        return build_unreliable_analysis(
+            asset,
+            score_details.get(
+                "validation",
+                validation,
+            ),
+            score_details,
+        )
+
+    # ======================================================
+    # SCORE CONFIÁVEL
+    # ======================================================
+
     score = score_details.get(
-        "score",
-        50,
+        "score"
     )
 
     classification = score_details.get(
-        "classification",
-        "NEUTRO",
+        "classification"
     )
 
     signal = score_details.get(
-        "signal",
-        "NEUTRO",
+        "signal"
     )
 
     breakdown = score_details.get(
         "breakdown",
         {},
+    )
+
+    # ======================================================
+    # INDICADORES
+    # ======================================================
+
+    price = _safe_float(
+        data.get(
+            "price"
+        )
+    )
+
+    ma21 = _safe_float(
+        data.get(
+            "ma21"
+        )
+    )
+
+    ma200 = _safe_float(
+        data.get(
+            "ma200"
+        )
+    )
+
+    rsi = _safe_float(
+        data.get(
+            "rsi"
+        )
+    )
+
+    volatility = _safe_float(
+        data.get(
+            "volatility"
+        )
     )
 
     # ======================================================
@@ -815,24 +988,12 @@ def analyze_asset(
     )
 
     # ======================================================
-    # SINAL QUALIFICADO
+    # RISCO
     # ======================================================
 
-    qualified_signal = determine_qualified_signal(
+    risk = determine_risk(
+        volatility,
         score,
-        trend,
-    )
-
-    # ======================================================
-    # NÍVEL DO SINAL
-    # ======================================================
-
-    signal_level = determine_signal_level(
-        score
-    )
-
-    signal_icon = determine_signal_icon(
-        score
     )
 
     # ======================================================
@@ -841,18 +1002,33 @@ def analyze_asset(
 
     recommendation = determine_recommendation(
         score,
+        signal,
         trend,
-        volatility,
     )
 
     # ======================================================
-    # RISCO
+    # SINAL QUALIFICADO
     # ======================================================
 
-    risk = determine_risk(
-        volatility,
-        score,
+    qualified_signal = determine_qualified_signal(
+        signal,
         trend,
+    )
+
+    # ======================================================
+    # NÍVEL
+    # ======================================================
+
+    signal_level = determine_signal_level(
+        score
+    )
+
+    # ======================================================
+    # ÍCONE
+    # ======================================================
+
+    signal_icon = get_signal_icon(
+        qualified_signal
     )
 
     # ======================================================
@@ -860,12 +1036,10 @@ def analyze_asset(
     # ======================================================
 
     reasons = build_reasons(
-        price,
-        ma21,
-        ma200,
-        rsi,
+        data,
+        breakdown,
         trend,
-        risk,
+        rsi_status,
     )
 
     # ======================================================
@@ -874,13 +1048,12 @@ def analyze_asset(
 
     executive_summary = build_executive_summary(
         asset,
-        price,
         score,
+        classification,
+        qualified_signal,
         trend,
         risk,
-        qualified_signal,
         recommendation,
-        rsi,
     )
 
     # ======================================================
@@ -934,41 +1107,60 @@ def analyze_asset(
         "executive_summary":
             executive_summary,
 
-        "indicators": {
+        # --------------------------------------------------
+        # CONFIABILIDADE
+        # --------------------------------------------------
 
-            "price":
-                price,
+        "score_reliable":
+            True,
 
-            "ma21":
-                ma21,
+        "reliable":
+            True,
 
-            "ma200":
-                ma200,
+        "analysis_reliable":
+            True,
 
-            "rsi":
-                rsi,
+        "status":
+            "ANÁLISE CONFIÁVEL",
 
-            "volatility":
-                volatility,
+        "status_icon":
+            "🟢",
 
-        },
+        "status_message":
+            (
+                "Todos os indicadores necessários "
+                "estão disponíveis e o Score foi "
+                "calculado normalmente."
+            ),
+
+        "validation":
+            validation,
+
+        "score_validation":
+            score_details.get(
+                "validation",
+                {},
+            ),
+
+        "missing_indicators":
+            [],
+
+        "invalid_indicators":
+            [],
 
     }
 
 
 # ==========================================================
-# COMPATIBILIDADE
+# FUNÇÃO DE COMPATIBILIDADE
 # ==========================================================
 
-def get_analysis_summary(
+def get_analysis_status(
     result,
 ):
     """
-    Retorna somente os principais dados
+    Retorna somente o status de confiabilidade
     da análise.
-
-    Função auxiliar para futuras versões
-    do Dashboard.
     """
 
     if not isinstance(
@@ -976,41 +1168,63 @@ def get_analysis_summary(
         dict,
     ):
 
-        return {}
+        return {
+
+            "reliable":
+                False,
+
+            "status":
+                "INDISPONÍVEL",
+
+            "icon":
+                "🔴",
+
+            "message":
+                "Resultado da análise inválido.",
+
+        }
+
+    reliable = result.get(
+        "analysis_reliable",
+        result.get(
+            "score_reliable",
+            False,
+        ),
+    )
+
+    if reliable:
+
+        return {
+
+            "reliable":
+                True,
+
+            "status":
+                "CONFIÁVEL",
+
+            "icon":
+                "🟢",
+
+            "message":
+                "Análise calculada com dados válidos.",
+
+        }
 
     return {
 
-        "score":
-            result.get(
-                "score"
-            ),
+        "reliable":
+            False,
 
-        "classification":
-            result.get(
-                "classification"
-            ),
+        "status":
+            "NÃO CONFIÁVEL",
 
-        "signal":
-            result.get(
-                "qualified_signal",
-                result.get(
-                    "signal"
-                ),
-            ),
+        "icon":
+            "🔴",
 
-        "trend":
+        "message":
             result.get(
-                "trend"
-            ),
-
-        "risk":
-            result.get(
-                "risk"
-            ),
-
-        "recommendation":
-            result.get(
-                "recommendation"
+                "status_message",
+                "Dados insuficientes para análise.",
             ),
 
     }
