@@ -3,10 +3,8 @@ InvestIA PRO
 Motor de Score
 
 Versão: v0.6
-Fase: 2.9.3 - Confiabilidade do Score
+Fase: 2.9.5 - Integração da Validação dos Indicadores
 """
-
-import math
 
 from config import (
     BUY_SCORE,
@@ -14,211 +12,6 @@ from config import (
     RSI_OVERSOLD,
     RSI_OVERBOUGHT,
 )
-
-
-# ==========================================================
-# CONFIGURAÇÃO DOS INDICADORES
-# ==========================================================
-
-REQUIRED_SCORE_FIELDS = [
-    "price",
-    "ma21",
-    "ma200",
-    "rsi",
-]
-
-
-# ==========================================================
-# FUNÇÕES AUXILIARES
-# ==========================================================
-
-def _is_valid_number(value):
-    """
-    Verifica se o valor é numérico, finito e válido.
-    """
-
-    try:
-
-        if value is None:
-            return False
-
-        value = float(value)
-
-        return math.isfinite(
-            value
-        )
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return False
-
-
-def _safe_float(value):
-    """
-    Converte um valor para float com segurança.
-
-    Retorna None quando o valor é inválido.
-    """
-
-    if not _is_valid_number(
-        value
-    ):
-
-        return None
-
-    return float(value)
-
-
-# ==========================================================
-# VALIDAÇÃO DOS DADOS DO SCORE
-# ==========================================================
-
-def validate_score_data(data):
-    """
-    Valida os dados necessários para calcular
-    o Score InvestIA.
-
-    Retorna um dicionário contendo:
-
-        valid
-        missing
-        invalid
-        available
-        message
-    """
-
-    if data is None:
-
-        return {
-
-            "valid": False,
-
-            "missing":
-                REQUIRED_SCORE_FIELDS.copy(),
-
-            "invalid": [],
-
-            "available": [],
-
-            "message":
-                "Dados não fornecidos para o Score.",
-
-        }
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        return {
-
-            "valid": False,
-
-            "missing":
-                REQUIRED_SCORE_FIELDS.copy(),
-
-            "invalid": [],
-
-            "available": [],
-
-            "message":
-                "Formato de dados inválido para o Score.",
-
-        }
-
-    missing = []
-    invalid = []
-    available = []
-
-    for field in REQUIRED_SCORE_FIELDS:
-
-        if field not in data:
-
-            missing.append(
-                field
-            )
-
-            continue
-
-        value = data.get(
-            field
-        )
-
-        if value is None:
-
-            missing.append(
-                field
-            )
-
-            continue
-
-        if not _is_valid_number(
-            value
-        ):
-
-            invalid.append(
-                field
-            )
-
-            continue
-
-        available.append(
-            field
-        )
-
-    valid = (
-        len(missing) == 0
-        and len(invalid) == 0
-    )
-
-    if valid:
-
-        message = (
-            "Todos os indicadores necessários "
-            "para o Score estão disponíveis."
-        )
-
-    elif missing:
-
-        message = (
-            "O Score não pode ser considerado "
-            "confiável porque existem indicadores "
-            "necessários ausentes: "
-            + ", ".join(missing)
-            + "."
-        )
-
-    else:
-
-        message = (
-            "O Score não pode ser considerado "
-            "confiável porque existem indicadores "
-            "com valores inválidos: "
-            + ", ".join(invalid)
-            + "."
-        )
-
-    return {
-
-        "valid":
-            valid,
-
-        "missing":
-            missing,
-
-        "invalid":
-            invalid,
-
-        "available":
-            available,
-
-        "message":
-            message,
-
-    }
 
 
 # ==========================================================
@@ -231,35 +24,201 @@ def clamp_score(score):
     """
 
     try:
-
-        score = float(
-            score
-        )
-
+        score = float(score)
     except (
         TypeError,
         ValueError,
     ):
-
-        return 0
-
-    if not math.isfinite(
-        score
-    ):
-
         return 0
 
     return max(
         0,
         min(
             100,
-            int(
-                round(
-                    score
-                )
-            ),
+            int(round(score)),
         ),
     )
+
+
+# ==========================================================
+# VALIDAÇÃO DOS DADOS
+# ==========================================================
+
+def validate_score_data(data):
+    """
+    Valida os dados necessários para o Score.
+
+    Retorna um dicionário detalhado para que
+    analysis.py e app.py possam utilizar o
+    resultado sem gerar KeyError.
+    """
+
+    if data is None:
+
+        return {
+            "valid": False,
+            "status": "INCONSISTENTE",
+            "status_icon": "🔴",
+            "missing": [],
+            "invalid": ["data"],
+            "message":
+                "Dados não fornecidos para o Score.",
+        }
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        return {
+            "valid": False,
+            "status": "INCONSISTENTE",
+            "status_icon": "🔴",
+            "missing": [],
+            "invalid": ["estrutura"],
+            "message":
+                "Estrutura dos dados do Score inválida.",
+        }
+
+    required = [
+        "price",
+        "ma21",
+        "ma200",
+        "rsi",
+    ]
+
+    missing = []
+    invalid = []
+
+    for field in required:
+
+        if (
+            field not in data
+            or data[field] is None
+        ):
+
+            missing.append(
+                field
+            )
+
+    # ------------------------------------------------------
+    # VALIDAÇÃO NUMÉRICA
+    # ------------------------------------------------------
+
+    for field in required:
+
+        if field in missing:
+            continue
+
+        try:
+
+            value = float(
+                data[field]
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            invalid.append(
+                field
+            )
+
+            continue
+
+        if field == "price":
+
+            if value <= 0:
+
+                invalid.append(
+                    field
+                )
+
+        elif field == "ma21":
+
+            if value <= 0:
+
+                invalid.append(
+                    field
+                )
+
+        elif field == "ma200":
+
+            if value <= 0:
+
+                invalid.append(
+                    field
+                )
+
+        elif field == "rsi":
+
+            if (
+                value < 0
+                or value > 100
+            ):
+
+                invalid.append(
+                    field
+                )
+
+    # ------------------------------------------------------
+    # STATUS
+    # ------------------------------------------------------
+
+    if invalid:
+
+        return {
+            "valid": False,
+            "status": "INCONSISTENTE",
+            "status_icon": "🔴",
+            "missing": missing,
+            "invalid": list(
+                dict.fromkeys(
+                    invalid
+                )
+            ),
+            "message":
+                (
+                    "Existem indicadores "
+                    "com valores inválidos: "
+                    + ", ".join(
+                        dict.fromkeys(
+                            invalid
+                        )
+                    )
+                    + "."
+                ),
+        }
+
+    if missing:
+
+        return {
+            "valid": False,
+            "status": "INCOMPLETO",
+            "status_icon": "🟡",
+            "missing": missing,
+            "invalid": [],
+            "message":
+                (
+                    "Dados insuficientes "
+                    "para calcular o Score: "
+                    + ", ".join(
+                        missing
+                    )
+                    + "."
+                ),
+        }
+
+    return {
+        "valid": True,
+        "status": "CONSISTENTE",
+        "status_icon": "🟢",
+        "missing": [],
+        "invalid": [],
+        "message":
+            "Dados válidos para cálculo do Score.",
+    }
 
 
 # ==========================================================
@@ -282,9 +241,6 @@ def get_score_breakdown(data):
 
     RSI:
         +10 / -10 / 0
-
-    O cálculo somente é executado quando
-    todos os indicadores necessários são válidos.
     """
 
     validation = validate_score_data(
@@ -297,37 +253,21 @@ def get_score_breakdown(data):
             validation["message"]
         )
 
-    price = _safe_float(
+    price = float(
         data["price"]
     )
 
-    ma21 = _safe_float(
+    ma21 = float(
         data["ma21"]
     )
 
-    ma200 = _safe_float(
+    ma200 = float(
         data["ma200"]
     )
 
-    rsi = _safe_float(
+    rsi = float(
         data["rsi"]
     )
-
-    # ======================================================
-    # SEGURANÇA ADICIONAL
-    # ======================================================
-
-    if (
-        price is None
-        or ma21 is None
-        or ma200 is None
-        or rsi is None
-    ):
-
-        raise ValueError(
-            "Não foi possível validar "
-            "os valores dos indicadores."
-        )
 
     # ======================================================
     # BASE
@@ -462,8 +402,7 @@ def get_score_breakdown(data):
 
     return {
 
-        "base":
-            base,
+        "base": base,
 
         "ma21": {
 
@@ -510,6 +449,9 @@ def get_score_breakdown(data):
         "score":
             final_score,
 
+        "validation":
+            validation,
+
     }
 
 
@@ -521,15 +463,17 @@ def calculate_investia_score(data):
     """
     Calcula o Score InvestIA de 0 a 100.
 
-    O cálculo somente ocorre quando todos
-    os indicadores obrigatórios são válidos.
+    Mantém a assinatura utilizada
+    pelas versões anteriores.
     """
 
     breakdown = get_score_breakdown(
         data
     )
 
-    return breakdown["score"]
+    return breakdown[
+        "score"
+    ]
 
 
 # ==========================================================
@@ -546,19 +490,15 @@ def classify_score(score):
     )
 
     if score >= 80:
-
         return "FORTE"
 
     if score >= 65:
-
         return "BOM"
 
     if score >= 50:
-
         return "NEUTRO"
 
     if score >= 35:
-
         return "FRACO"
 
     return "MUITO FRACO"
@@ -600,8 +540,7 @@ def calculate_score_details(data):
         - classificação
         - sinal
         - breakdown
-        - confiabilidade
-        - validação dos dados
+        - validação
     """
 
     validation = validate_score_data(
@@ -616,11 +555,10 @@ def calculate_score_details(data):
 
         return {
 
-            "score":
-                None,
+            "score": None,
 
             "classification":
-                "INDEFINIDO",
+                "INDISPONÍVEL",
 
             "signal":
                 "INDEFINIDO",
@@ -628,20 +566,17 @@ def calculate_score_details(data):
             "breakdown":
                 {},
 
-            "score_reliable":
-                False,
-
-            "reliable":
-                False,
-
             "validation":
                 validation,
 
-            "missing_indicators":
-                validation["missing"],
+            "valid":
+                False,
 
-            "invalid_indicators":
-                validation["invalid"],
+            "status":
+                validation["status"],
+
+            "status_icon":
+                validation["status_icon"],
 
             "message":
                 validation["message"],
@@ -656,7 +591,9 @@ def calculate_score_details(data):
         data
     )
 
-    score = breakdown["score"]
+    score = breakdown[
+        "score"
+    ]
 
     # ======================================================
     # RETORNO
@@ -680,89 +617,19 @@ def calculate_score_details(data):
         "breakdown":
             breakdown,
 
-        "score_reliable":
-            True,
-
-        "reliable":
-            True,
-
         "validation":
             validation,
 
-        "missing_indicators":
-            [],
-
-        "invalid_indicators":
-            [],
-
-        "message":
-            "Score calculado com todos os "
-            "indicadores necessários disponíveis.",
-
-    }
-
-
-# ==========================================================
-# STATUS DE CONFIABILIDADE
-# ==========================================================
-
-def get_score_reliability(
-    data,
-):
-    """
-    Retorna somente o status de confiabilidade
-    do Score.
-
-    Útil para o Dashboard.
-    """
-
-    validation = validate_score_data(
-        data
-    )
-
-    if validation["valid"]:
-
-        return {
-
-            "reliable":
-                True,
-
-            "status":
-                "CONFIÁVEL",
-
-            "icon":
-                "🟢",
-
-            "message":
-                "Todos os indicadores "
-                "necessários estão disponíveis.",
-
-            "missing":
-                [],
-
-            "invalid":
-                [],
-
-        }
-
-    return {
-
-        "reliable":
-            False,
+        "valid":
+            True,
 
         "status":
-            "NÃO CONFIÁVEL",
+            "CONSISTENTE",
 
-        "icon":
-            "🔴",
+        "status_icon":
+            "🟢",
 
         "message":
-            validation["message"],
-
-        "missing":
-            validation["missing"],
-
-        "invalid":
-            validation["invalid"],
+            "Score calculado com dados válidos.",
 
     }
