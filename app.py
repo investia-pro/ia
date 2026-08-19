@@ -3,10 +3,15 @@ InvestIA PRO
 Aplicação principal
 
 Versão: v0.6
-Fase: 2.9.5 - Integração da Validação dos Indicadores
+Fase: 2.9.6 - Estabilidade e Validação de Dados
 """
 
 import streamlit as st
+
+
+# ==========================================================
+# IMPORTS
+# ==========================================================
 
 from market import (
     get_market_data,
@@ -90,10 +95,12 @@ def get_indicator_value(
     ):
         return default
 
-    return indicators.get(
+    value = indicators.get(
         key,
         default,
     )
+
+    return value
 
 
 def get_analysis_value(
@@ -102,8 +109,8 @@ def get_analysis_value(
     default=None,
 ):
     """
-    Obtém valores do resultado da análise
-    aceitando nomes alternativos.
+    Obtém um valor da análise aceitando
+    nomes alternativos.
     """
 
     if not isinstance(
@@ -116,85 +123,85 @@ def get_analysis_value(
 
         if key in result:
 
-            return result[key]
+            value = result[key]
+
+            if value is not None:
+
+                return value
 
     return default
 
 
-def get_validation_info(
-    result,
+def safe_number(
+    value,
+    default=0.0,
 ):
     """
-    Extrai informações de validação
-    retornadas pelo analysis.py.
+    Converte valores numéricos com segurança.
     """
 
-    if not isinstance(
-        result,
-        dict,
+    try:
+
+        if value is None:
+            return default
+
+        return float(value)
+
+    except (
+        TypeError,
+        ValueError,
     ):
 
-        return {
-            "valid": False,
-            "status": "INCONSISTENTE",
-            "icon": "🔴",
-            "message":
-                "Resultado da análise inválido.",
-        }
+        return default
 
-    validation = result.get(
-        "validation",
-        {},
-    )
 
-    if not isinstance(
-        validation,
-        dict,
+def safe_int(
+    value,
+    default=0,
+):
+    """
+    Converte valores inteiros com segurança.
+    """
+
+    try:
+
+        if value is None:
+            return default
+
+        return int(
+            round(
+                float(value)
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError,
     ):
 
-        validation = {}
+        return default
 
-    valid = result.get(
-        "analysis_valid",
-        result.get(
-            "valid",
-            validation.get(
-                "valid",
-                False,
-            ),
-        ),
-    )
 
-    status = result.get(
-        "data_status",
-        validation.get(
-            "status",
-            "INCONSISTENTE",
-        ),
-    )
+def safe_reasons(
+    reasons,
+):
+    """
+    Garante que justificativas possam
+    ser exibidas sem quebrar a aplicação.
+    """
 
-    icon = result.get(
-        "data_status_icon",
-        validation.get(
-            "status_icon",
-            "🔴",
-        ),
-    )
+    if reasons is None:
 
-    message = result.get(
-        "message",
-        validation.get(
-            "message",
-            "Status dos dados não informado.",
-        ),
-    )
+        return []
 
-    return {
-        "valid": bool(valid),
-        "status": str(status),
-        "icon": str(icon),
-        "message": str(message),
-    }
+    if isinstance(
+        reasons,
+        list,
+    ):
+
+        return reasons
+
+    return [reasons]
 
 
 # ==========================================================
@@ -208,10 +215,11 @@ col_input, col_period = st.columns(
 
 with col_input:
 
-    asset = st.text_input(
+    asset_input = st.text_input(
         "Digite o código do ativo",
         value="PETR4",
         max_chars=20,
+        placeholder="Ex.: PETR4, VALE3, ITUB4",
     )
 
 
@@ -241,8 +249,12 @@ analyze_button = st.button(
 
 if analyze_button:
 
+    # ======================================================
+    # NORMALIZAÇÃO
+    # ======================================================
+
     asset = normalize_asset_input(
-        asset
+        asset_input
     )
 
     # ======================================================
@@ -258,11 +270,11 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # BUSCA DE DADOS
+    # BUSCA DOS DADOS
     # ======================================================
 
     with st.spinner(
-        "Buscando dados do mercado..."
+        f"Buscando dados de {asset}..."
     ):
 
         try:
@@ -275,31 +287,45 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao buscar os dados "
-                "do mercado."
+                f"Não foi possível obter dados "
+                f"para {asset}."
             )
 
-            st.exception(
-                error
+            st.caption(
+                "O provedor de mercado pode estar "
+                "temporariamente indisponível ou "
+                "ter aplicado limite de requisições."
             )
+
+            with st.expander(
+                "Detalhes técnicos"
+            ):
+
+                st.exception(
+                    error
+                )
 
             st.stop()
 
     # ======================================================
-    # VALIDAÇÃO DO RETORNO DO MERCADO
+    # VALIDAÇÃO DO RETORNO DO MARKET.PY
     # ======================================================
 
     if market_data is None:
 
         st.error(
-            f"Não foi possível obter "
-            f"dados para {asset}."
+            f"Não foi possível obter dados "
+            f"para {asset}."
+        )
+
+        st.info(
+            "Tente novamente em alguns instantes."
         )
 
         st.stop()
 
     # ======================================================
-    # PREPARAÇÃO
+    # PREPARAÇÃO DOS DADOS
     # ======================================================
 
     with st.spinner(
@@ -319,17 +345,25 @@ if analyze_button:
                 "do mercado."
             )
 
-            st.exception(
-                error
-            )
+            with st.expander(
+                "Detalhes técnicos"
+            ):
+
+                st.exception(
+                    error
+                )
 
             st.stop()
+
+    # ======================================================
+    # VALIDAÇÃO DO PREPARED_DATA
+    # ======================================================
 
     if prepared_data is None:
 
         st.error(
-            "Os dados do mercado "
-            "não puderam ser preparados."
+            "Os dados do mercado não puderam "
+            "ser preparados."
         )
 
         st.stop()
@@ -340,8 +374,8 @@ if analyze_button:
     ):
 
         st.error(
-            "O módulo de mercado retornou "
-            "uma estrutura inválida."
+            "O formato dos dados preparados "
+            "é inválido."
         )
 
         st.stop()
@@ -357,21 +391,41 @@ if analyze_button:
     if history is None:
 
         st.error(
-            "Histórico do ativo não encontrado."
+            "O histórico do ativo não foi encontrado."
         )
 
-        st.stop()
-
-    if history.empty:
-
-        st.error(
-            "O histórico do ativo está vazio."
+        st.caption(
+            "O provedor não retornou uma série "
+            "histórica válida."
         )
 
         st.stop()
 
     # ======================================================
-    # PREÇO
+    # VERIFICAÇÃO DO HISTÓRICO
+    # ======================================================
+
+    try:
+
+        if history.empty:
+
+            st.error(
+                "O histórico do ativo está vazio."
+            )
+
+            st.stop()
+
+    except AttributeError:
+
+        st.error(
+            "O histórico retornado possui "
+            "formato inválido."
+        )
+
+        st.stop()
+
+    # ======================================================
+    # PREÇO ATUAL
     # ======================================================
 
     try:
@@ -383,21 +437,24 @@ if analyze_button:
     except Exception as error:
 
         st.error(
-            "Erro ao determinar "
+            "Não foi possível determinar "
             "o preço atual."
         )
 
-        st.exception(
-            error
-        )
+        with st.expander(
+            "Detalhes técnicos"
+        ):
+
+            st.exception(
+                error
+            )
 
         st.stop()
 
     if price is None:
 
         st.error(
-            "Não foi possível determinar "
-            "o preço atual."
+            "O preço atual não está disponível."
         )
 
         st.stop()
@@ -419,15 +476,23 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao calcular "
-                "os indicadores técnicos."
+                "Erro ao calcular os indicadores "
+                "técnicos."
             )
 
-            st.exception(
-                error
-            )
+            with st.expander(
+                "Detalhes técnicos"
+            ):
+
+                st.exception(
+                    error
+                )
 
             st.stop()
+
+    # ======================================================
+    # VALIDAÇÃO DOS INDICADORES
+    # ======================================================
 
     if indicators is None:
 
@@ -444,7 +509,7 @@ if analyze_button:
 
         st.error(
             "O módulo de indicadores retornou "
-            "uma estrutura inválida."
+            "um formato inválido."
         )
 
         st.stop()
@@ -452,6 +517,11 @@ if analyze_button:
     # ======================================================
     # EXTRAÇÃO DOS INDICADORES
     # ======================================================
+
+    rsi = get_indicator_value(
+        indicators,
+        "rsi",
+    )
 
     ma21 = get_indicator_value(
         indicators,
@@ -461,11 +531,6 @@ if analyze_button:
     ma200 = get_indicator_value(
         indicators,
         "ma200",
-    )
-
-    rsi = get_indicator_value(
-        indicators,
-        "rsi",
     )
 
     volatility = get_indicator_value(
@@ -479,8 +544,14 @@ if analyze_button:
 
     analysis_data = {
 
+        "asset":
+            asset,
+
         "price":
             price,
+
+        "rsi":
+            rsi,
 
         "ma21":
             ma21,
@@ -488,34 +559,97 @@ if analyze_button:
         "ma200":
             ma200,
 
-        "rsi":
-            rsi,
-
         "volatility":
             volatility,
     }
 
     # ======================================================
-    # VALIDAÇÃO BÁSICA
+    # VALIDAÇÃO
     # ======================================================
 
     try:
 
-        basic_validation = validate_analysis_data(
+        data_validation = validate_analysis_data(
             analysis_data
         )
 
     except Exception:
 
-        basic_validation = True
+        data_validation = True
 
-    if not basic_validation:
+    # ======================================================
+    # COMPATIBILIDADE COM DIFERENTES
+    # VERSÕES DO utils.py
+    # ======================================================
+
+    if isinstance(
+        data_validation,
+        dict,
+    ):
+
+        validation_valid = data_validation.get(
+            "valid",
+            False,
+        )
+
+        if not validation_valid:
+
+            status = data_validation.get(
+                "status",
+                "INCOMPLETO",
+            )
+
+            message = data_validation.get(
+                "message",
+                "Dados insuficientes para análise.",
+            )
+
+            st.warning(
+                f"⚠️ Dados insuficientes — {status}"
+            )
+
+            st.info(
+                message
+            )
+
+            missing = data_validation.get(
+                "missing",
+                [],
+            )
+
+            invalid = data_validation.get(
+                "invalid",
+                [],
+            )
+
+            if missing:
+
+                st.write(
+                    "**Dados ausentes:** "
+                    + ", ".join(
+                        missing
+                    )
+                )
+
+            if invalid:
+
+                st.write(
+                    "**Dados inválidos:** "
+                    + ", ".join(
+                        invalid
+                    )
+                )
+
+            st.stop()
+
+    elif data_validation is False:
 
         st.warning(
-            "Os dados técnicos retornados "
-            "são insuficientes para uma "
-            "análise completa."
+            "Os dados técnicos são insuficientes "
+            "para realizar a análise."
         )
+
+        st.stop()
 
     # ======================================================
     # MOTOR DE ANÁLISE
@@ -535,13 +669,16 @@ if analyze_button:
         except Exception as error:
 
             st.error(
-                "Erro ao executar "
-                "a análise InvestIA."
+                "Erro ao executar a análise InvestIA."
             )
 
-            st.exception(
-                error
-            )
+            with st.expander(
+                "Detalhes técnicos"
+            ):
+
+                st.exception(
+                    error
+                )
 
             st.stop()
 
@@ -564,72 +701,29 @@ if analyze_button:
 
         st.error(
             "O motor de análise retornou "
-            "uma estrutura inválida."
+            "um formato inválido."
         )
 
         st.stop()
 
     # ======================================================
-    # STATUS DOS DADOS
+    # STATUS DA ANÁLISE
     # ======================================================
 
-    validation_info = get_validation_info(
-        result
+    analysis_valid = result.get(
+        "valid",
+        True,
     )
 
-    validation_status = validation_info[
-        "status"
-    ]
-
-    validation_icon = validation_info[
-        "icon"
-    ]
-
-    validation_message = validation_info[
-        "message"
-    ]
-
-    # ======================================================
-    # INDICADOR DE QUALIDADE DOS DADOS
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🔎 Qualidade dos dados"
+    analysis_status = result.get(
+        "status",
+        "CONSISTENTE",
     )
 
-    quality_col1, quality_col2 = st.columns(
-        [1, 4]
+    analysis_message = result.get(
+        "message",
+        "",
     )
-
-    with quality_col1:
-
-        st.metric(
-            "Status",
-            f"{validation_icon} "
-            f"{validation_status}",
-        )
-
-    with quality_col2:
-
-        if validation_status == "CONSISTENTE":
-
-            st.success(
-                validation_message
-            )
-
-        elif validation_status == "INCOMPLETO":
-
-            st.warning(
-                validation_message
-            )
-
-        else:
-
-            st.error(
-                validation_message
-            )
 
     # ======================================================
     # EXTRAÇÃO DOS RESULTADOS
@@ -650,7 +744,7 @@ if analyze_button:
     signal = get_analysis_value(
         result,
         "signal",
-        default="INDEFINIDO",
+        default="INDISPONÍVEL",
     )
 
     qualified_signal = get_analysis_value(
@@ -675,7 +769,7 @@ if analyze_button:
         result,
         "trend",
         "tendencia",
-        default="Indeterminada",
+        default="Indisponível",
     )
 
     recommendation = get_analysis_value(
@@ -689,7 +783,7 @@ if analyze_button:
         result,
         "risk",
         "risco",
-        default="Indeterminado",
+        default="Indisponível",
     )
 
     rsi_status = get_analysis_value(
@@ -698,11 +792,13 @@ if analyze_button:
         default="Indisponível",
     )
 
-    reasons = get_analysis_value(
-        result,
-        "reasons",
-        "justificativas",
-        default=[],
+    reasons = safe_reasons(
+        get_analysis_value(
+            result,
+            "reasons",
+            "justificativas",
+            default=[],
+        )
     )
 
     breakdown = get_analysis_value(
@@ -711,17 +807,17 @@ if analyze_button:
         default={},
     )
 
+    if not isinstance(
+        breakdown,
+        dict,
+    ):
+
+        breakdown = {}
+
     executive_summary = get_analysis_value(
         result,
         "executive_summary",
         default="",
-    )
-
-    analysis_valid = get_analysis_value(
-        result,
-        "analysis_valid",
-        "valid",
-        default=False,
     )
 
     # ======================================================
@@ -735,57 +831,26 @@ if analyze_button:
     )
 
     # ======================================================
-    # ALERTA PARA DADOS NÃO CONSISTENTES
+    # STATUS
     # ======================================================
 
-    if not analysis_valid:
+    if analysis_valid:
+
+        st.success(
+            f"🟢 Dados da análise: {analysis_status}"
+        )
+
+    else:
 
         st.warning(
-            "A análise técnica não está "
-            "disponível com confiabilidade suficiente. "
-            "O sistema não irá gerar uma recomendação "
-            "baseada em dados incompletos ou inválidos."
+            f"⚠️ Dados da análise: {analysis_status}"
         )
 
-        st.info(
-            f"Motivo: {validation_message}"
-        )
+        if analysis_message:
 
-        # --------------------------------------------------
-        # MOSTRA O QUE ESTÁ DISPONÍVEL
-        # --------------------------------------------------
-
-        available_col1, available_col2 = st.columns(
-            2
-        )
-
-        with available_col1:
-
-            st.write(
-                f"**Ativo:** {asset}"
+            st.info(
+                analysis_message
             )
-
-            st.write(
-                f"**Preço:** "
-                f"{format_currency(price)}"
-            )
-
-        with available_col2:
-
-            st.write(
-                f"**Status:** "
-                f"{validation_icon} "
-                f"{validation_status}"
-            )
-
-            st.write(
-                f"**Recomendação:** "
-                f"{recommendation}"
-            )
-
-        # Não interrompe a página.
-        # O gráfico e os dados disponíveis
-        # continuam sendo apresentados.
 
     # ======================================================
     # CARDS PRINCIPAIS
@@ -797,28 +862,39 @@ if analyze_button:
 
     with col1:
 
+        try:
+
+            price_display = format_currency(
+                price
+            )
+
+        except Exception:
+
+            price_display = (
+                f"R$ {safe_number(price):,.2f}"
+            )
+
         st.metric(
             "Preço atual",
-            format_currency(
-                price
-            ),
+            price_display,
         )
 
     with col2:
 
         if score is None:
 
-            st.metric(
-                "Score InvestIA",
-                "N/D",
-            )
+            score_display = "N/D"
 
         else:
 
-            st.metric(
-                "Score InvestIA",
-                f"{score}/100",
+            score_display = (
+                f"{safe_int(score)}/100"
             )
+
+        st.metric(
+            "Score InvestIA",
+            score_display,
+        )
 
     with col3:
 
@@ -857,17 +933,9 @@ if analyze_button:
 
     if executive_summary:
 
-        if analysis_valid:
-
-            st.success(
-                executive_summary
-            )
-
-        else:
-
-            st.warning(
-                executive_summary
-            )
+        st.success(
+            executive_summary
+        )
 
     else:
 
@@ -891,88 +959,78 @@ if analyze_button:
 
     with ind1:
 
-        if ma21 is None:
+        try:
 
-            st.metric(
-                "MA21",
-                "N/D",
+            ma21_display = format_currency(
+                ma21
             )
 
-        else:
+        except Exception:
 
-            st.metric(
-                "MA21",
-                format_currency(
-                    ma21
-                ),
-            )
+            ma21_display = "N/D"
+
+        st.metric(
+            "MA21",
+            ma21_display,
+        )
 
     with ind2:
 
-        if ma200 is None:
+        try:
 
-            st.metric(
-                "MA200",
-                "N/D",
+            ma200_display = format_currency(
+                ma200
             )
 
-        else:
+        except Exception:
 
-            st.metric(
-                "MA200",
-                format_currency(
-                    ma200
-                ),
-            )
+            ma200_display = "N/D"
+
+        st.metric(
+            "MA200",
+            ma200_display,
+        )
 
     with ind3:
 
         if rsi is None:
 
-            st.metric(
-                "RSI",
-                "N/D",
-            )
+            rsi_display = "N/D"
 
         else:
 
-            st.metric(
-                "RSI",
-                f"{float(rsi):.2f}",
+            rsi_display = (
+                f"{safe_number(rsi):.2f}"
             )
+
+        st.metric(
+            "RSI",
+            rsi_display,
+        )
 
     with ind4:
 
         if volatility is None:
 
-            st.metric(
-                "Volatilidade",
-                "N/D",
-            )
+            volatility_display = "N/D"
 
         else:
 
-            try:
-
-                volatility_percent = (
-                    float(volatility)
-                    * 100
+            volatility_percent = (
+                safe_number(
+                    volatility
                 )
+                * 100
+            )
 
-                st.metric(
-                    "Volatilidade",
-                    f"{volatility_percent:.2f}%",
-                )
+            volatility_display = (
+                f"{volatility_percent:.2f}%"
+            )
 
-            except (
-                TypeError,
-                ValueError,
-            ):
-
-                st.metric(
-                    "Volatilidade",
-                    "N/D",
-                )
+        st.metric(
+            "Volatilidade",
+            volatility_display,
+        )
 
     # ======================================================
     # SCORE EXPLICADO
@@ -990,37 +1048,21 @@ if analyze_button:
     )
 
     # ======================================================
-    # SCORE DISPONÍVEL
+    # BASE
     # ======================================================
-
-    if not isinstance(
-        breakdown,
-        dict,
-    ):
-
-        breakdown = {}
 
     base_points = breakdown.get(
         "base",
         50,
     )
 
-    try:
-
-        base_points = int(
-            base_points
-        )
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        base_points = 50
+    base_points = safe_int(
+        base_points,
+        50,
+    )
 
     st.write(
-        f"**Base:** "
-        f"{base_points:+d} pontos"
+        f"**Base:** {base_points:+d} pontos"
     )
 
     # ======================================================
@@ -1049,9 +1091,11 @@ if analyze_button:
 
             ma21_data = {}
 
-        ma21_points = ma21_data.get(
-            "points",
-            0,
+        ma21_points = safe_int(
+            ma21_data.get(
+                "points",
+                0,
+            )
         )
 
         ma21_signal = ma21_data.get(
@@ -1063,19 +1107,6 @@ if analyze_button:
             "reason",
             "Sem informação.",
         )
-
-        try:
-
-            ma21_points = int(
-                ma21_points
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ):
-
-            ma21_points = 0
 
         st.markdown(
             "### 📏 MA21"
@@ -1091,7 +1122,9 @@ if analyze_button:
         )
 
         st.caption(
-            ma21_reason
+            str(
+                ma21_reason
+            )
         )
 
     # ======================================================
@@ -1112,9 +1145,11 @@ if analyze_button:
 
             ma200_data = {}
 
-        ma200_points = ma200_data.get(
-            "points",
-            0,
+        ma200_points = safe_int(
+            ma200_data.get(
+                "points",
+                0,
+            )
         )
 
         ma200_signal = ma200_data.get(
@@ -1126,19 +1161,6 @@ if analyze_button:
             "reason",
             "Sem informação.",
         )
-
-        try:
-
-            ma200_points = int(
-                ma200_points
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ):
-
-            ma200_points = 0
 
         st.markdown(
             "### 📐 MA200"
@@ -1154,7 +1176,9 @@ if analyze_button:
         )
 
         st.caption(
-            ma200_reason
+            str(
+                ma200_reason
+            )
         )
 
     # ======================================================
@@ -1175,9 +1199,11 @@ if analyze_button:
 
             rsi_data = {}
 
-        rsi_points = rsi_data.get(
-            "points",
-            0,
+        rsi_points = safe_int(
+            rsi_data.get(
+                "points",
+                0,
+            )
         )
 
         rsi_signal = rsi_data.get(
@@ -1189,19 +1215,6 @@ if analyze_button:
             "reason",
             "Sem informação.",
         )
-
-        try:
-
-            rsi_points = int(
-                rsi_points
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ):
-
-            rsi_points = 0
 
         st.markdown(
             "### 📊 RSI"
@@ -1217,7 +1230,9 @@ if analyze_button:
         )
 
         st.caption(
-            rsi_reason
+            str(
+                rsi_reason
+            )
         )
 
     # ======================================================
@@ -1228,23 +1243,34 @@ if analyze_button:
         "raw_score"
     )
 
-    if score is None:
+    if score is not None:
 
-        st.warning(
-            "**Score final:** indisponível."
+        score_final = safe_int(
+            score
         )
 
-    elif raw_score is not None:
+        if raw_score is not None:
 
-        st.success(
-            f"**Score final: {score}/100** "
-            f"| Cálculo bruto: {raw_score}"
-        )
+            raw_score_display = safe_number(
+                raw_score
+            )
+
+            st.success(
+                f"**Score final: {score_final}/100** "
+                f"| Cálculo bruto: "
+                f"{raw_score_display:.0f}"
+            )
+
+        else:
+
+            st.success(
+                f"**Score final: {score_final}/100**"
+            )
 
     else:
 
-        st.success(
-            f"**Score final: {score}/100**"
+        st.warning(
+            "**Score final:** indisponível"
         )
 
     # ======================================================
@@ -1283,9 +1309,13 @@ if analyze_button:
             "O gráfico não pôde ser gerado."
         )
 
-        st.exception(
-            error
-        )
+        with st.expander(
+            "Detalhes técnicos do gráfico"
+        ):
+
+            st.exception(
+                error
+            )
 
     # ======================================================
     # ANÁLISE DETALHADA
@@ -1313,21 +1343,10 @@ if analyze_button:
 
         if reasons:
 
-            if isinstance(
-                reasons,
-                list,
-            ):
-
-                for reason in reasons:
-
-                    st.write(
-                        f"✔ {reason}"
-                    )
-
-            else:
+            for reason in reasons:
 
                 st.write(
-                    f"✔ {reasons}"
+                    f"✔ {reason}"
                 )
 
         else:
@@ -1355,7 +1374,7 @@ if analyze_button:
 
         except Exception:
 
-            icon = "🛡️"
+            icon = "⚪"
 
         st.write(
             f"{icon} **{risk}**"
@@ -1364,7 +1383,8 @@ if analyze_button:
         if score is not None:
 
             st.write(
-                f"**Score:** {score}/100"
+                f"**Score:** "
+                f"{safe_int(score)}/100"
             )
 
         else:
@@ -1386,7 +1406,8 @@ if analyze_button:
         )
 
         st.write(
-            f"**Recomendação:** {recommendation}"
+            f"**Recomendação:** "
+            f"{recommendation}"
         )
 
     # ======================================================
@@ -1409,15 +1430,26 @@ if analyze_button:
             f"**Ativo:** {asset}"
         )
 
+        try:
+
+            summary_price = format_currency(
+                price
+            )
+
+        except Exception:
+
+            summary_price = "N/D"
+
         st.write(
             f"**Preço:** "
-            f"{format_currency(price)}"
+            f"{summary_price}"
         )
 
         if score is not None:
 
             st.write(
-                f"**Score:** {score}/100"
+                f"**Score:** "
+                f"{safe_int(score)}/100"
             )
 
         else:
@@ -1438,33 +1470,28 @@ if analyze_button:
         )
 
         st.write(
-            f"**Sinal:** {qualified_signal}"
+            f"**Sinal:** "
+            f"{qualified_signal}"
         )
 
         try:
 
-            summary_risk_icon = risk_icon(
+            final_risk_icon = risk_icon(
                 risk
             )
 
         except Exception:
 
-            summary_risk_icon = "🛡️"
+            final_risk_icon = "⚪"
 
         st.write(
             f"**Risco:** "
-            f"{summary_risk_icon} {risk}"
+            f"{final_risk_icon} {risk}"
         )
 
         st.write(
             f"**Recomendação:** "
             f"{recommendation}"
-        )
-
-        st.write(
-            f"**Dados:** "
-            f"{validation_icon} "
-            f"{validation_status}"
         )
 
 
@@ -1489,6 +1516,29 @@ else:
 4. Consulte o Score InvestIA, tendência,
    risco e recomendação.
 
-**Exemplos:** PETR4, VALE3, ITUB4.
+### Exemplos
+
+`PETR4` · `VALE3` · `ITUB4`
+
+---
+
+### 📌 Fase atual
+
+**InvestIA PRO v0.6 — Fase 2.9.6**
+
+Nesta versão o sistema possui:
+
+- Validação dos dados de entrada
+- Proteção contra dados ausentes
+- Proteção contra valores inválidos
+- Score InvestIA
+- Explicabilidade do Score
+- Análise de tendência
+- Análise de RSI
+- Classificação de risco
+- Recomendação
+- Resumo executivo
+- Gráfico histórico
+- Tratamento de erros
 """
     )
