@@ -3,7 +3,7 @@ InvestIA PRO
 Motor de Score
 
 Versão: v0.6
-Fase: 2.9.6 - Estabilidade e Validação de Dados
+Fase: 2.9.7 - Score Robusto e Explicável
 """
 
 from config import (
@@ -11,12 +11,6 @@ from config import (
     SELL_SCORE,
     RSI_OVERSOLD,
     RSI_OVERBOUGHT,
-)
-
-from utils import (
-    is_valid_number,
-    safe_float,
-    validate_indicators,
 )
 
 
@@ -27,127 +21,177 @@ from utils import (
 def clamp_score(score):
     """
     Mantém o Score entre 0 e 100.
-
-    Valores inválidos não são convertidos
-    artificialmente para um Score válido.
     """
 
-    if not is_valid_number(score):
-        return None
+    try:
+
+        score = float(score)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return 50
 
     return max(
         0,
         min(
             100,
-            int(round(float(score))),
+            int(
+                round(
+                    score
+                )
+            ),
         ),
     )
 
 
 # ==========================================================
-# VALIDAÇÃO DOS DADOS DO SCORE
+# CONVERSÃO SEGURA
 # ==========================================================
 
-def validate_score_data(data):
+def safe_float(
+    value,
+):
     """
-    Valida os dados necessários para o cálculo
-    do Score InvestIA.
-
-    O Score exige:
-
-        price
-        ma21
-        ma200
-        rsi
-
-    A volatilidade não participa diretamente
-    do cálculo do Score.
+    Converte valores numéricos com segurança.
     """
+
+    try:
+
+        if value is None:
+            return None
+
+        return float(value)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return None
+
+
+# ==========================================================
+# VALIDAÇÃO
+# ==========================================================
+
+def validate_score_data(
+    data,
+):
+    """
+    Valida os dados necessários para o Score.
+    """
+
+    if data is None:
+
+        return False
 
     if not isinstance(
         data,
         dict,
     ):
 
-        return {
-            "valid": False,
-            "status": "INCONSISTENTE",
-            "status_icon": "🔴",
-            "message":
-                "Os dados do Score não estão "
-                "em formato válido.",
-            "missing": [],
-            "invalid": [],
-        }
+        return False
 
-    validation = validate_indicators(
-        data
-    )
+    required = [
+        "price",
+        "ma21",
+        "ma200",
+        "rsi",
+    ]
 
-    return validation
+    for field in required:
+
+        if field not in data:
+
+            return False
+
+        if data[field] is None:
+
+            return False
+
+    return True
 
 
 # ==========================================================
 # CONTRIBUIÇÃO DA MA21
 # ==========================================================
 
-def calculate_ma21_contribution(
+def calculate_ma21_component(
     price,
     ma21,
 ):
     """
     Calcula a contribuição da MA21.
 
-    Regra:
+    Acima da MA21:
+        +10
 
-        Preço > MA21  -> +10
-        Preço < MA21  -> -10
-        Preço = MA21  ->  0
+    Abaixo da MA21:
+        -10
+
+    Igual:
+        0
     """
 
-    if not is_valid_number(
+    price = safe_float(
         price
-    ) or not is_valid_number(
+    )
+
+    ma21 = safe_float(
         ma21
-    ):
+    )
+
+    if price is None or ma21 is None:
 
         return {
-            "points": 0,
-            "signal": "Indisponível",
-            "reason":
-                "Dados insuficientes para avaliar a MA21.",
-            "valid": False,
-        }
 
-    price = float(price)
-    ma21 = float(ma21)
+            "points": 0,
+
+            "signal":
+                "Indisponível",
+
+            "reason":
+                "MA21 não disponível.",
+        }
 
     if price > ma21:
 
         return {
+
             "points": 10,
-            "signal": "Positivo",
+
+            "signal":
+                "Positivo",
+
             "reason":
                 "Preço acima da MA21.",
-            "valid": True,
         }
 
     if price < ma21:
 
         return {
+
             "points": -10,
-            "signal": "Negativo",
+
+            "signal":
+                "Negativo",
+
             "reason":
                 "Preço abaixo da MA21.",
-            "valid": True,
         }
 
     return {
+
         "points": 0,
-        "signal": "Neutro",
+
+        "signal":
+            "Neutro",
+
         "reason":
             "Preço alinhado à MA21.",
-        "valid": True,
     }
 
 
@@ -155,63 +199,79 @@ def calculate_ma21_contribution(
 # CONTRIBUIÇÃO DA MA200
 # ==========================================================
 
-def calculate_ma200_contribution(
+def calculate_ma200_component(
     price,
     ma200,
 ):
     """
     Calcula a contribuição da MA200.
 
-    Regra:
+    Acima da MA200:
+        +20
 
-        Preço > MA200  -> +20
-        Preço < MA200  -> -20
-        Preço = MA200  ->  0
+    Abaixo da MA200:
+        -20
+
+    Igual:
+        0
     """
 
-    if not is_valid_number(
+    price = safe_float(
         price
-    ) or not is_valid_number(
+    )
+
+    ma200 = safe_float(
         ma200
-    ):
+    )
+
+    if price is None or ma200 is None:
 
         return {
-            "points": 0,
-            "signal": "Indisponível",
-            "reason":
-                "Dados insuficientes para avaliar a MA200.",
-            "valid": False,
-        }
 
-    price = float(price)
-    ma200 = float(ma200)
+            "points": 0,
+
+            "signal":
+                "Indisponível",
+
+            "reason":
+                "MA200 não disponível.",
+        }
 
     if price > ma200:
 
         return {
+
             "points": 20,
-            "signal": "Positivo",
+
+            "signal":
+                "Positivo",
+
             "reason":
                 "Preço acima da MA200.",
-            "valid": True,
         }
 
     if price < ma200:
 
         return {
+
             "points": -20,
-            "signal": "Negativo",
+
+            "signal":
+                "Negativo",
+
             "reason":
                 "Preço abaixo da MA200.",
-            "valid": True,
         }
 
     return {
+
         "points": 0,
-        "signal": "Neutro",
+
+        "signal":
+            "Neutro",
+
         "reason":
             "Preço alinhado à MA200.",
-        "valid": True,
     }
 
 
@@ -219,333 +279,137 @@ def calculate_ma200_contribution(
 # CONTRIBUIÇÃO DO RSI
 # ==========================================================
 
-def calculate_rsi_contribution(
+def calculate_rsi_component(
     rsi,
 ):
     """
     Calcula a contribuição do RSI.
 
-    Regra:
+    RSI <= sobrevenda:
+        +10
 
-        RSI <= sobrevenda -> +10
-        RSI >= sobrecompra -> -10
-        Demais valores -> 0
+    RSI >= sobrecompra:
+        -10
+
+    Região intermediária:
+        0
     """
 
-    if not is_valid_number(
+    rsi = safe_float(
         rsi
-    ):
+    )
+
+    if rsi is None:
 
         return {
+
             "points": 0,
-            "signal": "Indisponível",
+
+            "signal":
+                "Indisponível",
+
             "reason":
-                "Dados insuficientes para avaliar o RSI.",
-            "valid": False,
+                "RSI não disponível.",
         }
-
-    rsi = float(rsi)
-
-    # ------------------------------------------------------
-    # Proteção adicional
-    # ------------------------------------------------------
-
-    if rsi < 0 or rsi > 100:
-
-        return {
-            "points": 0,
-            "signal": "Inválido",
-            "reason":
-                "RSI fora do intervalo válido de 0 a 100.",
-            "valid": False,
-        }
-
-    # ------------------------------------------------------
-    # SOBREVENDA
-    # ------------------------------------------------------
 
     if rsi <= RSI_OVERSOLD:
 
         return {
+
             "points": 10,
-            "signal": "Positivo",
+
+            "signal":
+                "Positivo",
+
             "reason":
                 "RSI em região de sobrevenda.",
-            "valid": True,
         }
-
-    # ------------------------------------------------------
-    # SOBRECOMPRA
-    # ------------------------------------------------------
 
     if rsi >= RSI_OVERBOUGHT:
 
         return {
+
             "points": -10,
-            "signal": "Negativo",
+
+            "signal":
+                "Negativo",
+
             "reason":
                 "RSI em região de sobrecompra.",
-            "valid": True,
         }
 
-    # ------------------------------------------------------
-    # NEUTRO
-    # ------------------------------------------------------
-
     return {
+
         "points": 0,
-        "signal": "Neutro",
+
+        "signal":
+            "Neutro",
+
         "reason":
             "RSI em região neutra.",
-        "valid": True,
     }
 
 
 # ==========================================================
-# CONTRIBUIÇÃO DA VOLATILIDADE
-# ==========================================================
-
-def validate_volatility_for_score(
-    volatility,
-):
-    """
-    A volatilidade não altera o Score nesta versão.
-
-    Esta função existe para garantir que valores
-    inválidos não sejam propagados para outras etapas.
-    """
-
-    if volatility is None:
-
-        return {
-            "valid": True,
-            "available": False,
-            "value": None,
-        }
-
-    value = safe_float(
-        volatility
-    )
-
-    if value is None:
-
-        return {
-            "valid": False,
-            "available": True,
-            "value": None,
-        }
-
-    if value < 0:
-
-        return {
-            "valid": False,
-            "available": True,
-            "value": None,
-        }
-
-    return {
-        "valid": True,
-        "available": True,
-        "value": value,
-    }
-
-
-# ==========================================================
-# BREAKDOWN DO SCORE
+# BREAKDOWN COMPLETO
 # ==========================================================
 
 def get_score_breakdown(
     data,
 ):
     """
-    Calcula a contribuição individual
-    de cada indicador para o Score.
+    Calcula a composição completa do Score.
 
-    Score base:
+    Base:
         50 pontos
 
     MA21:
-        +10 / -10
+        +/- 10
 
     MA200:
-        +20 / -20
+        +/- 20
 
     RSI:
-        +10 / -10 / 0
+        +/- 10
 
-    IMPORTANTE:
-        Se qualquer indicador obrigatório
-        estiver inválido, o Score não é calculado.
+    Pontuação máxima:
+        90
+
+    Pontuação mínima:
+        10
     """
 
-    # ======================================================
-    # VALIDAÇÃO INICIAL
-    # ======================================================
-
-    validation = validate_score_data(
+    if not validate_score_data(
         data
-    )
-
-    if not validation["valid"]:
-
-        return {
-
-            "valid": False,
-
-            "status":
-                validation["status"],
-
-            "status_icon":
-                validation["status_icon"],
-
-            "message":
-                validation["message"],
-
-            "missing":
-                validation.get(
-                    "missing",
-                    [],
-                ),
-
-            "invalid":
-                validation.get(
-                    "invalid",
-                    [],
-                ),
-
-            "base":
-                50,
-
-            "ma21": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "MA21 não pode ser utilizada.",
-                "valid": False,
-            },
-
-            "ma200": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "MA200 não pode ser utilizada.",
-                "valid": False,
-            },
-
-            "rsi": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "RSI não pode ser utilizado.",
-                "valid": False,
-            },
-
-            "raw_score": None,
-
-            "score": None,
-        }
-
-    # ======================================================
-    # NORMALIZAÇÃO
-    # ======================================================
-
-    price = safe_float(
-        data.get("price")
-    )
-
-    ma21 = safe_float(
-        data.get("ma21")
-    )
-
-    ma200 = safe_float(
-        data.get("ma200")
-    )
-
-    rsi = safe_float(
-        data.get("rsi")
-    )
-
-    volatility = data.get(
-        "volatility"
-    )
-
-    # ======================================================
-    # SEGURANÇA
-    # ======================================================
-
-    if (
-        price is None
-        or ma21 is None
-        or ma200 is None
-        or rsi is None
     ):
 
-        return {
+        raise ValueError(
+            "Dados insuficientes para calcular o Score InvestIA."
+        )
 
-            "valid": False,
-
-            "status":
-                "INCONSISTENTE",
-
-            "status_icon":
-                "🔴",
-
-            "message":
-                "Não foi possível converter "
-                "os dados obrigatórios para números.",
-
-            "missing": [],
-
-            "invalid": [
-                "price",
-                "ma21",
-                "ma200",
-                "rsi",
-            ],
-
-            "base": 50,
-
-            "ma21": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "Dados inválidos.",
-                "valid": False,
-            },
-
-            "ma200": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "Dados inválidos.",
-                "valid": False,
-            },
-
-            "rsi": {
-                "points": 0,
-                "signal": "Indisponível",
-                "reason":
-                    "Dados inválidos.",
-                "valid": False,
-            },
-
-            "raw_score": None,
-
-            "score": None,
-        }
-
-    # ======================================================
-    # VALIDAÇÃO DA VOLATILIDADE
-    # ======================================================
-
-    volatility_validation = (
-        validate_volatility_for_score(
-            volatility
+    price = safe_float(
+        data.get(
+            "price"
         )
     )
 
-    # A volatilidade não invalida o Score,
-    # pois não participa do cálculo nesta fase.
+    ma21 = safe_float(
+        data.get(
+            "ma21"
+        )
+    )
+
+    ma200 = safe_float(
+        data.get(
+            "ma200"
+        )
+    )
+
+    rsi = safe_float(
+        data.get(
+            "rsi"
+        )
+    )
 
     # ======================================================
     # BASE
@@ -554,84 +418,22 @@ def get_score_breakdown(
     base = 50
 
     # ======================================================
-    # MA21
+    # COMPONENTES
     # ======================================================
 
-    ma21_result = calculate_ma21_contribution(
+    ma21_data = calculate_ma21_component(
         price,
         ma21,
     )
 
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    ma200_result = calculate_ma200_contribution(
+    ma200_data = calculate_ma200_component(
         price,
         ma200,
     )
 
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    rsi_result = calculate_rsi_contribution(
+    rsi_data = calculate_rsi_component(
         rsi
     )
-
-    # ======================================================
-    # VERIFICAÇÃO FINAL DOS COMPONENTES
-    # ======================================================
-
-    components_valid = (
-        ma21_result["valid"]
-        and ma200_result["valid"]
-        and rsi_result["valid"]
-    )
-
-    if not components_valid:
-
-        return {
-
-            "valid": False,
-
-            "status":
-                "INCONSISTENTE",
-
-            "status_icon":
-                "🔴",
-
-            "message":
-                "Um ou mais componentes "
-                "do Score são inválidos.",
-
-            "missing": [],
-
-            "invalid": [
-                "componentes",
-            ],
-
-            "base":
-                base,
-
-            "ma21":
-                ma21_result,
-
-            "ma200":
-                ma200_result,
-
-            "rsi":
-                rsi_result,
-
-            "volatility":
-                volatility_validation,
-
-            "raw_score":
-                None,
-
-            "score":
-                None,
-        }
 
     # ======================================================
     # SCORE BRUTO
@@ -639,9 +441,9 @@ def get_score_breakdown(
 
     raw_score = (
         base
-        + ma21_result["points"]
-        + ma200_result["points"]
-        + rsi_result["points"]
+        + ma21_data["points"]
+        + ma200_data["points"]
+        + rsi_data["points"]
     )
 
     # ======================================================
@@ -658,71 +460,17 @@ def get_score_breakdown(
 
     return {
 
-        "valid": True,
-
-        "status":
-            "CONSISTENTE",
-
-        "status_icon":
-            "🟢",
-
-        "message":
-            "Score calculado com dados válidos.",
-
-        "missing": [],
-
-        "invalid": [],
-
         "base":
             base,
 
-        "ma21": {
+        "ma21":
+            ma21_data,
 
-            "points":
-                ma21_result["points"],
+        "ma200":
+            ma200_data,
 
-            "signal":
-                ma21_result["signal"],
-
-            "reason":
-                ma21_result["reason"],
-
-            "valid":
-                ma21_result["valid"],
-        },
-
-        "ma200": {
-
-            "points":
-                ma200_result["points"],
-
-            "signal":
-                ma200_result["signal"],
-
-            "reason":
-                ma200_result["reason"],
-
-            "valid":
-                ma200_result["valid"],
-        },
-
-        "rsi": {
-
-            "points":
-                rsi_result["points"],
-
-            "signal":
-                rsi_result["signal"],
-
-            "reason":
-                rsi_result["reason"],
-
-            "valid":
-                rsi_result["valid"],
-        },
-
-        "volatility":
-            volatility_validation,
+        "rsi":
+            rsi_data,
 
         "raw_score":
             raw_score,
@@ -740,18 +488,16 @@ def calculate_investia_score(
     data,
 ):
     """
-    Calcula o Score InvestIA de 0 a 100.
-
-    Retorna None quando os dados não são suficientes.
+    Calcula somente o Score InvestIA.
     """
 
     breakdown = get_score_breakdown(
         data
     )
 
-    return breakdown.get(
+    return breakdown[
         "score"
-    )
+    ]
 
 
 # ==========================================================
@@ -764,23 +510,25 @@ def classify_score(
     """
     Classifica o Score InvestIA.
 
-    Retorna INDISPONÍVEL quando o Score
-    não pode ser calculado.
+    >= 80:
+        FORTE
+
+    >= 65:
+        BOM
+
+    >= 50:
+        NEUTRO
+
+    >= 35:
+        FRACO
+
+    < 35:
+        MUITO FRACO
     """
-
-    if not is_valid_number(
-        score
-    ):
-
-        return "INDISPONÍVEL"
 
     score = clamp_score(
         score
     )
-
-    if score is None:
-
-        return "INDISPONÍVEL"
 
     if score >= 80:
 
@@ -810,24 +558,11 @@ def classify_signal(
 ):
     """
     Define o sinal do Score.
-
-    Retorna INDISPONÍVEL quando não existe
-    Score confiável.
     """
-
-    if not is_valid_number(
-        score
-    ):
-
-        return "INDISPONÍVEL"
 
     score = clamp_score(
         score
     )
-
-    if score is None:
-
-        return "INDISPONÍVEL"
 
     if score >= BUY_SCORE:
 
@@ -848,22 +583,12 @@ def get_signal_level(
     score,
 ):
     """
-    Retorna o nível qualitativo do sinal.
+    Define o nível qualitativo do sinal.
     """
-
-    if not is_valid_number(
-        score
-    ):
-
-        return "Indisponível"
 
     score = clamp_score(
         score
     )
-
-    if score is None:
-
-        return "Indisponível"
 
     if score >= 80:
 
@@ -873,15 +598,15 @@ def get_signal_level(
 
         return "Forte"
 
-    if score >= 50:
+    if score <= 20:
 
-        return "Aguardar"
+        return "Muito fraco"
 
-    if score > SELL_SCORE:
+    if score <= SELL_SCORE:
 
-        return "Atenção"
+        return "Fraco"
 
-    return "Forte negativo"
+    return "Aguardar"
 
 
 # ==========================================================
@@ -889,40 +614,27 @@ def get_signal_level(
 # ==========================================================
 
 def get_signal_icon(
-    signal,
+    score,
 ):
     """
-    Retorna o ícone correspondente ao sinal.
+    Retorna o ícone correspondente ao Score.
     """
 
-    if signal is None:
+    score = clamp_score(
+        score
+    )
 
-        return "⚪"
-
-    signal = str(
-        signal
-    ).upper()
-
-    if (
-        "POSITIVO" in signal
-        or "COMPRA" in signal
-    ):
+    if score >= 80:
 
         return "🟢"
 
-    if (
-        "NEGATIVO" in signal
-        or "VENDA" in signal
-    ):
+    if score >= BUY_SCORE:
+
+        return "🟢"
+
+    if score <= SELL_SCORE:
 
         return "🔴"
-
-    if (
-        "INDISPONÍVEL" in signal
-        or "INDISPONIVEL" in signal
-    ):
-
-        return "⚪"
 
     return "🟡"
 
@@ -937,38 +649,21 @@ def calculate_score_details(
     """
     Retorna o Score completo com:
 
-        score
-        classificação
-        sinal
-        nível
-        ícone
-        breakdown
-        validação
+    - Score
+    - Classificação
+    - Sinal
+    - Nível
+    - Ícone
+    - Breakdown
     """
 
     breakdown = get_score_breakdown(
         data
     )
 
-    score = breakdown.get(
+    score = breakdown[
         "score"
-    )
-
-    classification = classify_score(
-        score
-    )
-
-    signal = classify_signal(
-        score
-    )
-
-    signal_level = get_signal_level(
-        score
-    )
-
-    signal_icon = get_signal_icon(
-        signal
-    )
+    ]
 
     return {
 
@@ -976,53 +671,69 @@ def calculate_score_details(
             score,
 
         "classification":
-            classification,
+            classify_score(
+                score
+            ),
 
         "signal":
-            signal,
+            classify_signal(
+                score
+            ),
 
         "signal_level":
-            signal_level,
+            get_signal_level(
+                score
+            ),
 
         "signal_icon":
-            signal_icon,
+            get_signal_icon(
+                score
+            ),
 
         "breakdown":
             breakdown,
+    }
 
-        "valid":
-            breakdown.get(
-                "valid",
-                False,
-            ),
 
-        "status":
-            breakdown.get(
-                "status",
-                "INCONSISTENTE",
-            ),
+# ==========================================================
+# SCORE COM RESUMO
+# ==========================================================
 
-        "status_icon":
-            breakdown.get(
-                "status_icon",
-                "🔴",
-            ),
+def get_score_summary(
+    data,
+):
+    """
+    Retorna um resumo simplificado do Score.
+    """
 
-        "message":
-            breakdown.get(
-                "message",
-                "",
-            ),
+    details = calculate_score_details(
+        data
+    )
 
-        "missing":
-            breakdown.get(
-                "missing",
-                [],
-            ),
+    return {
 
-        "invalid":
-            breakdown.get(
-                "invalid",
-                [],
-            ),
+        "score":
+            details[
+                "score"
+            ],
+
+        "classification":
+            details[
+                "classification"
+            ],
+
+        "signal":
+            details[
+                "signal"
+            ],
+
+        "signal_level":
+            details[
+                "signal_level"
+            ],
+
+        "signal_icon":
+            details[
+                "signal_icon"
+            ],
     }
