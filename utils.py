@@ -1,42 +1,12 @@
 """
 InvestIA PRO
-Funções utilitárias
+Utilitários e Funções Auxiliares
 
 Versão: v0.6
-Fase: 2.9.6 - Estabilidade e Validação de Dados
+Fase: 2.9.7 - Utilitários Robustos
 """
 
 import math
-
-
-# ==========================================================
-# VALIDAÇÃO NUMÉRICA
-# ==========================================================
-
-def is_valid_number(value):
-    """
-    Verifica se um valor é numérico e válido.
-
-    Retorna:
-        True  -> número válido
-        False -> None, NaN, infinito ou não numérico
-    """
-
-    if value is None:
-        return False
-
-    try:
-
-        number = float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return False
-
-    return math.isfinite(number)
 
 
 # ==========================================================
@@ -50,15 +20,68 @@ def safe_float(
     """
     Converte um valor para float com segurança.
 
-    Valores inválidos retornam o default.
+    Retorna default caso o valor seja inválido,
+    None ou não possa ser convertido.
     """
 
-    if not is_valid_number(value):
+    try:
+
+        if value is None:
+            return default
+
+        if isinstance(
+            value,
+            bool,
+        ):
+            return default
+
+        converted = float(
+            value
+        )
+
+        if math.isnan(
+            converted
+        ):
+
+            return default
+
+        if math.isinf(
+            converted
+        ):
+
+            return default
+
+        return converted
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return default
+
+
+def safe_int(
+    value,
+    default=None,
+):
+    """
+    Converte um valor para inteiro com segurança.
+    """
+
+    value = safe_float(
+        value,
+        default=None,
+    )
+
+    if value is None:
         return default
 
     try:
 
-        return float(value)
+        return int(
+            round(value)
+        )
 
     except (
         TypeError,
@@ -69,79 +92,74 @@ def safe_float(
 
 
 # ==========================================================
-# VALIDAÇÃO DOS INDICADORES
+# VALIDAÇÃO DE VALORES
 # ==========================================================
 
-def validate_indicator(
-    name,
+def is_valid_number(
     value,
 ):
     """
-    Valida individualmente um indicador.
-
-    Retorna um dicionário padronizado.
+    Verifica se um valor é numérico,
+    finito e válido.
     """
 
-    if not is_valid_number(value):
+    return (
+        safe_float(
+            value,
+            default=None,
+        )
+        is not None
+    )
 
-        return {
-            "name": name,
-            "valid": False,
-            "value": None,
-            "status": "INVALIDO",
-            "message":
-                f"{name} não possui um valor numérico válido.",
-        }
 
-    numeric_value = float(value)
+def is_valid_positive_number(
+    value,
+):
+    """
+    Verifica se um valor é numérico,
+    válido e maior que zero.
+    """
 
-    return {
-        "name": name,
-        "valid": True,
-        "value": numeric_value,
-        "status": "VALIDO",
-        "message":
-            f"{name} válido.",
-    }
+    value = safe_float(
+        value,
+        default=None,
+    )
+
+    if value is None:
+        return False
+
+    return value > 0
 
 
 # ==========================================================
-# VALIDAÇÃO COMPLETA DOS INDICADORES
+# VALIDAÇÃO DOS DADOS DA ANÁLISE
 # ==========================================================
 
-def validate_indicators(
+def validate_analysis_data(
     data,
 ):
     """
-    Valida os principais indicadores utilizados
-    pelo InvestIA PRO.
+    Valida os dados necessários para
+    executar a análise técnica.
 
-    Indicadores obrigatórios:
+    Campos obrigatórios:
+        - price
+        - ma21
+        - ma200
+        - rsi
 
-        price
-        ma21
-        ma200
-        rsi
-
-    Volatilidade é tratada como indicador adicional.
+    Campo opcional:
+        - volatility
     """
+
+    if data is None:
+        return False
 
     if not isinstance(
         data,
         dict,
     ):
-
-        return {
-            "valid": False,
-            "status": "INCONSISTENTE",
-            "status_icon": "🔴",
-            "message":
-                "Os dados dos indicadores não estão "
-                "em formato válido.",
-            "indicators": {},
-            "missing": [],
-            "invalid": [],
-        }
+        return False
 
     required = [
         "price",
@@ -150,467 +168,165 @@ def validate_indicators(
         "rsi",
     ]
 
-    optional = [
-        "volatility",
+    for field in required:
+
+        if field not in data:
+            return False
+
+        value = safe_float(
+            data.get(field),
+            default=None,
+        )
+
+        if value is None:
+            return False
+
+    return True
+
+
+def get_missing_analysis_fields(
+    data,
+):
+    """
+    Retorna uma lista com os campos
+    obrigatórios ausentes ou inválidos.
+    """
+
+    required = [
+        "price",
+        "ma21",
+        "ma200",
+        "rsi",
     ]
 
-    indicator_results = {}
-
     missing = []
-
-    invalid = []
-
-    # ======================================================
-    # INDICADORES OBRIGATÓRIOS
-    # ======================================================
-
-    for name in required:
-
-        if name not in data:
-
-            missing.append(
-                name
-            )
-
-            indicator_results[name] = {
-                "name": name,
-                "valid": False,
-                "value": None,
-                "status": "AUSENTE",
-                "message":
-                    f"{name} não foi encontrado.",
-            }
-
-            continue
-
-        result = validate_indicator(
-            name,
-            data.get(name),
-        )
-
-        indicator_results[name] = result
-
-        if not result["valid"]:
-
-            invalid.append(
-                name
-            )
-
-    # ======================================================
-    # INDICADORES OPCIONAIS
-    # ======================================================
-
-    for name in optional:
-
-        if name not in data:
-
-            indicator_results[name] = {
-                "name": name,
-                "valid": False,
-                "value": None,
-                "status": "AUSENTE",
-                "message":
-                    f"{name} não foi informado.",
-            }
-
-            continue
-
-        result = validate_indicator(
-            name,
-            data.get(name),
-        )
-
-        indicator_results[name] = result
-
-    # ======================================================
-    # STATUS
-    # ======================================================
-
-    if missing or invalid:
-
-        if missing:
-
-            status = "INCOMPLETO"
-            status_icon = "🟡"
-
-            message = (
-                "Existem dados obrigatórios ausentes: "
-                + ", ".join(missing)
-                + "."
-            )
-
-        else:
-
-            status = "INCONSISTENTE"
-            status_icon = "🔴"
-
-            message = (
-                "Existem indicadores com valores inválidos: "
-                + ", ".join(invalid)
-                + "."
-            )
-
-        valid = False
-
-    else:
-
-        status = "CONSISTENTE"
-        status_icon = "🟢"
-
-        message = (
-            "Todos os indicadores obrigatórios "
-            "estão válidos."
-        )
-
-        valid = True
-
-    return {
-
-        "valid": valid,
-
-        "status": status,
-
-        "status_icon": status_icon,
-
-        "message": message,
-
-        "indicators": indicator_results,
-
-        "missing": missing,
-
-        "invalid": invalid,
-    }
-
-
-# ==========================================================
-# VALIDAÇÃO DOS DADOS PARA ANÁLISE
-# ==========================================================
-
-def validate_analysis_data(
-    data,
-):
-    """
-    Valida os dados necessários para o motor
-    de análise do InvestIA PRO.
-
-    Retorna True somente quando os indicadores
-    obrigatórios possuem valores válidos.
-    """
-
-    result = validate_indicators(
-        data
-    )
-
-    return result["valid"]
-
-
-# ==========================================================
-# DIAGNÓSTICO DOS DADOS
-# ==========================================================
-
-def get_data_diagnostics(
-    data,
-):
-    """
-    Retorna diagnóstico detalhado dos dados.
-
-    Útil para debugging e para apresentação
-    no Dashboard.
-    """
-
-    validation = validate_indicators(
-        data
-    )
-
-    diagnostics = []
-
-    for name, item in validation[
-        "indicators"
-    ].items():
-
-        diagnostics.append({
-
-            "indicator": name,
-
-            "valid": item.get(
-                "valid",
-                False,
-            ),
-
-            "status": item.get(
-                "status",
-                "DESCONHECIDO",
-            ),
-
-            "value": item.get(
-                "value"
-            ),
-
-            "message": item.get(
-                "message",
-                "",
-            ),
-        })
-
-    return {
-
-        "valid":
-            validation["valid"],
-
-        "status":
-            validation["status"],
-
-        "status_icon":
-            validation["status_icon"],
-
-        "message":
-            validation["message"],
-
-        "diagnostics":
-            diagnostics,
-
-        "missing":
-            validation["missing"],
-
-        "invalid":
-            validation["invalid"],
-    }
-
-
-# ==========================================================
-# VALIDAÇÃO DE PREÇO
-# ==========================================================
-
-def validate_price(
-    price,
-):
-    """
-    Valida especificamente o preço do ativo.
-    """
-
-    if not is_valid_number(price):
-
-        return False
-
-    price = float(price)
-
-    return price > 0
-
-
-# ==========================================================
-# VALIDAÇÃO DO RSI
-# ==========================================================
-
-def validate_rsi(
-    rsi,
-):
-    """
-    Valida o RSI.
-
-    O RSI deve estar entre 0 e 100.
-    """
-
-    if not is_valid_number(rsi):
-
-        return False
-
-    rsi = float(rsi)
-
-    return 0 <= rsi <= 100
-
-
-# ==========================================================
-# VALIDAÇÃO DA VOLATILIDADE
-# ==========================================================
-
-def validate_volatility(
-    volatility,
-):
-    """
-    Valida a volatilidade.
-
-    A volatilidade não pode ser negativa.
-    """
-
-    if not is_valid_number(
-        volatility
-    ):
-
-        return False
-
-    volatility = float(
-        volatility
-    )
-
-    return volatility >= 0
-
-
-# ==========================================================
-# VALIDAÇÃO AVANÇADA
-# ==========================================================
-
-def validate_analysis_values(
-    data,
-):
-    """
-    Validação complementar dos valores.
-
-    Além de verificar se são numéricos,
-    verifica limites financeiros conhecidos.
-    """
 
     if not isinstance(
         data,
         dict,
     ):
+        return required
 
-        return {
+    for field in required:
 
-            "valid": False,
+        value = safe_float(
+            data.get(field),
+            default=None,
+        )
 
-            "errors": [
-                "Dados inválidos."
-            ],
-        }
+        if value is None:
 
-    errors = []
-
-    # ------------------------------------------------------
-    # PREÇO
-    # ------------------------------------------------------
-
-    if "price" in data:
-
-        if not validate_price(
-            data["price"]
-        ):
-
-            errors.append(
-                "Preço inválido."
+            missing.append(
+                field
             )
 
-    else:
-
-        errors.append(
-            "Preço não informado."
-        )
-
-    # ------------------------------------------------------
-    # MA21
-    # ------------------------------------------------------
-
-    if "ma21" not in data:
-
-        errors.append(
-            "MA21 não informada."
-        )
-
-    elif not is_valid_number(
-        data["ma21"]
-    ):
-
-        errors.append(
-            "MA21 inválida."
-        )
-
-    # ------------------------------------------------------
-    # MA200
-    # ------------------------------------------------------
-
-    if "ma200" not in data:
-
-        errors.append(
-            "MA200 não informada."
-        )
-
-    elif not is_valid_number(
-        data["ma200"]
-    ):
-
-        errors.append(
-            "MA200 inválida."
-        )
-
-    # ------------------------------------------------------
-    # RSI
-    # ------------------------------------------------------
-
-    if "rsi" not in data:
-
-        errors.append(
-            "RSI não informado."
-        )
-
-    elif not validate_rsi(
-        data["rsi"]
-    ):
-
-        errors.append(
-            "RSI inválido. "
-            "O valor deve estar entre 0 e 100."
-        )
-
-    # ------------------------------------------------------
-    # VOLATILIDADE
-    # ------------------------------------------------------
-
-    if "volatility" in data:
-
-        if not validate_volatility(
-            data["volatility"]
-        ):
-
-            errors.append(
-                "Volatilidade inválida."
-            )
-
-    # ------------------------------------------------------
-    # RETORNO
-    # ------------------------------------------------------
-
-    return {
-
-        "valid":
-            len(errors) == 0,
-
-        "errors":
-            errors,
-    }
+    return missing
 
 
 # ==========================================================
-# FORMATAÇÃO DE MOEDA
+# VALIDAÇÃO DE HISTÓRICO
+# ==========================================================
+
+def validate_history(
+    history,
+):
+    """
+    Valida um histórico de preços.
+
+    A função não importa pandas diretamente,
+    permitindo que utils.py permaneça leve.
+    """
+
+    if history is None:
+        return False
+
+    try:
+
+        if history.empty:
+            return False
+
+        if len(history) == 0:
+            return False
+
+        return True
+
+    except Exception:
+
+        return False
+
+
+def has_required_columns(
+    data,
+    columns,
+):
+    """
+    Verifica se um DataFrame possui
+    todas as colunas necessárias.
+    """
+
+    if data is None:
+        return False
+
+    if not columns:
+        return True
+
+    try:
+
+        available_columns = list(
+            data.columns
+        )
+
+        for column in columns:
+
+            if column not in available_columns:
+                return False
+
+        return True
+
+    except Exception:
+
+        return False
+
+
+# ==========================================================
+# FORMATAÇÃO MONETÁRIA
 # ==========================================================
 
 def format_currency(
     value,
+    symbol="R$",
 ):
     """
-    Formata valor no padrão monetário brasileiro.
+    Formata valores monetários no padrão brasileiro.
 
-    Exemplo:
+    Exemplos:
 
-        40.87
-        ->
-        R$ 40,87
+        40.5
+        -> R$ 40,50
+
+        1250.75
+        -> R$ 1.250,75
+
+        -50
+        -> -R$ 50,00
     """
 
-    if not is_valid_number(
-        value
-    ):
+    value = safe_float(
+        value,
+        default=None,
+    )
 
+    if value is None:
         return "N/D"
 
-    try:
+    sign = ""
 
-        value = float(value)
+    if value < 0:
 
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return "N/D"
+        sign = "-"
+        value = abs(
+            value
+        )
 
     formatted = (
         f"{value:,.2f}"
@@ -628,154 +344,298 @@ def format_currency(
         )
     )
 
-    return f"R$ {formatted}"
+    return (
+        f"{sign}{symbol} "
+        f"{formatted}"
+    )
 
 
 # ==========================================================
-# FORMATAÇÃO PERCENTUAL
+# FORMATAÇÃO DE PERCENTUAL
 # ==========================================================
 
 def format_percent(
     value,
     decimals=2,
+    multiply=True,
 ):
     """
-    Formata percentual.
-    """
+    Formata um valor percentual.
 
-    if not is_valid_number(
-        value
-    ):
+    Por padrão:
 
-        return "N/D"
+        0.015
+        -> 1,50%
 
-    try:
+    Para valores já em percentual:
 
-        return (
-            f"{float(value):.{decimals}f}%"
+        format_percent(
+            1.5,
+            multiply=False,
         )
 
-    except (
-        TypeError,
-        ValueError,
-    ):
+        -> 1,50%
+    """
 
+    value = safe_float(
+        value,
+        default=None,
+    )
+
+    if value is None:
         return "N/D"
+
+    if multiply:
+
+        value = value * 100
+
+    decimals = safe_int(
+        decimals,
+        default=2,
+    )
+
+    if decimals is None:
+        decimals = 2
+
+    decimals = max(
+        0,
+        min(
+            decimals,
+            6,
+        ),
+    )
+
+    formatted = (
+        f"{value:,.{decimals}f}"
+        .replace(
+            ",",
+            "X",
+        )
+        .replace(
+            ".",
+            ",",
+        )
+        .replace(
+            "X",
+            ".",
+        )
+    )
+
+    return (
+        f"{formatted}%"
+    )
 
 
 # ==========================================================
-# ÍCONE DE RISCO
+# FORMATAÇÃO NUMÉRICA
+# ==========================================================
+
+def format_number(
+    value,
+    decimals=2,
+):
+    """
+    Formata números no padrão brasileiro.
+    """
+
+    value = safe_float(
+        value,
+        default=None,
+    )
+
+    if value is None:
+        return "N/D"
+
+    decimals = safe_int(
+        decimals,
+        default=2,
+    )
+
+    if decimals is None:
+        decimals = 2
+
+    decimals = max(
+        0,
+        min(
+            decimals,
+            6,
+        ),
+    )
+
+    return (
+        f"{value:,.{decimals}f}"
+        .replace(
+            ",",
+            "X",
+        )
+        .replace(
+            ".",
+            ",",
+        )
+        .replace(
+            "X",
+            ".",
+        )
+    )
+
+
+# ==========================================================
+# FORMATAÇÃO DO SCORE
+# ==========================================================
+
+def format_score(
+    score,
+):
+    """
+    Formata o Score InvestIA.
+
+    Mantém o resultado entre 0 e 100.
+    """
+
+    score = safe_float(
+        score,
+        default=None,
+    )
+
+    if score is None:
+        return "N/D"
+
+    score = max(
+        0,
+        min(
+            100,
+            int(
+                round(score)
+            ),
+        ),
+    )
+
+    return f"{score}/100"
+
+
+# ==========================================================
+# ÍCONES DE RISCO
 # ==========================================================
 
 def risk_icon(
     risk,
 ):
     """
-    Retorna um ícone conforme o nível de risco.
+    Retorna um ícone para o nível de risco.
     """
 
     if risk is None:
-
         return "⚪"
 
-    risk_text = str(
+    risk = str(
         risk
-    ).strip().upper()
+    ).strip().lower()
 
-    if (
-        "ALTO" in risk_text
-        or "ELEVADO" in risk_text
-    ):
+    risk_map = {
 
-        return "🔴"
+        "baixo":
+            "🟢",
 
-    if (
-        "MODERADO" in risk_text
-        or "MÉDIO" in risk_text
-        or "MEDIO" in risk_text
-    ):
+        "moderado":
+            "🟡",
 
-        return "🟡"
+        "alto":
+            "🔴",
 
-    if (
-        "BAIXO" in risk_text
-        or "REDUZIDO" in risk_text
-    ):
+        "muito alto":
+            "🔴",
 
-        return "🟢"
+        "indisponível":
+            "⚪",
 
-    return "⚪"
+        "indisponivel":
+            "⚪",
+    }
+
+    return risk_map.get(
+        risk,
+        "⚪",
+    )
 
 
 # ==========================================================
-# ÍCONE DE SINAL
+# ÍCONES DE SINAL
 # ==========================================================
 
 def signal_icon(
     signal,
 ):
     """
-    Retorna um ícone conforme o sinal.
+    Retorna um ícone visual para o sinal.
     """
 
     if signal is None:
-
         return "⚪"
 
-    signal_text = str(
+    signal = str(
         signal
     ).strip().upper()
 
-    if (
-        "POSITIVO" in signal_text
-        or "COMPRA" in signal_text
-        or "BUY" in signal_text
-    ):
+    signal_map = {
 
-        return "🟢"
+        "POSITIVO":
+            "🟢",
 
-    if (
-        "NEGATIVO" in signal_text
-        or "VENDA" in signal_text
-        or "SELL" in signal_text
-    ):
+        "COMPRA":
+            "🟢",
 
-        return "🔴"
+        "NEGATIVO":
+            "🔴",
 
-    return "🟡"
+        "VENDA":
+            "🔴",
+
+        "NEUTRO":
+            "🟡",
+
+        "AGUARDAR":
+            "🟡",
+    }
+
+    return signal_map.get(
+        signal,
+        "⚪",
+    )
 
 
 # ==========================================================
-# ÍCONE DE TENDÊNCIA
+# ÍCONES DE TENDÊNCIA
 # ==========================================================
 
 def trend_icon(
     trend,
 ):
     """
-    Retorna um ícone conforme a tendência.
+    Retorna um ícone para a tendência.
     """
 
     if trend is None:
+        return "➡️"
 
-        return "⚪"
-
-    trend_text = str(
+    trend = str(
         trend
-    ).strip().upper()
+    ).strip().lower()
 
-    if (
-        "ALTA" in trend_text
-        or "ALTA" == trend_text
-        or "BULLISH" in trend_text
-    ):
+    if trend in [
+        "alta forte",
+        "alta",
+        "recuperação",
+        "recuperacao",
+    ]:
 
         return "📈"
 
-    if (
-        "BAIXA" in trend_text
-        or "BEARISH" in trend_text
-    ):
+    if trend in [
+        "baixa forte",
+        "baixa",
+        "correção",
+        "correcao",
+    ]:
 
         return "📉"
 
@@ -783,115 +643,325 @@ def trend_icon(
 
 
 # ==========================================================
-# STATUS DOS DADOS
+# ÍCONES DE CLASSIFICAÇÃO
 # ==========================================================
 
-def data_status_icon(
-    status,
+def classification_icon(
+    classification,
 ):
     """
-    Retorna ícone para o status dos dados.
+    Retorna um ícone para a classificação
+    do Score InvestIA.
     """
 
-    if status is None:
-
+    if classification is None:
         return "⚪"
 
-    status_text = str(
-        status
+    classification = str(
+        classification
     ).strip().upper()
 
-    if (
-        "CONSISTENTE" in status_text
-        or "VALIDO" in status_text
-        or "VÁLIDO" in status_text
-    ):
+    classification_map = {
 
-        return "🟢"
+        "FORTE":
+            "🟢",
 
-    if (
-        "INCOMPLETO" in status_text
-        or "PARCIAL" in status_text
-    ):
+        "BOM":
+            "🟢",
 
-        return "🟡"
+        "NEUTRO":
+            "🟡",
 
-    if (
-        "INCONSISTENTE" in status_text
-        or "INVALIDO" in status_text
-        or "INVÁLIDO" in status_text
-    ):
+        "FRACO":
+            "🟠",
 
-        return "🔴"
+        "MUITO FRACO":
+            "🔴",
+    }
 
-    return "⚪"
+    return classification_map.get(
+        classification,
+        "⚪",
+    )
 
 
 # ==========================================================
-# LIMPEZA DE DADOS
+# NORMALIZAÇÃO DE ATIVO
 # ==========================================================
 
-def clean_numeric_data(
-    data,
+def normalize_asset(
+    asset,
 ):
     """
-    Cria uma cópia dos dados mantendo somente
-    valores numéricos válidos nos campos numéricos.
+    Normaliza o código informado pelo usuário.
 
-    Não altera o dicionário original.
+    Exemplos:
+
+        petr4
+        PETR4
+
+        PETR4.SA
+        PETR4.SA
     """
 
-    if not isinstance(
-        data,
-        dict,
-    ):
+    if asset is None:
+        return ""
 
+    try:
+
+        asset = (
+            str(asset)
+            .strip()
+            .upper()
+            .replace(
+                " ",
+                "",
+            )
+        )
+
+        return asset
+
+    except Exception:
+
+        return ""
+
+
+# ==========================================================
+# NORMALIZAÇÃO DE RESULTADOS
+# ==========================================================
+
+def normalize_result_dict(
+    result,
+):
+    """
+    Garante que o resultado de uma análise
+    seja um dicionário válido.
+    """
+
+    if result is None:
         return {}
 
-    cleaned = dict(
-        data
-    )
+    if not isinstance(
+        result,
+        dict,
+    ):
+        return {}
 
-    numeric_fields = [
-        "price",
-        "ma21",
-        "ma200",
-        "rsi",
-        "volatility",
-    ]
-
-    for field in numeric_fields:
-
-        if field in cleaned:
-
-            value = safe_float(
-                cleaned[field]
-            )
-
-            cleaned[field] = value
-
-    return cleaned
+    return result
 
 
-# ==========================================================
-# RESUMO DE VALIDAÇÃO
-# ==========================================================
-
-def validation_summary(
-    data,
+def get_result_value(
+    result,
+    *keys,
+    default=None,
 ):
     """
-    Retorna uma mensagem curta para o Dashboard.
+    Obtém um valor de um resultado utilizando
+    múltiplas chaves alternativas.
+
+    Exemplo:
+
+        get_result_value(
+            result,
+            "trend",
+            "tendencia",
+            default="Neutra"
+        )
     """
 
-    validation = validate_indicators(
-        data
+    result = normalize_result_dict(
+        result
     )
 
+    for key in keys:
+
+        if key in result:
+
+            value = result.get(
+                key
+            )
+
+            if value is not None:
+                return value
+
+    return default
+
+
+# ==========================================================
+# LIMITAÇÃO DE VALORES
+# ==========================================================
+
+def clamp(
+    value,
+    minimum,
+    maximum,
+):
+    """
+    Limita um valor entre mínimo e máximo.
+    """
+
+    value = safe_float(
+        value,
+        default=None,
+    )
+
+    minimum = safe_float(
+        minimum,
+        default=None,
+    )
+
+    maximum = safe_float(
+        maximum,
+        default=None,
+    )
+
+    if (
+        value is None
+        or minimum is None
+        or maximum is None
+    ):
+
+        return None
+
+    if minimum > maximum:
+
+        minimum, maximum = (
+            maximum,
+            minimum,
+        )
+
+    return max(
+        minimum,
+        min(
+            maximum,
+            value,
+        ),
+    )
+
+
+def clamp_score(
+    score,
+):
+    """
+    Mantém o Score InvestIA entre 0 e 100.
+    """
+
+    score = safe_float(
+        score,
+        default=0,
+    )
+
+    score = clamp(
+        score,
+        0,
+        100,
+    )
+
+    return int(
+        round(score)
+    )
+
+
+# ==========================================================
+# FORMATAÇÃO DE DATA
+# ==========================================================
+
+def format_date(
+    value,
+):
+    """
+    Formata uma data para o padrão DD/MM/AAAA.
+
+    Caso não seja possível converter,
+    retorna o valor como texto.
+    """
+
+    if value is None:
+        return "N/D"
+
+    try:
+
+        if hasattr(
+            value,
+            "strftime",
+        ):
+
+            return value.strftime(
+                "%d/%m/%Y"
+            )
+
+        return str(
+            value
+        )
+
+    except Exception:
+
+        return "N/D"
+
+
+# ==========================================================
+# RESUMO DE PERFORMANCE
+# ==========================================================
+
+def calculate_return(
+    initial_value,
+    final_value,
+):
+    """
+    Calcula o retorno percentual entre
+    dois valores.
+
+    Retorna um valor decimal.
+
+    Exemplo:
+
+        100 -> 110
+        retorna 0.10
+    """
+
+    initial_value = safe_float(
+        initial_value,
+        default=None,
+    )
+
+    final_value = safe_float(
+        final_value,
+        default=None,
+    )
+
+    if (
+        initial_value is None
+        or final_value is None
+    ):
+
+        return None
+
+    if initial_value == 0:
+        return None
+
     return (
-        validation["status_icon"]
-        + " "
-        + validation["status"]
-        + " — "
-        + validation["message"]
+        final_value
+        / initial_value
+        - 1
+    )
+
+
+# ==========================================================
+# COMPATIBILIDADE
+# ==========================================================
+
+def format_value(
+    value,
+    decimals=2,
+):
+    """
+    Alias para format_number.
+
+    Mantido para compatibilidade com
+    versões anteriores do InvestIA PRO.
+    """
+
+    return format_number(
+        value,
+        decimals,
     )
