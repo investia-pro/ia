@@ -1,38 +1,56 @@
 """
 InvestIA PRO
-Motor de Análise Técnica, Fundamentalista e Integrada
+Motor de Análise Integrada
 
 Versão: v0.7
-Fase: 3.0.3 - Score InvestIA Integrado
+Fase: 3.0.4 - Consenso e Confiança da Análise
+
+Responsabilidades:
+- Interpretar indicadores técnicos
+- Integrar Score Técnico e Fundamentalista
+- Calcular divergência entre os modelos
+- Determinar consenso
+- Calcular confiança da análise
+- Ajustar recomendação final
+- Gerar resumo executivo
 """
 
 from score import (
     calculate_score_details,
     calculate_fundamental_score_details,
-    classify_score,
-    classify_signal,
-)
-
-from config import (
-    RSI_OVERSOLD,
-    RSI_OVERBOUGHT,
 )
 
 
 # ==========================================================
-# PESOS DO SCORE INTEGRADO
+# FUNÇÕES AUXILIARES
 # ==========================================================
 
-TECHNICAL_WEIGHT = 0.55
+def clamp_score(score):
+    """
+    Mantém o Score entre 0 e 100.
+    """
 
-FUNDAMENTAL_WEIGHT = 0.45
+    try:
+
+        score = float(score)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        score = 50
+
+    return max(
+        0,
+        min(
+            100,
+            round(score),
+        ),
+    )
 
 
-# ==========================================================
-# CONVERSÃO SEGURA
-# ==========================================================
-
-def safe_float(
+def safe_number(
     value,
     default=None,
 ):
@@ -40,20 +58,13 @@ def safe_float(
     Converte valores para float com segurança.
     """
 
+    if value is None:
+
+        return default
+
     try:
 
-        if value is None:
-            return default
-
-        if isinstance(
-            value,
-            bool,
-        ):
-            return default
-
-        return float(
-            value
-        )
+        return float(value)
 
     except (
         TypeError,
@@ -63,236 +74,141 @@ def safe_float(
         return default
 
 
-# ==========================================================
-# LIMITAÇÃO DO SCORE
-# ==========================================================
-
-def clamp_score(
-    score,
-):
-    """
-    Mantém o Score entre 0 e 100.
-    """
-
-    score = safe_float(
-        score,
-        default=0,
-    )
-
-    return max(
-        0,
-        min(
-            100,
-            int(
-                round(
-                    score
-                )
-            ),
-        ),
-    )
-
-
-# ==========================================================
-# VALIDAÇÃO DE DADOS TÉCNICOS
-# ==========================================================
-
-def validate_technical_data(
+def get_dict_value(
     data,
+    *keys,
+    default=None,
 ):
     """
-    Verifica se existem os dados mínimos
-    necessários para a análise técnica.
+    Obtém valores de um dicionário aceitando
+    múltiplos nomes possíveis para a mesma chave.
     """
 
     if not isinstance(
         data,
         dict,
     ):
-        return False
 
-    required = [
-        "price",
-        "ma21",
-        "ma200",
-        "rsi",
-    ]
+        return default
 
-    for field in required:
+    for key in keys:
 
-        value = safe_float(
-            data.get(
-                field
+        if key in data:
+
+            value = data.get(
+                key
             )
-        )
 
-        if value is None:
-            return False
+            if value is not None:
 
-    return True
+                return value
+
+    return default
 
 
 # ==========================================================
-# NORMALIZAÇÃO DOS FUNDAMENTOS
+# CLASSIFICAÇÃO DO SCORE
 # ==========================================================
 
-def normalize_fundamentals(
-    fundamentals,
+def classify_score(score):
+    """
+    Classifica o Score de 0 a 100.
+    """
+
+    score = clamp_score(
+        score
+    )
+
+    if score >= 80:
+        return "FORTE"
+
+    if score >= 65:
+        return "BOM"
+
+    if score >= 50:
+        return "NEUTRO"
+
+    if score >= 35:
+        return "FRACO"
+
+    return "MUITO FRACO"
+
+
+# ==========================================================
+# CLASSIFICAÇÃO DO SINAL
+# ==========================================================
+
+def classify_signal(score):
+    """
+    Define o sinal principal do Score.
+    """
+
+    score = clamp_score(
+        score
+    )
+
+    if score >= 65:
+        return "POSITIVO"
+
+    if score <= 35:
+        return "NEGATIVO"
+
+    return "NEUTRO"
+
+
+# ==========================================================
+# NÍVEL DO SINAL
+# ==========================================================
+
+def get_signal_level(
+    score,
 ):
     """
-    Garante uma estrutura fundamentalista
-    consistente para o motor de análise.
+    Define a intensidade do sinal.
     """
 
-    if not isinstance(
-        fundamentals,
-        dict,
-    ):
-
-        fundamentals = {}
-
-    fields = [
-
-        "company_name",
-
-        "sector",
-
-        "industry",
-
-        "market_cap",
-
-        "pe_ratio",
-
-        "price_to_book",
-
-        "dividend_yield",
-
-        "roe",
-
-        "profit_margin",
-
-        "debt_to_equity",
-
-        "total_revenue",
-
-        "net_income",
-    ]
-
-    normalized = {}
-
-    for field in fields:
-
-        normalized[field] = fundamentals.get(
-            field
-        )
-
-    return normalized
-
-
-# ==========================================================
-# DISPONIBILIDADE DOS FUNDAMENTOS
-# ==========================================================
-
-def get_fundamental_data_status(
-    fundamentals,
-):
-    """
-    Avalia a quantidade de indicadores
-    fundamentalistas disponíveis.
-
-    Os indicadores considerados para o
-    Score Fundamentalista são:
-
-        - P/L
-        - P/VP
-        - Dividend Yield
-        - ROE
-        - Margem de Lucro
-        - Dívida/Patrimônio
-    """
-
-    fundamentals = normalize_fundamentals(
-        fundamentals
+    score = clamp_score(
+        score
     )
 
-    score_fields = [
+    if score >= 85:
 
-        "pe_ratio",
+        return {
+            "level": "Muito Forte",
+            "icon": "🟢",
+        }
 
-        "price_to_book",
+    if score >= 65:
 
-        "dividend_yield",
+        return {
+            "level": "Positivo",
+            "icon": "🟢",
+        }
 
-        "roe",
+    if score >= 55:
 
-        "profit_margin",
+        return {
+            "level": "Levemente Positivo",
+            "icon": "🟡",
+        }
 
-        "debt_to_equity",
-    ]
+    if score >= 45:
 
-    available = 0
+        return {
+            "level": "Neutro",
+            "icon": "🟡",
+        }
 
-    missing = []
+    if score >= 35:
 
-    for field in score_fields:
-
-        value = safe_float(
-            fundamentals.get(
-                field
-            )
-        )
-
-        if value is None:
-
-            missing.append(
-                field
-            )
-
-        else:
-
-            available += 1
-
-    total = len(
-        score_fields
-    )
-
-    completeness = (
-        available / total
-        if total > 0
-        else 0
-    )
-
-    if available == 0:
-
-        status = "Indisponível"
-
-    elif completeness < 0.50:
-
-        status = "Limitado"
-
-    elif completeness < 1:
-
-        status = "Parcial"
-
-    else:
-
-        status = "Completo"
+        return {
+            "level": "Levemente Negativo",
+            "icon": "🟠",
+        }
 
     return {
-
-        "available":
-            available,
-
-        "total":
-            total,
-
-        "missing":
-            missing,
-
-        "completeness":
-            completeness,
-
-        "status":
-            status,
+        "level": "Negativo",
+        "icon": "🔴",
     }
 
 
@@ -300,47 +216,51 @@ def get_fundamental_data_status(
 # TENDÊNCIA TÉCNICA
 # ==========================================================
 
-def get_trend(
-    technical_data,
+def analyze_trend(
+    data,
 ):
     """
-    Determina a tendência com base no preço,
-    MA21 e MA200.
+    Analisa a tendência utilizando
+    preço, MA21 e MA200.
     """
 
-    if not validate_technical_data(
-        technical_data
+    price = safe_number(
+        get_dict_value(
+            data,
+            "price",
+        )
+    )
+
+    ma21 = safe_number(
+        get_dict_value(
+            data,
+            "ma21",
+        )
+    )
+
+    ma200 = safe_number(
+        get_dict_value(
+            data,
+            "ma200",
+        )
+    )
+
+    if (
+        price is None
+        or ma21 is None
+        or ma200 is None
     ):
 
-        return "Indisponível"
+        return "Indefinida"
 
-    price = safe_float(
-        technical_data.get(
-            "price"
-        )
-    )
-
-    ma21 = safe_float(
-        technical_data.get(
-            "ma21"
-        )
-    )
-
-    ma200 = safe_float(
-        technical_data.get(
-            "ma200"
-        )
-    )
-
-    # Tendência forte de alta
     if (
         price > ma21
+        and price > ma200
         and ma21 > ma200
     ):
 
         return "Alta Forte"
 
-    # Alta
     if (
         price > ma21
         and price > ma200
@@ -348,15 +268,14 @@ def get_trend(
 
         return "Alta"
 
-    # Tendência forte de baixa
     if (
         price < ma21
+        and price < ma200
         and ma21 < ma200
     ):
 
         return "Baixa Forte"
 
-    # Baixa
     if (
         price < ma21
         and price < ma200
@@ -371,14 +290,14 @@ def get_trend(
 # STATUS DO RSI
 # ==========================================================
 
-def get_rsi_status(
+def analyze_rsi(
     rsi,
 ):
     """
-    Classifica a situação do RSI.
+    Interpreta o RSI.
     """
 
-    rsi = safe_float(
+    rsi = safe_number(
         rsi
     )
 
@@ -386,19 +305,19 @@ def get_rsi_status(
 
         return "Indisponível"
 
-    if rsi <= RSI_OVERSOLD:
+    if rsi <= 30:
 
         return "Sobrevendido"
 
-    if rsi >= RSI_OVERBOUGHT:
+    if rsi >= 70:
 
         return "Sobrecomprado"
 
-    if rsi >= 60:
+    if rsi > 55:
 
         return "Positivo"
 
-    if rsi <= 40:
+    if rsi < 45:
 
         return "Negativo"
 
@@ -406,264 +325,538 @@ def get_rsi_status(
 
 
 # ==========================================================
-# QUALIFICAÇÃO DO SINAL
+# ANÁLISE DO RISCO
 # ==========================================================
 
-def get_qualified_signal(
-    technical_score,
-    fundamental_score,
-    fundamental_status,
+def analyze_risk(
+    volatility,
+    divergence=0,
+    fundamental_status=None,
 ):
     """
-    Qualifica o sinal considerando a combinação
-    entre análise técnica e fundamentalista.
+    Determina o nível de risco considerando:
+
+    - Volatilidade
+    - Divergência entre os Scores
+    - Disponibilidade dos fundamentos
     """
+
+    volatility = safe_number(
+        volatility,
+        default=0,
+    )
+
+    divergence = safe_number(
+        divergence,
+        default=0,
+    )
+
+    risk_points = 0
+
+    # ------------------------------------------------------
+    # VOLATILIDADE
+    # ------------------------------------------------------
+
+    if volatility >= 0.04:
+
+        risk_points += 3
+
+    elif volatility >= 0.025:
+
+        risk_points += 2
+
+    elif volatility >= 0.015:
+
+        risk_points += 1
+
+    # ------------------------------------------------------
+    # DIVERGÊNCIA
+    # ------------------------------------------------------
+
+    if divergence >= 35:
+
+        risk_points += 2
+
+    elif divergence >= 20:
+
+        risk_points += 1
+
+    # ------------------------------------------------------
+    # FUNDAMENTOS
+    # ------------------------------------------------------
+
+    if fundamental_status in (
+        "Indisponível",
+        "Insuficiente",
+    ):
+
+        risk_points += 1
+
+    # ------------------------------------------------------
+    # CLASSIFICAÇÃO
+    # ------------------------------------------------------
+
+    if risk_points >= 5:
+
+        return "Alto"
+
+    if risk_points >= 3:
+
+        return "Moderado-Alto"
+
+    if risk_points >= 1:
+
+        return "Moderado"
+
+    return "Baixo"
+
+
+# ==========================================================
+# CONSENSO ENTRE OS SCORES
+# ==========================================================
+
+def analyze_score_consensus(
+    technical_score,
+    fundamental_score,
+):
+    """
+    Analisa o grau de concordância entre
+    o Score Técnico e Fundamentalista.
+    """
+
+    technical_score = safe_number(
+        technical_score
+    )
+
+    fundamental_score = safe_number(
+        fundamental_score
+    )
+
+    # ------------------------------------------------------
+    # SEM SCORE FUNDAMENTALISTA
+    # ------------------------------------------------------
+
+    if fundamental_score is None:
+
+        return {
+
+            "consensus": "NÃO AVALIADO",
+
+            "divergence": None,
+
+            "direction_agreement": False,
+
+            "reason": (
+                "Não há dados fundamentalistas "
+                "suficientes para comparar os Scores."
+            ),
+        }
+
+    # ------------------------------------------------------
+    # DIVERGÊNCIA NUMÉRICA
+    # ------------------------------------------------------
+
+    divergence = abs(
+        technical_score
+        - fundamental_score
+    )
 
     technical_signal = classify_signal(
         technical_score
     )
 
-    # ------------------------------------------------------
-    # FUNDAMENTOS INDISPONÍVEIS
-    # ------------------------------------------------------
-
-    if fundamental_status == "Indisponível":
-
-        if technical_signal == "POSITIVO":
-
-            return (
-                "POSITIVO TÉCNICO"
-            )
-
-        if technical_signal == "NEGATIVO":
-
-            return (
-                "NEGATIVO TÉCNICO"
-            )
-
-        return (
-            "NEUTRO TÉCNICO"
-        )
-
     fundamental_signal = classify_signal(
         fundamental_score
     )
 
+    direction_agreement = (
+        technical_signal
+        == fundamental_signal
+    )
+
     # ------------------------------------------------------
-    # CONVERGÊNCIA POSITIVA
+    # FORTE CONSENSO
     # ------------------------------------------------------
 
     if (
-        technical_signal == "POSITIVO"
-        and fundamental_signal == "POSITIVO"
+        direction_agreement
+        and divergence <= 10
     ):
 
-        return (
-            "POSITIVO CONFIRMADO"
+        consensus = "FORTE"
+
+        reason = (
+            "Os Scores Técnico e Fundamentalista "
+            "apresentam forte concordância."
         )
 
     # ------------------------------------------------------
-    # CONVERGÊNCIA NEGATIVA
+    # CONSENSO MODERADO
     # ------------------------------------------------------
 
-    if (
-        technical_signal == "NEGATIVO"
-        and fundamental_signal == "NEGATIVO"
+    elif (
+        direction_agreement
+        and divergence <= 20
     ):
 
-        return (
-            "NEGATIVO CONFIRMADO"
+        consensus = "MODERADO"
+
+        reason = (
+            "Os modelos apontam para a mesma direção, "
+            "mas existe diferença relevante na intensidade."
+        )
+
+    # ------------------------------------------------------
+    # CONSENSO FRACO
+    # ------------------------------------------------------
+
+    elif (
+        direction_agreement
+        and divergence <= 30
+    ):
+
+        consensus = "FRACO"
+
+        reason = (
+            "Os modelos possuem a mesma direção geral, "
+            "porém apresentam divergência elevada."
         )
 
     # ------------------------------------------------------
     # DIVERGÊNCIA
     # ------------------------------------------------------
 
-    if (
-        technical_signal == "POSITIVO"
-        and fundamental_signal == "NEGATIVO"
-    ):
+    else:
 
-        return (
-            "DIVERGÊNCIA POSITIVA"
+        consensus = "DIVERGENTE"
+
+        reason = (
+            "A análise Técnica e Fundamentalista "
+            "não apresentam convergência suficiente."
         )
 
-    if (
-        technical_signal == "NEGATIVO"
-        and fundamental_signal == "POSITIVO"
-    ):
+    return {
 
-        return (
-            "DIVERGÊNCIA NEGATIVA"
-        )
+        "consensus": consensus,
 
-    # ------------------------------------------------------
-    # FUNDAMENTOS FORTES
-    # ------------------------------------------------------
+        "divergence": round(
+            divergence,
+            2,
+        ),
 
-    if (
-        technical_signal == "NEUTRO"
-        and fundamental_signal == "POSITIVO"
-    ):
+        "direction_agreement":
+            direction_agreement,
 
-        return (
-            "POSITIVO FUNDAMENTAL"
-        )
+        "technical_signal":
+            technical_signal,
 
-    # ------------------------------------------------------
-    # FUNDAMENTOS FRACOS
-    # ------------------------------------------------------
+        "fundamental_signal":
+            fundamental_signal,
 
-    if (
-        technical_signal == "NEUTRO"
-        and fundamental_signal == "NEGATIVO"
-    ):
-
-        return (
-            "NEGATIVO FUNDAMENTAL"
-        )
-
-    # ------------------------------------------------------
-    # TÉCNICO POSITIVO + FUNDAMENTAL NEUTRO
-    # ------------------------------------------------------
-
-    if technical_signal == "POSITIVO":
-
-        return (
-            "POSITIVO COM MODERAÇÃO"
-        )
-
-    # ------------------------------------------------------
-    # TÉCNICO NEGATIVO + FUNDAMENTAL NEUTRO
-    # ------------------------------------------------------
-
-    if technical_signal == "NEGATIVO":
-
-        return (
-            "NEGATIVO COM MODERAÇÃO"
-        )
-
-    return "NEUTRO"
+        "reason":
+            reason,
+    }
 
 
 # ==========================================================
-# NÍVEL DO SINAL
+# CONFIANÇA DA ANÁLISE
 # ==========================================================
 
-def get_signal_level(
-    integrated_score,
+def analyze_confidence(
+    consensus_data,
+    fundamental_status,
+    fundamental_completeness,
 ):
     """
-    Define o nível operacional do sinal.
+    Determina a confiança da análise.
+
+    Critérios:
+
+    - Disponibilidade dos fundamentos
+    - Cobertura dos dados
+    - Consenso entre os modelos
     """
 
-    integrated_score = clamp_score(
-        integrated_score
+    consensus = get_dict_value(
+        consensus_data,
+        "consensus",
+        default="NÃO AVALIADO",
     )
 
-    if integrated_score >= 80:
+    completeness = safe_number(
+        fundamental_completeness,
+        default=0,
+    )
 
-        return "Muito Forte"
+    # ------------------------------------------------------
+    # SEM FUNDAMENTOS
+    # ------------------------------------------------------
 
-    if integrated_score >= 65:
+    if fundamental_status in (
+        "Indisponível",
+        "Insuficiente",
+    ):
 
-        return "Forte"
+        return {
 
-    if integrated_score >= 55:
+            "confidence": "MÉDIA",
 
-        return "Moderado"
+            "confidence_score": 50,
 
-    if integrated_score >= 45:
+            "reason": (
+                "A análise possui confiança moderada "
+                "porque está baseada predominantemente "
+                "em indicadores técnicos."
+            ),
+        }
 
-        return "Aguardar"
+    # ------------------------------------------------------
+    # FORTE CONSENSO
+    # ------------------------------------------------------
 
-    if integrated_score >= 35:
+    if (
+        consensus == "FORTE"
+        and completeness >= 0.80
+    ):
 
-        return "Fraco"
+        return {
 
-    return "Muito Fraco"
+            "confidence": "ALTA",
+
+            "confidence_score": 90,
+
+            "reason": (
+                "Os modelos técnico e fundamentalista "
+                "apresentam forte convergência e boa "
+                "cobertura de dados."
+            ),
+        }
+
+    # ------------------------------------------------------
+    # CONSENSO MODERADO
+    # ------------------------------------------------------
+
+    if (
+        consensus == "MODERADO"
+        and completeness >= 0.60
+    ):
+
+        return {
+
+            "confidence": "MÉDIA-ALTA",
+
+            "confidence_score": 75,
+
+            "reason": (
+                "Existe concordância entre os modelos "
+                "e cobertura adequada dos fundamentos."
+            ),
+        }
+
+    # ------------------------------------------------------
+    # CONSENSO FRACO
+    # ------------------------------------------------------
+
+    if consensus == "FRACO":
+
+        return {
+
+            "confidence": "MÉDIA",
+
+            "confidence_score": 60,
+
+            "reason": (
+                "Os modelos apontam para a mesma direção, "
+                "mas a diferença entre os Scores reduz "
+                "a confiança da conclusão."
+            ),
+        }
+
+    # ------------------------------------------------------
+    # DIVERGÊNCIA
+    # ------------------------------------------------------
+
+    if consensus == "DIVERGENTE":
+
+        return {
+
+            "confidence": "BAIXA",
+
+            "confidence_score": 35,
+
+            "reason": (
+                "Existe divergência significativa entre "
+                "a análise Técnica e Fundamentalista."
+            ),
+        }
+
+    # ------------------------------------------------------
+    # COBERTURA INCOMPLETA
+    # ------------------------------------------------------
+
+    return {
+
+        "confidence": "MÉDIA",
+
+        "confidence_score": 55,
+
+        "reason": (
+            "A análise possui cobertura parcial dos "
+            "dados fundamentalistas."
+        ),
+    }
 
 
 # ==========================================================
-# ÍCONE DO SINAL
+# RECOMENDAÇÃO BASE
 # ==========================================================
 
-def get_signal_icon(
-    signal,
+def get_base_recommendation(
+    score,
 ):
     """
-    Retorna o ícone visual do sinal.
+    Define a recomendação base pelo Score.
     """
 
-    signal = str(
-        signal
-    ).upper()
+    score = clamp_score(
+        score
+    )
 
-    if "POSITIVO" in signal:
+    if score >= 80:
 
-        return "🟢"
+        return "COMPRA FORTE"
 
-    if "NEGATIVO" in signal:
+    if score >= 65:
 
-        return "🔴"
+        return "COMPRA"
 
-    if "DIVERGÊNCIA" in signal:
+    if score >= 55:
 
-        return "🟠"
+        return "COMPRA COM CAUTELA"
 
-    return "🟡"
+    if score >= 45:
+
+        return "AGUARDAR"
+
+    if score >= 35:
+
+        return "REDUZIR EXPOSIÇÃO"
+
+    return "VENDA"
 
 
 # ==========================================================
-# SCORE INTEGRADO
+# AJUSTE DA RECOMENDAÇÃO
+# ==========================================================
+
+def adjust_recommendation(
+    base_recommendation,
+    consensus,
+    confidence,
+):
+    """
+    Ajusta a recomendação final considerando
+    consenso e confiança da análise.
+    """
+
+    recommendation = (
+        str(base_recommendation)
+        .strip()
+        .upper()
+    )
+
+    # ------------------------------------------------------
+    # BAIXA CONFIANÇA
+    # ------------------------------------------------------
+
+    if confidence == "BAIXA":
+
+        if recommendation in (
+            "COMPRA FORTE",
+            "COMPRA",
+        ):
+
+            return "AGUARDAR CONFIRMAÇÃO"
+
+        return "CAUTELA"
+
+    # ------------------------------------------------------
+    # DIVERGÊNCIA
+    # ------------------------------------------------------
+
+    if consensus == "DIVERGENTE":
+
+        if recommendation in (
+            "COMPRA FORTE",
+            "COMPRA",
+            "COMPRA COM CAUTELA",
+        ):
+
+            return "AGUARDAR CONFIRMAÇÃO"
+
+    # ------------------------------------------------------
+    # CONSENSO FRACO
+    # ------------------------------------------------------
+
+    if (
+        consensus == "FRACO"
+        and recommendation == "COMPRA FORTE"
+    ):
+
+        return "COMPRA COM CAUTELA"
+
+    return recommendation
+
+
+# ==========================================================
+# INTEGRAÇÃO DOS SCORES
 # ==========================================================
 
 def calculate_integrated_score(
     technical_score,
     fundamental_score=None,
-    fundamental_status="Indisponível",
+    fundamental_completeness=0,
 ):
     """
-    Calcula o Score Integrado InvestIA.
+    Calcula o Score Integrado.
 
-    Regra padrão:
+    Regras:
 
+    Com fundamentos confiáveis:
         55% Técnico
         45% Fundamentalista
 
-    Quando os fundamentos não estiverem
-    disponíveis, utiliza 100% do Score Técnico.
+    Com cobertura parcial:
+        Peso Fundamentalista reduzido
 
-    Quando os dados forem limitados ou parciais,
-    o Score Fundamentalista continua sendo usado,
-    mas sua disponibilidade será informada no
-    resultado da análise.
+    Sem fundamentos:
+        100% Técnico
     """
 
     technical_score = clamp_score(
         technical_score
     )
 
-    if fundamental_status == "Indisponível":
-
-        return {
-
-            "score":
-                technical_score,
-
-            "technical_weight":
-                1.00,
-
-            "fundamental_weight":
-                0.00,
-
-            "method":
-                "Técnico",
-        }
-
-    fundamental_score = safe_float(
+    fundamental_score = safe_number(
         fundamental_score
     )
+
+    completeness = safe_number(
+        fundamental_completeness,
+        default=0,
+    )
+
+    completeness = max(
+        0,
+        min(
+            1,
+            completeness,
+        ),
+    )
+
+    # ------------------------------------------------------
+    # SEM FUNDAMENTOS
+    # ------------------------------------------------------
 
     if fundamental_score is None:
 
@@ -673,24 +866,68 @@ def calculate_integrated_score(
                 technical_score,
 
             "technical_weight":
-                1.00,
+                1.0,
 
             "fundamental_weight":
-                0.00,
+                0.0,
 
             "method":
-                "Técnico",
+                "Score Técnico - Fundamentos indisponíveis",
         }
 
+    # ------------------------------------------------------
+    # COBERTURA COMPLETA
+    # ------------------------------------------------------
+
+    if completeness >= 0.80:
+
+        technical_weight = 0.55
+
+        fundamental_weight = 0.45
+
+        method = (
+            "Score Integrado Completo"
+        )
+
+    # ------------------------------------------------------
+    # COBERTURA PARCIAL
+    # ------------------------------------------------------
+
+    elif completeness >= 0.50:
+
+        fundamental_weight = (
+            0.45
+            * completeness
+        )
+
+        technical_weight = (
+            1
+            - fundamental_weight
+        )
+
+        method = (
+            "Score Integrado com Cobertura Parcial"
+        )
+
+    # ------------------------------------------------------
+    # COBERTURA INSUFICIENTE
+    # ------------------------------------------------------
+
+    else:
+
+        technical_weight = 1.0
+
+        fundamental_weight = 0.0
+
+        method = (
+            "Score Técnico - Cobertura Fundamentalista Insuficiente"
+        )
+
     integrated_score = (
-
         technical_score
-        * TECHNICAL_WEIGHT
-
-        +
-
-        fundamental_score
-        * FUNDAMENTAL_WEIGHT
+        * technical_weight
+        + fundamental_score
+        * fundamental_weight
     )
 
     return {
@@ -701,308 +938,142 @@ def calculate_integrated_score(
             ),
 
         "technical_weight":
-            TECHNICAL_WEIGHT,
+            technical_weight,
 
         "fundamental_weight":
-            FUNDAMENTAL_WEIGHT,
+            fundamental_weight,
 
         "method":
-            "Técnico + Fundamentalista",
+            method,
     }
 
 
 # ==========================================================
-# GESTÃO DE RISCO
+# STATUS DOS FUNDAMENTOS
 # ==========================================================
 
-def get_risk(
-    integrated_score,
-    volatility=None,
-    fundamental_status="Indisponível",
+def get_fundamental_status(
+    fundamentals,
+    fundamental_result,
 ):
     """
-    Define o nível geral de risco.
-
-    Combina:
-
-        - Score Integrado
-        - Volatilidade
-        - Disponibilidade dos fundamentos
+    Define o status dos dados fundamentalistas.
     """
 
-    score = clamp_score(
-        integrated_score
+    if not isinstance(
+        fundamentals,
+        dict,
+    ) or not fundamentals:
+
+        return "Indisponível"
+
+    fundamental_score = get_dict_value(
+        fundamental_result,
+        "score",
+        default=None,
     )
 
-    volatility = safe_float(
-        volatility
+    if fundamental_score is None:
+
+        return "Insuficiente"
+
+    completeness = get_dict_value(
+        fundamental_result,
+        "completeness",
+        "coverage",
+        default=0,
     )
 
-    # ------------------------------------------------------
-    # RISCO BASE
-    # ------------------------------------------------------
+    completeness = safe_number(
+        completeness,
+        default=0,
+    )
 
-    if score >= 75:
+    if completeness >= 0.80:
 
-        risk = "Baixo"
+        return "Completo"
 
-    elif score >= 55:
+    if completeness >= 0.50:
 
-        risk = "Moderado"
+        return "Parcial"
 
-    elif score >= 35:
-
-        risk = "Alto"
-
-    else:
-
-        risk = "Muito Alto"
-
-    # ------------------------------------------------------
-    # AJUSTE POR VOLATILIDADE
-    # ------------------------------------------------------
-
-    if volatility is not None:
-
-        if volatility >= 0.04:
-
-            if risk == "Baixo":
-                risk = "Moderado"
-
-            elif risk == "Moderado":
-                risk = "Alto"
-
-            elif risk == "Alto":
-                risk = "Muito Alto"
-
-    # ------------------------------------------------------
-    # AJUSTE POR FUNDAMENTOS LIMITADOS
-    # ------------------------------------------------------
-
-    if fundamental_status == "Indisponível":
-
-        if risk == "Baixo":
-            risk = "Moderado"
-
-    return risk
+    return "Insuficiente"
 
 
 # ==========================================================
-# RECOMENDAÇÃO INTEGRADA
+# JUSTIFICATIVAS
 # ==========================================================
 
-def get_recommendation(
-    integrated_score,
-    qualified_signal,
-    risk,
+def build_reasons(
+    data,
+    trend,
+    rsi_status,
+    consensus_data,
+    confidence_data,
+    fundamental_status,
 ):
     """
-    Define a recomendação final do InvestIA.
-    """
-
-    score = clamp_score(
-        integrated_score
-    )
-
-    signal = str(
-        qualified_signal
-    ).upper()
-
-    risk = str(
-        risk
-    ).upper()
-
-    # ------------------------------------------------------
-    # COMPRA FORTE
-    # ------------------------------------------------------
-
-    if (
-        score >= 80
-        and "POSITIVO CONFIRMADO" in signal
-        and risk in [
-            "BAIXO",
-            "MODERADO",
-        ]
-    ):
-
-        return "Compra Forte"
-
-    # ------------------------------------------------------
-    # COMPRA
-    # ------------------------------------------------------
-
-    if (
-        score >= 65
-        and "POSITIVO" in signal
-    ):
-
-        return "Compra"
-
-    # ------------------------------------------------------
-    # COMPRA GRADUAL
-    # ------------------------------------------------------
-
-    if score >= 55:
-
-        return "Compra Gradual"
-
-    # ------------------------------------------------------
-    # VENDA
-    # ------------------------------------------------------
-
-    if (
-        score <= 35
-        and "NEGATIVO" in signal
-    ):
-
-        return "Venda"
-
-    # ------------------------------------------------------
-    # REDUÇÃO
-    # ------------------------------------------------------
-
-    if score <= 45:
-
-        return "Reduzir Exposição"
-
-    return "Aguardar"
-
-
-# ==========================================================
-# JUSTIFICATIVAS TÉCNICAS
-# ==========================================================
-
-def get_technical_reasons(
-    technical_breakdown,
-):
-    """
-    Extrai as justificativas da análise técnica.
+    Monta as justificativas da análise.
     """
 
     reasons = []
 
-    if not isinstance(
-        technical_breakdown,
-        dict,
-    ):
+    # ------------------------------------------------------
+    # TENDÊNCIA
+    # ------------------------------------------------------
 
-        return reasons
+    reasons.append(
+        f"Tendência técnica identificada: {trend}."
+    )
 
-    labels = {
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
 
-        "ma21":
-            "MA21",
+    reasons.append(
+        f"RSI em condição: {rsi_status}."
+    )
 
-        "ma200":
-            "MA200",
+    # ------------------------------------------------------
+    # FUNDAMENTOS
+    # ------------------------------------------------------
 
-        "rsi":
-            "RSI",
-    }
+    reasons.append(
+        f"Status dos dados fundamentalistas: "
+        f"{fundamental_status}."
+    )
 
-    for key, label in labels.items():
+    # ------------------------------------------------------
+    # CONSENSO
+    # ------------------------------------------------------
 
-        data = technical_breakdown.get(
-            key,
-            {}
+    consensus_reason = get_dict_value(
+        consensus_data,
+        "reason",
+        default=None,
+    )
+
+    if consensus_reason:
+
+        reasons.append(
+            consensus_reason
         )
 
-        if not isinstance(
-            data,
-            dict,
-        ):
-            continue
+    # ------------------------------------------------------
+    # CONFIANÇA
+    # ------------------------------------------------------
 
-        reason = data.get(
-            "reason"
+    confidence_reason = get_dict_value(
+        confidence_data,
+        "reason",
+        default=None,
+    )
+
+    if confidence_reason:
+
+        reasons.append(
+            confidence_reason
         )
-
-        if reason:
-
-            reasons.append(
-                f"{label}: {reason}"
-            )
-
-    return reasons
-
-
-# ==========================================================
-# JUSTIFICATIVAS FUNDAMENTALISTAS
-# ==========================================================
-
-def get_fundamental_reasons(
-    fundamental_breakdown,
-):
-    """
-    Extrai as justificativas da análise
-    fundamentalista.
-    """
-
-    reasons = []
-
-    if not isinstance(
-        fundamental_breakdown,
-        dict,
-    ):
-
-        return reasons
-
-    labels = {
-
-        "pe_ratio":
-            "P/L",
-
-        "price_to_book":
-            "P/VP",
-
-        "dividend_yield":
-            "Dividend Yield",
-
-        "roe":
-            "ROE",
-
-        "profit_margin":
-            "Margem de Lucro",
-
-        "debt_to_equity":
-            "Endividamento",
-    }
-
-    for key, label in labels.items():
-
-        data = fundamental_breakdown.get(
-            key,
-            {}
-        )
-
-        if not isinstance(
-            data,
-            dict,
-        ):
-            continue
-
-        reason = data.get(
-            "reason"
-        )
-
-        signal = data.get(
-            "signal"
-        )
-
-        if reason:
-
-            if signal:
-
-                reasons.append(
-                    f"{label}: {reason} "
-                    f"({signal})"
-                )
-
-            else:
-
-                reasons.append(
-                    f"{label}: {reason}"
-                )
 
     return reasons
 
@@ -1013,123 +1084,77 @@ def get_fundamental_reasons(
 
 def build_executive_summary(
     asset,
-    integrated_score,
     technical_score,
     fundamental_score,
-    fundamental_status,
+    integrated_score,
     trend,
     recommendation,
     risk,
-    qualified_signal,
+    consensus,
+    confidence,
 ):
     """
-    Gera o resumo executivo da análise integrada.
+    Gera o resumo executivo da análise.
     """
 
-    asset_name = (
-        str(asset).upper()
-        if asset
-        else "ATIVO"
+    technical_text = (
+        f"Score Técnico {technical_score}/100"
     )
 
-    integrated_score = clamp_score(
-        integrated_score
-    )
+    if fundamental_score is None:
 
-    technical_score = clamp_score(
-        technical_score
-    )
-
-    parts = [
-
-        f"{asset_name} apresenta "
-        f"Score InvestIA Integrado de "
-        f"{integrated_score}/100.",
-
-        f"O Score Técnico é "
-        f"{technical_score}/100.",
-
-        f"A tendência atual é "
-        f"{trend}.",
-    ]
-
-    if (
-        fundamental_status
-        != "Indisponível"
-        and fundamental_score
-        is not None
-    ):
-
-        fundamental_score = clamp_score(
-            fundamental_score
-        )
-
-        parts.append(
-
-            f"O Score Fundamentalista é "
-            f"{fundamental_score}/100 "
-            f"com cobertura de dados "
-            f"{fundamental_status.lower()}."
+        fundamental_text = (
+            "os dados fundamentalistas "
+            "não estão disponíveis"
         )
 
     else:
 
-        parts.append(
-
-            "Os dados fundamentalistas não estão "
-            "disponíveis no momento; a decisão "
-            "está baseada principalmente na "
-            "análise técnica."
+        fundamental_text = (
+            f"Score Fundamentalista "
+            f"{fundamental_score}/100"
         )
 
-    parts.append(
-
-        f"O sinal integrado é "
-        f"{qualified_signal}."
-    )
-
-    parts.append(
-
-        f"A recomendação atual é "
-        f"{recommendation}, "
-        f"com nível de risco {risk.lower()}."
-    )
-
-    return " ".join(
-        parts
+    return (
+        f"O ativo {asset} apresenta "
+        f"{technical_text} e "
+        f"{fundamental_text}. "
+        f"O Score Integrado é "
+        f"{integrated_score}/100, "
+        f"com tendência {trend}. "
+        f"O consenso entre os modelos é "
+        f"{consensus} e o nível de confiança "
+        f"da análise é {confidence}. "
+        f"A recomendação final é "
+        f"{recommendation}. "
+        f"O nível de risco identificado é "
+        f"{risk}."
     )
 
 
 # ==========================================================
-# ANÁLISE PRINCIPAL
+# MOTOR PRINCIPAL
 # ==========================================================
 
 def analyze_asset(
     data,
-    asset=None,
+    asset="ATIVO",
 ):
     """
-    Executa a análise completa do InvestIA PRO.
+    Executa a análise completa do ativo.
 
-    Parâmetros:
+    Fluxo:
 
-        data:
-            Dicionário contendo dados técnicos
-            e, opcionalmente, fundamentos.
-
-        asset:
-            Código do ativo.
-
-    Estrutura esperada:
-
-        {
-            "price": ...,
-            "ma21": ...,
-            "ma200": ...,
-            "rsi": ...,
-            "volatility": ...,
-            "fundamentals": {...}
-        }
+    1. Calcula Score Técnico
+    2. Calcula Score Fundamentalista
+    3. Calcula cobertura dos fundamentos
+    4. Calcula Score Integrado
+    5. Compara os dois Scores
+    6. Mede consenso e divergência
+    7. Calcula confiança
+    8. Ajusta recomendação
+    9. Calcula risco
+    10. Gera resumo executivo
     """
 
     if not isinstance(
@@ -1138,8 +1163,7 @@ def analyze_asset(
     ):
 
         raise ValueError(
-            "Os dados da análise devem ser "
-            "fornecidos em formato de dicionário."
+            "Os dados para análise devem ser um dicionário."
         )
 
     # ======================================================
@@ -1149,40 +1173,29 @@ def analyze_asset(
     technical_data = {
 
         "price":
-            data.get(
-                "price"
+            get_dict_value(
+                data,
+                "price",
             ),
 
         "ma21":
-            data.get(
-                "ma21"
+            get_dict_value(
+                data,
+                "ma21",
             ),
 
         "ma200":
-            data.get(
-                "ma200"
+            get_dict_value(
+                data,
+                "ma200",
             ),
 
         "rsi":
-            data.get(
-                "rsi"
+            get_dict_value(
+                data,
+                "rsi",
             ),
     }
-
-    if not validate_technical_data(
-        technical_data
-    ):
-
-        raise ValueError(
-            "Dados técnicos insuficientes "
-            "para realizar a análise."
-        )
-
-    volatility = safe_float(
-        data.get(
-            "volatility"
-        )
-    )
 
     # ======================================================
     # SCORE TÉCNICO
@@ -1192,69 +1205,81 @@ def analyze_asset(
         technical_data
     )
 
-    technical_score = technical_result.get(
+    if not isinstance(
+        technical_result,
+        dict,
+    ):
+
+        raise ValueError(
+            "O Score Técnico retornou um resultado inválido."
+        )
+
+    technical_score = get_dict_value(
+        technical_result,
         "score",
-        0,
+        default=50,
     )
 
-    technical_classification = (
-        technical_result.get(
-            "classification",
-            "NEUTRO",
-        )
+    technical_score = clamp_score(
+        technical_score
     )
 
-    technical_signal = technical_result.get(
+    technical_classification = get_dict_value(
+        technical_result,
+        "classification",
+        default=classify_score(
+            technical_score
+        ),
+    )
+
+    technical_signal = get_dict_value(
+        technical_result,
         "signal",
-        "NEUTRO",
+        default=classify_signal(
+            technical_score
+        ),
     )
 
-    technical_breakdown = technical_result.get(
+    technical_breakdown = get_dict_value(
+        technical_result,
         "breakdown",
-        {},
+        default={},
     )
 
     # ======================================================
-    # FUNDAMENTOS
+    # DADOS FUNDAMENTALISTAS
     # ======================================================
 
-    fundamentals = normalize_fundamentals(
-        data.get(
-            "fundamentals",
-            {}
-        )
+    fundamentals = get_dict_value(
+        data,
+        "fundamentals",
+        default={},
     )
 
-    fundamental_data_status = (
-        get_fundamental_data_status(
-            fundamentals
-        )
-    )
+    if not isinstance(
+        fundamentals,
+        dict,
+    ):
 
-    fundamental_status = (
-        fundamental_data_status.get(
-            "status",
-            "Indisponível",
-        )
-    )
-
-    fundamental_score = None
-
-    fundamental_classification = (
-        "Indisponível"
-    )
-
-    fundamental_signal = (
-        "Indisponível"
-    )
-
-    fundamental_breakdown = {}
+        fundamentals = {}
 
     # ======================================================
     # SCORE FUNDAMENTALISTA
     # ======================================================
 
-    if fundamental_status != "Indisponível":
+    fundamental_result = {}
+
+    fundamental_score = None
+
+    fundamental_classification = "Indisponível"
+
+    fundamental_signal = "Indisponível"
+
+    fundamental_breakdown = {}
+
+    fundamental_completeness = 0
+
+    if fundamentals:
 
         try:
 
@@ -1264,210 +1289,247 @@ def analyze_asset(
                 )
             )
 
-            fundamental_score = (
-                fundamental_result.get(
-                    "score"
-                )
-            )
+            if not isinstance(
+                fundamental_result,
+                dict,
+            ):
 
-            fundamental_classification = (
-                fundamental_result.get(
-                    "classification",
-                    "NEUTRO",
-                )
-            )
-
-            fundamental_signal = (
-                fundamental_result.get(
-                    "signal",
-                    "NEUTRO",
-                )
-            )
-
-            fundamental_breakdown = (
-                fundamental_result.get(
-                    "breakdown",
-                    {}
-                )
-            )
+                fundamental_result = {}
 
         except Exception:
 
-            fundamental_status = (
-                "Indisponível"
+            fundamental_result = {}
+
+    if fundamental_result:
+
+        fundamental_score = get_dict_value(
+            fundamental_result,
+            "score",
+            default=None,
+        )
+
+        if fundamental_score is not None:
+
+            fundamental_score = clamp_score(
+                fundamental_score
             )
 
-            fundamental_score = None
+        fundamental_classification = (
+            get_dict_value(
+                fundamental_result,
+                "classification",
+                default=(
+                    classify_score(
+                        fundamental_score
+                    )
+                    if fundamental_score is not None
+                    else "Indisponível"
+                ),
+            )
+        )
 
-            fundamental_breakdown = {}
+        fundamental_signal = get_dict_value(
+            fundamental_result,
+            "signal",
+            default=(
+                classify_signal(
+                    fundamental_score
+                )
+                if fundamental_score is not None
+                else "Indisponível"
+            ),
+        )
+
+        fundamental_breakdown = get_dict_value(
+            fundamental_result,
+            "breakdown",
+            default={},
+        )
+
+        fundamental_completeness = (
+            get_dict_value(
+                fundamental_result,
+                "completeness",
+                "coverage",
+                default=0,
+            )
+        )
+
+    fundamental_completeness = safe_number(
+        fundamental_completeness,
+        default=0,
+    )
+
+    # ======================================================
+    # STATUS FUNDAMENTALISTA
+    # ======================================================
+
+    fundamental_status = get_fundamental_status(
+        fundamentals,
+        fundamental_result,
+    )
 
     # ======================================================
     # SCORE INTEGRADO
     # ======================================================
 
-    integrated_result = (
-        calculate_integrated_score(
-            technical_score=
-                technical_score,
-
-            fundamental_score=
-                fundamental_score,
-
-            fundamental_status=
-                fundamental_status,
-        )
+    integrated_data = calculate_integrated_score(
+        technical_score=technical_score,
+        fundamental_score=fundamental_score,
+        fundamental_completeness=fundamental_completeness,
     )
 
-    integrated_score = (
-        integrated_result.get(
-            "score",
-            technical_score,
-        )
-    )
+    integrated_score = integrated_data[
+        "score"
+    ]
 
-    integrated_classification = (
-        classify_score(
-            integrated_score
-        )
-    )
-
-    integrated_signal = (
-        classify_signal(
-            integrated_score
-        )
-    )
-
-    # ======================================================
-    # TENDÊNCIA
-    # ======================================================
-
-    trend = get_trend(
-        technical_data
-    )
-
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    rsi_status = get_rsi_status(
-        technical_data.get(
-            "rsi"
-        )
-    )
-
-    # ======================================================
-    # SINAL QUALIFICADO
-    # ======================================================
-
-    qualified_signal = (
-        get_qualified_signal(
-            technical_score=
-                technical_score,
-
-            fundamental_score=
-                fundamental_score,
-
-            fundamental_status=
-                fundamental_status,
-        )
-    )
-
-    # ======================================================
-    # NÍVEL DO SINAL
-    # ======================================================
-
-    signal_level = get_signal_level(
+    integrated_classification = classify_score(
         integrated_score
     )
 
-    signal_icon = get_signal_icon(
-        qualified_signal
+    integrated_signal = classify_signal(
+        integrated_score
     )
 
     # ======================================================
-    # RISCO
+    # CONSENSO
     # ======================================================
 
-    risk = get_risk(
-        integrated_score=
-            integrated_score,
+    consensus_data = analyze_score_consensus(
+        technical_score,
+        fundamental_score,
+    )
 
-        volatility=
-            volatility,
+    consensus = consensus_data[
+        "consensus"
+    ]
 
-        fundamental_status=
-            fundamental_status,
+    divergence = consensus_data[
+        "divergence"
+    ]
+
+    # ======================================================
+    # CONFIANÇA
+    # ======================================================
+
+    confidence_data = analyze_confidence(
+        consensus_data=consensus_data,
+        fundamental_status=fundamental_status,
+        fundamental_completeness=fundamental_completeness,
+    )
+
+    confidence = confidence_data[
+        "confidence"
+    ]
+
+    confidence_score = confidence_data[
+        "confidence_score"
+    ]
+
+    # ======================================================
+    # TENDÊNCIA E RSI
+    # ======================================================
+
+    trend = analyze_trend(
+        data
+    )
+
+    rsi_status = analyze_rsi(
+        get_dict_value(
+            data,
+            "rsi",
+        )
     )
 
     # ======================================================
     # RECOMENDAÇÃO
     # ======================================================
 
-    recommendation = get_recommendation(
-        integrated_score=
-            integrated_score,
+    base_recommendation = (
+        get_base_recommendation(
+            integrated_score
+        )
+    )
 
-        qualified_signal=
-            qualified_signal,
+    recommendation = adjust_recommendation(
+        base_recommendation=base_recommendation,
+        consensus=consensus,
+        confidence=confidence,
+    )
 
-        risk=
-            risk,
+    # ======================================================
+    # SINAL QUALIFICADO
+    # ======================================================
+
+    if confidence == "BAIXA":
+
+        qualified_signal = (
+            f"{integrated_signal} "
+            f"COM BAIXA CONFIANÇA"
+        )
+
+    elif consensus == "DIVERGENTE":
+
+        qualified_signal = (
+            f"{integrated_signal} "
+            f"COM DIVERGÊNCIA"
+        )
+
+    else:
+
+        qualified_signal = (
+            integrated_signal
+        )
+
+    signal_data = get_signal_level(
+        integrated_score
+    )
+
+    # ======================================================
+    # RISCO
+    # ======================================================
+
+    risk = analyze_risk(
+        volatility=get_dict_value(
+            data,
+            "volatility",
+            default=0,
+        ),
+        divergence=(
+            divergence
+            if divergence is not None
+            else 0
+        ),
+        fundamental_status=fundamental_status,
     )
 
     # ======================================================
     # JUSTIFICATIVAS
     # ======================================================
 
-    technical_reasons = (
-        get_technical_reasons(
-            technical_breakdown
-        )
-    )
-
-    fundamental_reasons = (
-        get_fundamental_reasons(
-            fundamental_breakdown
-        )
-    )
-
-    reasons = (
-        technical_reasons
-        + fundamental_reasons
+    reasons = build_reasons(
+        data=data,
+        trend=trend,
+        rsi_status=rsi_status,
+        consensus_data=consensus_data,
+        confidence_data=confidence_data,
+        fundamental_status=fundamental_status,
     )
 
     # ======================================================
     # RESUMO EXECUTIVO
     # ======================================================
 
-    executive_summary = (
-        build_executive_summary(
-            asset=
-                asset,
-
-            integrated_score=
-                integrated_score,
-
-            technical_score=
-                technical_score,
-
-            fundamental_score=
-                fundamental_score,
-
-            fundamental_status=
-                fundamental_status,
-
-            trend=
-                trend,
-
-            recommendation=
-                recommendation,
-
-            risk=
-                risk,
-
-            qualified_signal=
-                qualified_signal,
-        )
+    executive_summary = build_executive_summary(
+        asset=asset,
+        technical_score=technical_score,
+        fundamental_score=fundamental_score,
+        integrated_score=integrated_score,
+        trend=trend,
+        recommendation=recommendation,
+        risk=risk,
+        consensus=consensus,
+        confidence=confidence,
     )
 
     # ======================================================
@@ -1481,20 +1543,10 @@ def analyze_asset(
             "score":
                 technical_score,
 
-            "classification":
-                technical_classification,
-
-            "signal":
-                technical_signal,
-
             "weight":
-                integrated_result.get(
-                    "technical_weight",
-                    1.00,
-                ),
-
-            "breakdown":
-                technical_breakdown,
+                integrated_data[
+                    "technical_weight"
+                ],
         },
 
         "fundamental": {
@@ -1502,47 +1554,16 @@ def analyze_asset(
             "score":
                 fundamental_score,
 
-            "classification":
-                fundamental_classification,
-
-            "signal":
-                fundamental_signal,
-
             "weight":
-                integrated_result.get(
-                    "fundamental_weight",
-                    0.00,
-                ),
+                integrated_data[
+                    "fundamental_weight"
+                ],
+
+            "completeness":
+                fundamental_completeness,
 
             "status":
                 fundamental_status,
-
-            "available":
-                fundamental_data_status.get(
-                    "available",
-                    0,
-                ),
-
-            "total":
-                fundamental_data_status.get(
-                    "total",
-                    0,
-                ),
-
-            "completeness":
-                fundamental_data_status.get(
-                    "completeness",
-                    0,
-                ),
-
-            "missing":
-                fundamental_data_status.get(
-                    "missing",
-                    []
-                ),
-
-            "breakdown":
-                fundamental_breakdown,
         },
 
         "integrated": {
@@ -1550,16 +1571,43 @@ def analyze_asset(
             "score":
                 integrated_score,
 
-            "classification":
-                integrated_classification,
-
-            "signal":
-                integrated_signal,
-
             "method":
-                integrated_result.get(
-                    "method",
-                    "Técnico",
+                integrated_data[
+                    "method"
+                ],
+        },
+
+        "consensus": {
+
+            "level":
+                consensus,
+
+            "divergence":
+                divergence,
+
+            "direction_agreement":
+                consensus_data.get(
+                    "direction_agreement",
+                    False,
+                ),
+
+            "reason":
+                consensus_data.get(
+                    "reason",
+                ),
+        },
+
+        "confidence": {
+
+            "level":
+                confidence,
+
+            "score":
+                confidence_score,
+
+            "reason":
+                confidence_data.get(
+                    "reason",
                 ),
         },
     }
@@ -1583,14 +1631,89 @@ def analyze_asset(
         "signal":
             integrated_signal,
 
-        "qualified_signal":
-            qualified_signal,
+        # --------------------------------------------------
+        # SCORE TÉCNICO
+        # --------------------------------------------------
 
-        "signal_level":
-            signal_level,
+        "technical_score":
+            technical_score,
 
-        "signal_icon":
-            signal_icon,
+        "technical_classification":
+            technical_classification,
+
+        "technical_signal":
+            technical_signal,
+
+        "technical_breakdown":
+            technical_breakdown,
+
+        # --------------------------------------------------
+        # SCORE FUNDAMENTALISTA
+        # --------------------------------------------------
+
+        "fundamental_score":
+            fundamental_score,
+
+        "fundamental_classification":
+            fundamental_classification,
+
+        "fundamental_signal":
+            fundamental_signal,
+
+        "fundamental_status":
+            fundamental_status,
+
+        "fundamental_completeness":
+            fundamental_completeness,
+
+        "fundamental_breakdown":
+            fundamental_breakdown,
+
+        # --------------------------------------------------
+        # SCORE INTEGRADO
+        # --------------------------------------------------
+
+        "integrated_score":
+            integrated_score,
+
+        "integrated_classification":
+            integrated_classification,
+
+        "integrated_signal":
+            integrated_signal,
+
+        "integrated_breakdown":
+            integrated_breakdown,
+
+        # --------------------------------------------------
+        # CONSENSO
+        # --------------------------------------------------
+
+        "consensus":
+            consensus,
+
+        "divergence":
+            divergence,
+
+        "consensus_reason":
+            consensus_data.get(
+                "reason",
+            ),
+
+        # --------------------------------------------------
+        # CONFIANÇA
+        # --------------------------------------------------
+
+        "confidence":
+            confidence,
+
+        "confidence_score":
+            confidence_score,
+
+        "confidence_reason":
+            confidence_data.get(
+                "reason",
+            ),
 
         # --------------------------------------------------
         # ANÁLISE
@@ -1601,6 +1724,9 @@ def analyze_asset(
 
         "tendencia":
             trend,
+
+        "rsi_status":
+            rsi_status,
 
         "recommendation":
             recommendation,
@@ -1614,63 +1740,25 @@ def analyze_asset(
         "risco":
             risk,
 
-        "rsi_status":
-            rsi_status,
-
         # --------------------------------------------------
-        # SCORES
+        # SINAL QUALIFICADO
         # --------------------------------------------------
 
-        "technical_score":
-            technical_score,
+        "qualified_signal":
+            qualified_signal,
 
-        "fundamental_score":
-            fundamental_score,
+        "signal_level":
+            signal_data[
+                "level"
+            ],
 
-        "integrated_score":
-            integrated_score,
-
-        # --------------------------------------------------
-        # CLASSIFICAÇÕES
-        # --------------------------------------------------
-
-        "technical_classification":
-            technical_classification,
-
-        "fundamental_classification":
-            fundamental_classification,
-
-        "integrated_classification":
-            integrated_classification,
+        "signal_icon":
+            signal_data[
+                "icon"
+            ],
 
         # --------------------------------------------------
-        # SINAIS
-        # --------------------------------------------------
-
-        "technical_signal":
-            technical_signal,
-
-        "fundamental_signal":
-            fundamental_signal,
-
-        "integrated_signal":
-            integrated_signal,
-
-        # --------------------------------------------------
-        # FUNDAMENTOS
-        # --------------------------------------------------
-
-        "fundamental_status":
-            fundamental_status,
-
-        "fundamental_completeness":
-            fundamental_data_status.get(
-                "completeness",
-                0,
-            ),
-
-        # --------------------------------------------------
-        # EXPLICAÇÃO
+        # EXPLICABILIDADE
         # --------------------------------------------------
 
         "reasons":
@@ -1679,31 +1767,13 @@ def analyze_asset(
         "justificativas":
             reasons,
 
-        "technical_reasons":
-            technical_reasons,
-
-        "fundamental_reasons":
-            fundamental_reasons,
-
-        "breakdown":
-            technical_breakdown,
-
-        "technical_breakdown":
-            technical_breakdown,
-
-        "fundamental_breakdown":
-            fundamental_breakdown,
-
-        "integrated_breakdown":
-            integrated_breakdown,
-
-        # --------------------------------------------------
-        # RESUMO
-        # --------------------------------------------------
-
         "executive_summary":
             executive_summary,
 
-        "asset":
-            asset,
+        # --------------------------------------------------
+        # COMPATIBILIDADE
+        # --------------------------------------------------
+
+        "breakdown":
+            technical_breakdown,
     }
