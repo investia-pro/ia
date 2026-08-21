@@ -2,78 +2,74 @@
 InvestIA PRO
 Indicadores Técnicos
 
-Versão: v0.6
-Fase: 2.9.7 - Indicadores Robustos
+Versão: v0.7
+Fase: 3.0.5 - Histórico e Evolução dos Indicadores
+
+Responsabilidades:
+- Calcular MA21
+- Calcular MA200
+- Calcular RSI
+- Calcular volatilidade
+- Preparar indicadores históricos
+- Manter compatibilidade com o motor atual
 """
 
-import math
-
 import pandas as pd
-
-
-# ==========================================================
-# CONFIGURAÇÕES
-# ==========================================================
-
-MA21_PERIOD = 21
-MA200_PERIOD = 200
-
-RSI_PERIOD = 14
-
-VOLATILITY_PERIOD = 21
 
 
 # ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
-def safe_float(value):
+def safe_float(
+    value,
+    default=None,
+):
     """
     Converte um valor para float com segurança.
     """
 
+    if value is None:
+
+        return default
+
     try:
 
-        if value is None:
-            return None
-
-        result = float(value)
-
-        if math.isnan(result):
-            return None
-
-        if math.isinf(result):
-            return None
-
-        return result
+        value = float(value)
 
     except (
         TypeError,
         ValueError,
     ):
 
-        return None
+        return default
+
+    if pd.isna(value):
+
+        return default
+
+    return value
 
 
-def get_history(market):
+def get_market_history(
+    market,
+):
     """
-    Obtém o histórico do ativo de maneira segura.
+    Obtém o histórico do mercado com segurança.
 
-    Compatível com a estrutura produzida
-    pelo market.py da Fase 2.9.7.
+    Aceita:
+    - Dicionário preparado pelo market.py
+    - DataFrame diretamente
     """
-
-    if market is None:
-        return None
 
     if isinstance(
         market,
         pd.DataFrame,
     ):
 
-        history = market
+        return market.copy()
 
-    elif isinstance(
+    if isinstance(
         market,
         dict,
     ):
@@ -82,12 +78,55 @@ def get_history(market):
             "history"
         )
 
-    else:
+        if isinstance(
+            history,
+            pd.DataFrame,
+        ):
+
+            return history.copy()
+
+    return None
+
+
+def get_close_column(
+    history,
+):
+    """
+    Localiza a coluna de fechamento.
+    """
+
+    if not isinstance(
+        history,
+        pd.DataFrame,
+    ):
 
         return None
 
-    if history is None:
-        return None
+    possible_columns = [
+
+        "Close",
+        "close",
+        "Adj Close",
+        "adj_close",
+
+    ]
+
+    for column in possible_columns:
+
+        if column in history.columns:
+
+            return column
+
+    return None
+
+
+def normalize_history(
+    history,
+):
+    """
+    Normaliza o histórico para cálculo
+    dos indicadores.
+    """
 
     if not isinstance(
         history,
@@ -97,304 +136,178 @@ def get_history(market):
         return None
 
     if history.empty:
-        return None
-
-    return history.copy()
-
-
-def normalize_columns(history):
-    """
-    Normaliza as colunas do histórico.
-    """
-
-    if history is None:
-        return None
-
-    data = history.copy()
-
-    # ------------------------------------------------------
-    # MultiIndex
-    # ------------------------------------------------------
-
-    if isinstance(
-        data.columns,
-        pd.MultiIndex,
-    ):
-
-        new_columns = []
-
-        for column in data.columns:
-
-            if isinstance(
-                column,
-                tuple,
-            ):
-
-                new_columns.append(
-                    str(
-                        column[0]
-                    )
-                )
-
-            else:
-
-                new_columns.append(
-                    str(column)
-                )
-
-        data.columns = new_columns
-
-    # ------------------------------------------------------
-    # Padronização
-    # ------------------------------------------------------
-
-    rename_map = {}
-
-    for column in data.columns:
-
-        column_str = str(
-            column
-        ).strip()
-
-        lower = column_str.lower()
-
-        if lower == "close":
-            rename_map[column] = "Close"
-
-        elif lower == "adj close":
-            rename_map[column] = "Adj Close"
-
-        elif lower == "open":
-            rename_map[column] = "Open"
-
-        elif lower == "high":
-            rename_map[column] = "High"
-
-        elif lower == "low":
-            rename_map[column] = "Low"
-
-        elif lower == "volume":
-            rename_map[column] = "Volume"
-
-    if rename_map:
-
-        data = data.rename(
-            columns=rename_map
-        )
-
-    return data
-
-
-def get_close_series(history):
-    """
-    Retorna a série de fechamento.
-    """
-
-    if history is None:
-        return None
-
-    if "Close" not in history.columns:
 
         return None
 
-    close = history[
-        "Close"
-    ].copy()
+    history = history.copy()
 
-    close = pd.to_numeric(
-        close,
+    close_column = get_close_column(
+        history
+    )
+
+    if close_column is None:
+
+        return None
+
+    history[close_column] = pd.to_numeric(
+        history[close_column],
         errors="coerce",
     )
 
-    close = close.dropna()
+    history = history.dropna(
+        subset=[
+            close_column
+        ]
+    )
 
-    if close.empty:
+    if history.empty:
 
         return None
 
-    return close
+    return history
 
 
 # ==========================================================
 # MÉDIA MÓVEL
 # ==========================================================
 
-def calculate_ma(
-    close,
-    period,
+def calculate_moving_average(
+    series,
+    window,
 ):
     """
     Calcula uma média móvel simples.
     """
 
-    if close is None:
+    if not isinstance(
+        series,
+        pd.Series,
+    ):
 
         return None
 
-    try:
-
-        if len(close) < period:
-
-            return None
-
-        ma = (
-            close
-            .rolling(
-                window=period,
-                min_periods=period,
-            )
-            .mean()
-        )
-
-        if ma.empty:
-
-            return None
-
-        return safe_float(
-            ma.iloc[-1]
-        )
-
-    except Exception:
+    if series.empty:
 
         return None
+
+    if len(series) < window:
+
+        return None
+
+    value = (
+        series
+        .rolling(
+            window=window,
+            min_periods=window,
+        )
+        .mean()
+        .iloc[-1]
+    )
+
+    return safe_float(
+        value
+    )
 
 
 # ==========================================================
 # RSI
 # ==========================================================
 
-def calculate_rsi(
+def calculate_rsi_series(
     close,
-    period=RSI_PERIOD,
+    period=14,
 ):
     """
-    Calcula o RSI utilizando o método
-    clássico baseado em ganhos e perdas.
+    Calcula a série histórica do RSI.
+
+    Utiliza médias móveis exponenciais
+    para suavização dos ganhos e perdas.
     """
 
-    if close is None:
+    if not isinstance(
+        close,
+        pd.Series,
+    ):
 
         return None
 
-    try:
+    if len(close) < period + 1:
 
-        if len(close) < period + 1:
+        return None
 
-            return None
+    delta = close.diff()
 
-        delta = close.diff()
+    gains = delta.clip(
+        lower=0
+    )
 
-        gain = delta.clip(
-            lower=0
-        )
-
-        loss = -delta.clip(
+    losses = (
+        -delta.clip(
             upper=0
         )
+    )
 
-        avg_gain = (
-            gain
-            .rolling(
-                window=period,
-                min_periods=period,
-            )
-            .mean()
-        )
+    average_gain = gains.ewm(
+        alpha=1 / period,
+        adjust=False,
+        min_periods=period,
+    ).mean()
 
-        avg_loss = (
-            loss
-            .rolling(
-                window=period,
-                min_periods=period,
-            )
-            .mean()
-        )
+    average_loss = losses.ewm(
+        alpha=1 / period,
+        adjust=False,
+        min_periods=period,
+    ).mean()
 
-        latest_gain = safe_float(
-            avg_gain.iloc[-1]
-        )
+    average_loss = average_loss.replace(
+        0,
+        pd.NA,
+    )
 
-        latest_loss = safe_float(
-            avg_loss.iloc[-1]
-        )
+    rs = (
+        average_gain
+        / average_loss
+    )
 
-        if latest_gain is None:
-
-            return None
-
-        if latest_loss is None:
-
-            return None
-
-        # --------------------------------------------------
-        # Caso não existam perdas
-        # --------------------------------------------------
-
-        if latest_loss == 0:
-
-            if latest_gain > 0:
-
-                return 100.0
-
-            return 50.0
-
-        rs = (
-            latest_gain
-            / latest_loss
-        )
-
-        rsi = (
+    rsi = (
+        100
+        - (
             100
-            - (
-                100
-                / (
-                    1
-                    + rs
-                )
+            / (
+                1 + rs
             )
         )
+    )
 
-        return safe_float(
-            rsi
-        )
-
-    except Exception:
-
-        return None
+    return rsi
 
 
-# ==========================================================
-# RETORNOS
-# ==========================================================
-
-def calculate_returns(
-    close,
+def calculate_rsi(
+    series,
+    period=14,
 ):
     """
-    Calcula retornos percentuais diários.
+    Retorna o valor mais recente do RSI.
     """
 
-    if close is None:
+    rsi_series = calculate_rsi_series(
+        series,
+        period,
+    )
+
+    if rsi_series is None:
 
         return None
 
-    try:
+    valid_rsi = rsi_series.dropna()
 
-        returns = (
-            close
-            .pct_change()
-            .dropna()
-        )
-
-        if returns.empty:
-
-            return None
-
-        return returns
-
-    except Exception:
+    if valid_rsi.empty:
 
         return None
+
+    return safe_float(
+        valid_rsi.iloc[-1]
+    )
 
 
 # ==========================================================
@@ -403,237 +316,327 @@ def calculate_returns(
 
 def calculate_volatility(
     close,
-    period=VOLATILITY_PERIOD,
+    window=21,
 ):
     """
-    Calcula a volatilidade histórica diária
-    utilizando o desvio-padrão dos retornos.
+    Calcula a volatilidade baseada no
+    desvio padrão dos retornos diários.
     """
 
-    returns = calculate_returns(
+    if not isinstance(
+        close,
+        pd.Series,
+    ):
+
+        return None
+
+    if len(close) < window + 1:
+
+        return None
+
+    returns = close.pct_change()
+
+    volatility = (
+        returns
+        .rolling(
+            window=window,
+            min_periods=window,
+        )
+        .std()
+        .iloc[-1]
+    )
+
+    return safe_float(
+        volatility
+    )
+
+
+# ==========================================================
+# DATAFRAME DE INDICADORES HISTÓRICOS
+# ==========================================================
+
+def calculate_historical_indicators(
+    market,
+    ma21_window=21,
+    ma200_window=200,
+    rsi_period=14,
+    volatility_window=21,
+):
+    """
+    Calcula indicadores técnicos para todo
+    o histórico disponível.
+
+    Retorna um DataFrame contendo:
+
+    - price
+    - ma21
+    - ma200
+    - rsi
+    - volatility
+
+    Cada linha representa um ponto no tempo
+    que poderá ser utilizado para calcular
+    o Score Técnico histórico.
+    """
+
+    history = get_market_history(
+        market
+    )
+
+    history = normalize_history(
+        history
+    )
+
+    if history is None:
+
+        return pd.DataFrame()
+
+    close_column = get_close_column(
+        history
+    )
+
+    if close_column is None:
+
+        return pd.DataFrame()
+
+    close = (
+        pd.to_numeric(
+            history[close_column],
+            errors="coerce",
+        )
+        .dropna()
+    )
+
+    if close.empty:
+
+        return pd.DataFrame()
+
+    # ======================================================
+    # DATAFRAME BASE
+    # ======================================================
+
+    indicators = pd.DataFrame(
+        index=close.index
+    )
+
+    indicators["price"] = close
+
+    # ======================================================
+    # MA21
+    # ======================================================
+
+    indicators["ma21"] = (
         close
+        .rolling(
+            window=ma21_window,
+            min_periods=ma21_window,
+        )
+        .mean()
     )
 
-    if returns is None:
+    # ======================================================
+    # MA200
+    # ======================================================
 
-        return None
-
-    try:
-
-        if len(returns) < period:
-
-            return None
-
-        volatility = (
-            returns
-            .rolling(
-                window=period,
-                min_periods=period,
-            )
-            .std()
+    indicators["ma200"] = (
+        close
+        .rolling(
+            window=ma200_window,
+            min_periods=ma200_window,
         )
+        .mean()
+    )
 
-        value = safe_float(
-            volatility.iloc[-1]
+    # ======================================================
+    # RSI
+    # ======================================================
+
+    indicators["rsi"] = calculate_rsi_series(
+        close,
+        period=rsi_period,
+    )
+
+    # ======================================================
+    # VOLATILIDADE
+    # ======================================================
+
+    returns = close.pct_change()
+
+    indicators["volatility"] = (
+        returns
+        .rolling(
+            window=volatility_window,
+            min_periods=volatility_window,
         )
+        .std()
+    )
 
-        return value
+    # ======================================================
+    # LIMPEZA
+    # ======================================================
 
-    except Exception:
+    indicators = indicators.replace(
+        [
+            float("inf"),
+            float("-inf"),
+        ],
+        pd.NA,
+    )
 
-        return None
+    return indicators
 
 
 # ==========================================================
-# VARIAÇÃO DIÁRIA
+# ÚLTIMOS INDICADORES
 # ==========================================================
 
-def calculate_daily_change(
-    close,
+def get_latest_historical_indicators(
+    historical_indicators,
 ):
     """
-    Calcula a variação percentual do
-    último fechamento em relação ao anterior.
+    Obtém o último conjunto válido de
+    indicadores históricos.
     """
 
-    if close is None:
-
-        return None
-
-    try:
-
-        if len(close) < 2:
-
-            return None
-
-        previous = safe_float(
-            close.iloc[-2]
-        )
-
-        current = safe_float(
-            close.iloc[-1]
-        )
-
-        if previous is None:
-            return None
-
-        if current is None:
-            return None
-
-        if previous == 0:
-
-            return None
-
-        change = (
-            (
-                current
-                - previous
-            )
-            / previous
-        )
-
-        return safe_float(
-            change
-        )
-
-    except Exception:
-
-        return None
-
-
-# ==========================================================
-# TENDÊNCIA
-# ==========================================================
-
-def determine_trend(
-    price,
-    ma21,
-    ma200,
-):
-    """
-    Determina a tendência básica utilizando
-    preço, MA21 e MA200.
-    """
-
-    price = safe_float(
-        price
-    )
-
-    ma21 = safe_float(
-        ma21
-    )
-
-    ma200 = safe_float(
-        ma200
-    )
-
-    if price is None:
-
-        return "Indisponível"
-
-    if ma21 is None:
-
-        return "Indisponível"
-
-    if ma200 is None:
-
-        return "Indisponível"
-
-    if (
-        price > ma21
-        and price > ma200
+    if not isinstance(
+        historical_indicators,
+        pd.DataFrame,
     ):
 
-        return "Alta"
+        return {}
 
-    if (
-        price < ma21
-        and price < ma200
-    ):
+    if historical_indicators.empty:
 
-        return "Baixa"
+        return {}
 
-    return "Neutra"
+    required_columns = [
+
+        "price",
+        "ma21",
+        "ma200",
+        "rsi",
+
+    ]
+
+    valid_data = (
+        historical_indicators
+        .dropna(
+            subset=required_columns
+        )
+    )
+
+    if valid_data.empty:
+
+        return {}
+
+    latest = valid_data.iloc[-1]
+
+    return {
+
+        "price":
+            safe_float(
+                latest.get(
+                    "price"
+                )
+            ),
+
+        "ma21":
+            safe_float(
+                latest.get(
+                    "ma21"
+                )
+            ),
+
+        "ma200":
+            safe_float(
+                latest.get(
+                    "ma200"
+                )
+            ),
+
+        "rsi":
+            safe_float(
+                latest.get(
+                    "rsi"
+                )
+            ),
+
+        "volatility":
+            safe_float(
+                latest.get(
+                    "volatility"
+                )
+            ),
+    }
 
 
 # ==========================================================
-# CÁLCULO PRINCIPAL
+# INDICADORES ATUAIS
 # ==========================================================
 
 def calculate_indicators(
     market,
 ):
     """
-    Calcula todos os indicadores utilizados
-    pelo InvestIA PRO.
+    Calcula os indicadores técnicos atuais.
 
-    Estrutura esperada:
+    Mantém compatibilidade com as fases
+    anteriores do InvestIA PRO.
 
-    {
-        "asset": "...",
-        "ticker": "...",
-        "history": DataFrame,
-        "price": ...
-    }
-
-    Retorna:
+    Retorno:
 
     {
-        "asset": "...",
-        "ticker": "...",
+        "asset": ...,
         "price": ...,
         "ma21": ...,
         "ma200": ...,
         "rsi": ...,
         "volatility": ...,
-        "daily_change": ...,
-        "trend": "..."
+        "historical": DataFrame
     }
     """
 
     if market is None:
 
-        return None
+        raise ValueError(
+            "Dados de mercado não fornecidos."
+        )
 
     # ======================================================
-    # HISTÓRICO
+    # HISTÓRICO DE INDICADORES
     # ======================================================
 
-    history = get_history(
+    historical = calculate_historical_indicators(
         market
     )
 
-    if history is None:
+    if historical.empty:
 
-        return None
+        raise ValueError(
+            "Não foi possível calcular "
+            "os indicadores históricos."
+        )
 
-    history = normalize_columns(
-        history
+    # ======================================================
+    # ÚLTIMO CONJUNTO VÁLIDO
+    # ======================================================
+
+    latest = get_latest_historical_indicators(
+        historical
     )
 
-    if history is None:
+    if not latest:
 
-        return None
-
-    # ======================================================
-    # CLOSE
-    # ======================================================
-
-    close = get_close_series(
-        history
-    )
-
-    if close is None:
-
-        return None
+        raise ValueError(
+            "Não existem dados suficientes "
+            "para calcular os indicadores."
+        )
 
     # ======================================================
-    # ASSET
+    # ATIVO
     # ======================================================
 
     asset = None
-    ticker = None
-    market_price = None
 
     if isinstance(
         market,
@@ -644,90 +647,33 @@ def calculate_indicators(
             "asset"
         )
 
-        ticker = market.get(
-            "ticker"
-        )
+        if asset is None:
 
-        market_price = market.get(
-            "price"
-        )
+            asset = market.get(
+                "ticker"
+            )
 
     # ======================================================
     # PREÇO
     # ======================================================
 
-    price = safe_float(
-        market_price
-    )
+    market_price = None
 
-    if price is None:
+    if isinstance(
+        market,
+        dict,
+    ):
 
-        try:
-
-            price = safe_float(
-                close.iloc[-1]
+        market_price = safe_float(
+            market.get(
+                "price"
             )
+        )
 
-        except Exception:
-
-            price = None
-
-    if price is None:
-
-        return None
-
-    # ======================================================
-    # MA21
-    # ======================================================
-
-    ma21 = calculate_ma(
-        close,
-        MA21_PERIOD,
-    )
-
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    ma200 = calculate_ma(
-        close,
-        MA200_PERIOD,
-    )
-
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    rsi = calculate_rsi(
-        close,
-        RSI_PERIOD,
-    )
-
-    # ======================================================
-    # VOLATILIDADE
-    # ======================================================
-
-    volatility = calculate_volatility(
-        close,
-        VOLATILITY_PERIOD,
-    )
-
-    # ======================================================
-    # VARIAÇÃO DIÁRIA
-    # ======================================================
-
-    daily_change = calculate_daily_change(
-        close
-    )
-
-    # ======================================================
-    # TENDÊNCIA
-    # ======================================================
-
-    trend = determine_trend(
-        price,
-        ma21,
-        ma200,
+    price = (
+        market_price
+        if market_price is not None
+        else latest["price"]
     )
 
     # ======================================================
@@ -739,132 +685,41 @@ def calculate_indicators(
         "asset":
             asset,
 
-        "ticker":
-            ticker,
-
         "price":
             price,
 
         "ma21":
-            ma21,
+            latest["ma21"],
 
         "ma200":
-            ma200,
+            latest["ma200"],
 
         "rsi":
-            rsi,
+            latest["rsi"],
 
         "volatility":
-            volatility,
+            latest["volatility"],
 
-        "daily_change":
-            daily_change,
-
-        "trend":
-            trend,
+        "historical":
+            historical,
     }
 
 
 # ==========================================================
-# VALIDAÇÃO DOS INDICADORES
+# FUNÇÃO DE COMPATIBILIDADE
 # ==========================================================
 
-def validate_indicators(
-    indicators,
+def get_historical_indicators(
+    market,
 ):
     """
-    Verifica se os principais indicadores
-    estão disponíveis.
+    Alias para obtenção dos indicadores
+    históricos.
+
+    Utilizado pelas próximas fases para
+    facilitar a integração.
     """
 
-    if indicators is None:
-
-        return False
-
-    if not isinstance(
-        indicators,
-        dict,
-    ):
-
-        return False
-
-    required = [
-        "price",
-        "ma21",
-        "ma200",
-        "rsi",
-        "volatility",
-    ]
-
-    for field in required:
-
-        value = indicators.get(
-            field
-        )
-
-        if value is None:
-
-            return False
-
-    return True
-
-
-# ==========================================================
-# RESUMO
-# ==========================================================
-
-def get_indicator_summary(
-    indicators,
-):
-    """
-    Retorna um resumo simples dos indicadores.
-    """
-
-    if indicators is None:
-
-        return {}
-
-    if not isinstance(
-        indicators,
-        dict,
-    ):
-
-        return {}
-
-    return {
-
-        "price":
-            indicators.get(
-                "price"
-            ),
-
-        "ma21":
-            indicators.get(
-                "ma21"
-            ),
-
-        "ma200":
-            indicators.get(
-                "ma200"
-            ),
-
-        "rsi":
-            indicators.get(
-                "rsi"
-            ),
-
-        "volatility":
-            indicators.get(
-                "volatility"
-            ),
-
-        "daily_change":
-            indicators.get(
-                "daily_change"
-            ),
-
-        "trend":
-            indicators.get(
-                "trend"
-            ),
-    }
+    return calculate_historical_indicators(
+        market
+    )
