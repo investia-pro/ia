@@ -3,10 +3,22 @@ InvestIA PRO
 Aplicação Principal
 
 Versão: v0.7
-Fase: 3.0.4 - Consenso e Confiança da Análise
+Fase: 3.0.5 - Dashboard Histórico e Evolução dos Scores
+
+Responsabilidades:
+- Buscar dados do mercado
+- Preparar dados históricos
+- Calcular indicadores
+- Executar análise InvestIA
+- Exibir Score Técnico
+- Exibir Score Fundamentalista
+- Exibir Score Integrado
+- Exibir evolução histórica
+- Exibir gráficos de preço e Score
 """
 
 import streamlit as st
+import pandas as pd
 
 from market import (
     get_market_data,
@@ -24,6 +36,10 @@ from analysis import (
 
 from charts import (
     create_price_chart,
+    create_price_indicators_chart,
+    create_score_evolution_chart,
+    create_integrated_analysis_chart,
+    create_scores_comparison_chart,
 )
 
 from utils import (
@@ -41,6 +57,20 @@ st.set_page_config(
     page_title="InvestIA PRO",
     page_icon="📈",
     layout="wide",
+)
+
+
+# ==========================================================
+# CABEÇALHO
+# ==========================================================
+
+st.title(
+    "📈 InvestIA PRO"
+)
+
+st.caption(
+    "Dashboard inteligente para análise técnica, "
+    "fundamentalista e evolução histórica de ativos."
 )
 
 
@@ -64,28 +94,105 @@ def normalize_asset_input(asset):
     )
 
 
-def get_dict_value(
-    data,
-    *keys,
+def safe_dict(value):
+    """
+    Garante o retorno de um dicionário.
+    """
+
+    if isinstance(
+        value,
+        dict,
+    ):
+        return value
+
+    return {}
+
+
+def safe_float(
+    value,
     default=None,
 ):
     """
-    Obtém um valor de um dicionário
-    aceitando nomes alternativos.
+    Converte valores para float com segurança.
     """
 
-    if not isinstance(
-        data,
-        dict,
+    if value is None:
+        return default
+
+    try:
+
+        value = float(value)
+
+    except (
+        TypeError,
+        ValueError,
     ):
 
         return default
 
+    if pd.isna(value):
+        return default
+
+    return value
+
+
+def safe_text(
+    value,
+    default="",
+):
+    """
+    Converte valores para texto.
+    """
+
+    if value is None:
+        return default
+
+    value = str(value).strip()
+
+    if not value:
+        return default
+
+    return value
+
+
+def get_indicator_value(
+    indicators,
+    key,
+    default=None,
+):
+    """
+    Obtém um indicador com segurança.
+    """
+
+    indicators = safe_dict(
+        indicators
+    )
+
+    return indicators.get(
+        key,
+        default,
+    )
+
+
+def get_analysis_value(
+    result,
+    *keys,
+    default=None,
+):
+    """
+    Obtém um valor do resultado da análise,
+    aceitando nomes alternativos.
+    """
+
+    result = safe_dict(
+        result
+    )
+
     for key in keys:
 
-        if key in data:
+        if key in result:
 
-            value = data.get(
+            value = result.get(
                 key
             )
 
@@ -96,38 +203,254 @@ def get_dict_value(
     return default
 
 
-def safe_float(
-    value,
-    default=None,
+def get_historical_indicators(
+    indicators,
+    prepared_data,
 ):
     """
-    Converte um valor para float
-    com segurança.
+    Procura o histórico de indicadores
+    em diferentes estruturas possíveis.
+
+    Mantém compatibilidade com versões
+    anteriores do indicators.py.
     """
 
-    if value is None:
+    indicators = safe_dict(
+        indicators
+    )
 
-        return default
+    possible_keys = [
 
-    try:
+        "historical",
+        "history",
+        "historical_indicators",
+        "indicators_history",
 
-        return float(
-            value
+    ]
+
+    for key in possible_keys:
+
+        value = indicators.get(
+            key
         )
 
-    except (
-        TypeError,
-        ValueError,
+        if isinstance(
+            value,
+            pd.DataFrame,
+        ):
+
+            if not value.empty:
+
+                return value
+
+    # ------------------------------------------------------
+    # FALLBACK
+    # ------------------------------------------------------
+    # Caso o indicators.py não retorne
+    # o histórico diretamente.
+
+    prepared_data = safe_dict(
+        prepared_data
+    )
+
+    history = prepared_data.get(
+        "history"
+    )
+
+    if not isinstance(
+        history,
+        pd.DataFrame,
     ):
 
-        return default
+        return pd.DataFrame()
+
+    if history.empty:
+
+        return pd.DataFrame()
+
+    historical = history.copy()
+
+    # ------------------------------------------------------
+    # PREÇO
+    # ------------------------------------------------------
+
+    if "Close" in historical.columns:
+
+        historical["price"] = pd.to_numeric(
+            historical["Close"],
+            errors="coerce",
+        )
+
+    elif "close" in historical.columns:
+
+        historical["price"] = pd.to_numeric(
+            historical["close"],
+            errors="coerce",
+        )
+
+    elif "price" in historical.columns:
+
+        historical["price"] = pd.to_numeric(
+            historical["price"],
+            errors="coerce",
+        )
+
+    else:
+
+        return pd.DataFrame()
+
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    if "ma21" not in historical.columns:
+
+        historical["ma21"] = (
+            historical["price"]
+            .rolling(
+                window=21,
+                min_periods=21,
+            )
+            .mean()
+        )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    if "ma200" not in historical.columns:
+
+        historical["ma200"] = (
+            historical["price"]
+            .rolling(
+                window=200,
+                min_periods=200,
+            )
+            .mean()
+        )
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    if "rsi" not in historical.columns:
+
+        delta = historical[
+            "price"
+        ].diff()
+
+        gain = delta.clip(
+            lower=0
+        )
+
+        loss = (
+            -delta.clip(
+                upper=0
+            )
+        )
+
+        average_gain = gain.rolling(
+            window=14,
+            min_periods=14,
+        ).mean()
+
+        average_loss = loss.rolling(
+            window=14,
+            min_periods=14,
+        ).mean()
+
+        rs = average_gain / average_loss
+
+        historical["rsi"] = (
+            100
+            - (
+                100
+                / (
+                    1 + rs
+                )
+            )
+        )
+
+    historical = historical[
+        [
+            "price",
+            "ma21",
+            "ma200",
+            "rsi",
+        ]
+    ].copy()
+
+    historical = historical.dropna(
+        subset=[
+            "price",
+            "ma21",
+            "ma200",
+            "rsi",
+        ]
+    )
+
+    return historical
+
+
+def build_analysis_data(
+    price,
+    indicators,
+    historical_indicators,
+):
+    """
+    Monta os dados enviados
+    ao motor de análise.
+    """
+
+    return {
+
+        "price":
+            safe_float(
+                price
+            ),
+
+        "rsi":
+            safe_float(
+                get_indicator_value(
+                    indicators,
+                    "rsi",
+                )
+            ),
+
+        "ma21":
+            safe_float(
+                get_indicator_value(
+                    indicators,
+                    "ma21",
+                )
+            ),
+
+        "ma200":
+            safe_float(
+                get_indicator_value(
+                    indicators,
+                    "ma200",
+                )
+            ),
+
+        "volatility":
+            safe_float(
+                get_indicator_value(
+                    indicators,
+                    "volatility",
+                )
+            ),
+
+        "historical":
+            historical_indicators,
+    }
 
 
 def format_score(
     score,
 ):
     """
-    Formata Score para apresentação.
+    Formata um Score para exibição.
     """
 
     score = safe_float(
@@ -135,135 +458,26 @@ def format_score(
     )
 
     if score is None:
-
         return "N/D"
 
     return f"{score:.0f}/100"
 
 
-def format_percent(
-    value,
-    decimals=1,
+def format_score_delta(
+    variation,
 ):
     """
-    Formata decimal como percentual.
+    Formata a variação histórica do Score.
     """
 
-    value = safe_float(
-        value
+    variation = safe_float(
+        variation
     )
 
-    if value is None:
-
-        return "N/D"
-
-    return (
-        f"{value * 100:.{decimals}f}%"
-    )
-
-
-def consensus_icon(
-    consensus,
-):
-    """
-    Retorna ícone conforme o consenso.
-    """
-
-    consensus = (
-        str(consensus)
-        .strip()
-        .upper()
-    )
-
-    icons = {
-
-        "FORTE": "🟢",
-
-        "MODERADO": "🟡",
-
-        "FRACO": "🟠",
-
-        "DIVERGENTE": "🔴",
-
-        "NÃO AVALIADO": "⚪",
-
-    }
-
-    return icons.get(
-        consensus,
-        "⚪",
-    )
-
-
-def confidence_icon(
-    confidence,
-):
-    """
-    Retorna ícone conforme a confiança.
-    """
-
-    confidence = (
-        str(confidence)
-        .strip()
-        .upper()
-    )
-
-    icons = {
-
-        "ALTA": "🟢",
-
-        "MÉDIA-ALTA": "🟢",
-
-        "MÉDIA": "🟡",
-
-        "BAIXA": "🔴",
-
-    }
-
-    return icons.get(
-        confidence,
-        "⚪",
-    )
-
-
-def score_delta(
-    current_score,
-    reference_score,
-):
-    """
-    Calcula a diferença entre dois Scores.
-    """
-
-    current_score = safe_float(
-        current_score
-    )
-
-    reference_score = safe_float(
-        reference_score
-    )
-
-    if (
-        current_score is None
-        or reference_score is None
-    ):
-
+    if variation is None:
         return None
 
-    return current_score - reference_score
-
-
-# ==========================================================
-# CABEÇALHO
-# ==========================================================
-
-st.title(
-    "📈 InvestIA PRO"
-)
-
-st.caption(
-    "Análise integrada de ativos: "
-    "Técnica + Fundamentalista + Consenso"
-)
+    return f"{variation:+.0f} pts"
 
 
 # ==========================================================
@@ -277,10 +491,13 @@ input_col, period_col = st.columns(
 
 with input_col:
 
-    asset_input = st.text_input(
+    asset = st.text_input(
         "Digite o código do ativo",
         value="PETR4",
         max_chars=20,
+        help=(
+            "Exemplos: PETR4, VALE3, ITUB4"
+        ),
     )
 
 
@@ -311,11 +528,11 @@ analyze_button = st.button(
 if analyze_button:
 
     asset = normalize_asset_input(
-        asset_input
+        asset
     )
 
     # ======================================================
-    # VALIDAÇÃO DO ATIVO
+    # VALIDAÇÃO
     # ======================================================
 
     if not asset:
@@ -354,10 +571,6 @@ if analyze_button:
 
             st.stop()
 
-    # ======================================================
-    # VALIDAÇÃO DO RETORNO
-    # ======================================================
-
     if market_data is None:
 
         st.error(
@@ -368,7 +581,7 @@ if analyze_button:
         st.stop()
 
     # ======================================================
-    # PREPARAÇÃO DOS DADOS
+    # PREPARAÇÃO
     # ======================================================
 
     try:
@@ -393,22 +606,28 @@ if analyze_button:
     if prepared_data is None:
 
         st.error(
-            "Os dados do mercado não puderam "
-            "ser preparados."
+            "Os dados do mercado "
+            "não puderam ser preparados."
         )
 
         st.stop()
 
-    # ======================================================
-    # HISTÓRICO
-    # ======================================================
-
-    history = get_dict_value(
-        prepared_data,
-        "history",
+    prepared_data = safe_dict(
+        prepared_data
     )
 
-    if history is None:
+    # ======================================================
+    # HISTÓRICO DE MERCADO
+    # ======================================================
+
+    history = prepared_data.get(
+        "history"
+    )
+
+    if not isinstance(
+        history,
+        pd.DataFrame,
+    ):
 
         st.error(
             "Histórico do ativo não encontrado."
@@ -416,11 +635,7 @@ if analyze_button:
 
         st.stop()
 
-    if getattr(
-        history,
-        "empty",
-        True,
-    ):
+    if history.empty:
 
         st.error(
             "O histórico do ativo está vazio."
@@ -432,13 +647,44 @@ if analyze_button:
     # PREÇO ATUAL
     # ======================================================
 
-    price = get_current_price(
-        prepared_data
-    )
+    try:
+
+        price = get_current_price(
+            prepared_data
+        )
+
+    except Exception:
+
+        price = None
 
     price = safe_float(
         price
     )
+
+    if price is None:
+
+        # Fallback para o último Close.
+
+        price_column = None
+
+        for column in [
+            "Close",
+            "close",
+            "price",
+        ]:
+
+            if column in history.columns:
+
+                price_column = column
+                break
+
+        if price_column is not None:
+
+            price = safe_float(
+                history[
+                    price_column
+                ].dropna().iloc[-1]
+            )
 
     if price is None:
 
@@ -476,102 +722,45 @@ if analyze_button:
 
             st.stop()
 
-    if not isinstance(
-        indicators,
-        dict,
-    ):
+    if indicators is None:
 
         st.error(
-            "Os indicadores técnicos "
-            "não foram calculados corretamente."
+            "Os indicadores não foram calculados."
         )
 
         st.stop()
 
-    # ======================================================
-    # DADOS FUNDAMENTALISTAS
-    # ======================================================
-
-    fundamentals = get_dict_value(
-        prepared_data,
-        "fundamentals",
-        default={},
+    indicators = safe_dict(
+        indicators
     )
 
-    if not isinstance(
-        fundamentals,
-        dict,
-    ):
+    # ======================================================
+    # HISTÓRICO DE INDICADORES
+    # ======================================================
 
-        fundamentals = {}
+    historical_indicators = (
+        get_historical_indicators(
+            indicators,
+            prepared_data,
+        )
+    )
 
     # ======================================================
     # DADOS PARA ANÁLISE
     # ======================================================
 
-    analysis_data = {
-
-        # --------------------------------------------------
-        # DADOS TÉCNICOS
-        # --------------------------------------------------
-
-        "price":
-            price,
-
-        "ma21":
-            get_dict_value(
-                indicators,
-                "ma21",
-            ),
-
-        "ma200":
-            get_dict_value(
-                indicators,
-                "ma200",
-            ),
-
-        "rsi":
-            get_dict_value(
-                indicators,
-                "rsi",
-            ),
-
-        "volatility":
-            get_dict_value(
-                indicators,
-                "volatility",
-                default=0,
-            ),
-
-        # --------------------------------------------------
-        # FUNDAMENTOS
-        # --------------------------------------------------
-
-        "fundamentals":
-            fundamentals,
-    }
+    analysis_data = build_analysis_data(
+        price,
+        indicators,
+        historical_indicators,
+    )
 
     # ======================================================
-    # VALIDAÇÃO DOS DADOS TÉCNICOS
+    # VALIDAÇÃO DOS DADOS
     # ======================================================
-
-    technical_validation_data = {
-
-        "price":
-            analysis_data["price"],
-
-        "ma21":
-            analysis_data["ma21"],
-
-        "ma200":
-            analysis_data["ma200"],
-
-        "rsi":
-            analysis_data["rsi"],
-    }
 
     if not validate_analysis_data(
-        technical_validation_data
+        analysis_data
     ):
 
         st.error(
@@ -586,7 +775,7 @@ if analyze_button:
     # ======================================================
 
     with st.spinner(
-        "Executando análise integrada InvestIA..."
+        "Executando análise InvestIA..."
     ):
 
         try:
@@ -609,230 +798,176 @@ if analyze_button:
 
             st.stop()
 
-    if not isinstance(
-        result,
-        dict,
-    ):
+    result = safe_dict(
+        result
+    )
+
+    if not result:
 
         st.error(
-            "A análise retornou "
-            "um resultado inválido."
+            "A análise não retornou resultado."
         )
 
         st.stop()
 
     # ======================================================
-    # EXTRAÇÃO DOS SCORES
+    # EXTRAÇÃO DOS RESULTADOS
     # ======================================================
 
-    technical_score = get_dict_value(
+    technical_score = get_analysis_value(
         result,
         "technical_score",
-        default=0,
+        "score",
     )
 
-    fundamental_score = get_dict_value(
+    fundamental_score = get_analysis_value(
         result,
         "fundamental_score",
-        default=None,
+        "score_fundamental",
     )
 
-    integrated_score = get_dict_value(
+    integrated_score = get_analysis_value(
         result,
         "integrated_score",
-        "score",
-        default=0,
     )
 
-    # ======================================================
-    # CLASSIFICAÇÕES
-    # ======================================================
-
-    technical_classification = get_dict_value(
+    classification = get_analysis_value(
         result,
-        "technical_classification",
-        default="N/D",
+        "classification",
+        default="NEUTRO",
     )
 
-    fundamental_classification = get_dict_value(
-        result,
-        "fundamental_classification",
-        default="N/D",
-    )
-
-    integrated_classification = get_dict_value(
+    integrated_classification = get_analysis_value(
         result,
         "integrated_classification",
-        "classification",
-        default="N/D",
+        default="SEM DADOS",
     )
 
-    # ======================================================
-    # SINAIS
-    # ======================================================
-
-    technical_signal = get_dict_value(
+    signal = get_analysis_value(
         result,
-        "technical_signal",
-        default="N/D",
-    )
-
-    fundamental_signal = get_dict_value(
-        result,
-        "fundamental_signal",
-        default="N/D",
-    )
-
-    integrated_signal = get_dict_value(
-        result,
-        "integrated_signal",
         "signal",
-        default="N/D",
+        default="NEUTRO",
     )
 
-    qualified_signal = get_dict_value(
+    qualified_signal = get_analysis_value(
         result,
         "qualified_signal",
-        default=integrated_signal,
+        default=signal,
     )
 
-    signal_level = get_dict_value(
+    signal_level = get_analysis_value(
         result,
         "signal_level",
-        default="N/D",
+        default="Moderado",
     )
 
-    signal_icon = get_dict_value(
+    signal_icon = get_analysis_value(
         result,
         "signal_icon",
-        default="⚪",
+        default="🟡",
     )
 
-    # ======================================================
-    # FUNDAMENTOS
-    # ======================================================
-
-    fundamental_status = get_dict_value(
-        result,
-        "fundamental_status",
-        default="Indisponível",
-    )
-
-    fundamental_completeness = get_dict_value(
-        result,
-        "fundamental_completeness",
-        default=0,
-    )
-
-    # ======================================================
-    # CONSENSO
-    # ======================================================
-
-    consensus = get_dict_value(
-        result,
-        "consensus",
-        default="NÃO AVALIADO",
-    )
-
-    divergence = get_dict_value(
-        result,
-        "divergence",
-        default=None,
-    )
-
-    consensus_reason = get_dict_value(
-        result,
-        "consensus_reason",
-        default="Informação não disponível.",
-    )
-
-    # ======================================================
-    # CONFIANÇA
-    # ======================================================
-
-    confidence = get_dict_value(
-        result,
-        "confidence",
-        default="MÉDIA",
-    )
-
-    confidence_score = get_dict_value(
-        result,
-        "confidence_score",
-        default=50,
-    )
-
-    confidence_reason = get_dict_value(
-        result,
-        "confidence_reason",
-        default="Informação não disponível.",
-    )
-
-    # ======================================================
-    # ANÁLISE GERAL
-    # ======================================================
-
-    trend = get_dict_value(
+    trend = get_analysis_value(
         result,
         "trend",
         "tendencia",
         default="Indefinida",
     )
 
-    rsi_status = get_dict_value(
-        result,
-        "rsi_status",
-        default="Indisponível",
-    )
-
-    recommendation = get_dict_value(
+    recommendation = get_analysis_value(
         result,
         "recommendation",
         "recomendacao",
-        default="AGUARDAR",
+        default="Aguardar",
     )
 
-    risk = get_dict_value(
+    risk = get_analysis_value(
         result,
         "risk",
         "risco",
         default="Moderado",
     )
 
-    reasons = get_dict_value(
+    rsi_status = get_analysis_value(
+        result,
+        "rsi_status",
+        default="Sem dados",
+    )
+
+    reasons = get_analysis_value(
         result,
         "reasons",
         "justificativas",
         default=[],
     )
 
-    executive_summary = get_dict_value(
+    if not isinstance(
+        reasons,
+        list,
+    ):
+
+        reasons = []
+
+    breakdown = get_analysis_value(
+        result,
+        "breakdown",
+        default={},
+    )
+
+    breakdown = safe_dict(
+        breakdown
+    )
+
+    executive_summary = get_analysis_value(
         result,
         "executive_summary",
         default="",
     )
 
     # ======================================================
-    # BREAKDOWNS
+    # DADOS HISTÓRICOS DA ANÁLISE
     # ======================================================
 
-    technical_breakdown = get_dict_value(
+    score_history = get_analysis_value(
         result,
-        "technical_breakdown",
-        "breakdown",
+        "score_history",
+    )
+
+    historical_summary = get_analysis_value(
+        result,
+        "historical_summary",
         default={},
     )
 
-    fundamental_breakdown = get_dict_value(
+    historical_summary = safe_dict(
+        historical_summary
+    )
+
+    score_evolution = get_analysis_value(
         result,
-        "fundamental_breakdown",
+        "score_evolution",
+        default="SEM DADOS",
+    )
+
+    score_variation = get_analysis_value(
+        result,
+        "score_variation",
+    )
+
+    score_consistency = get_analysis_value(
+        result,
+        "score_consistency",
+        default="SEM DADOS",
+    )
+
+    signal_change = get_analysis_value(
+        result,
+        "signal_change",
         default={},
     )
 
-    integrated_breakdown = get_dict_value(
-        result,
-        "integrated_breakdown",
-        default={},
+    signal_change = safe_dict(
+        signal_change
     )
 
     # ======================================================
@@ -842,18 +977,26 @@ if analyze_button:
     st.divider()
 
     st.header(
-        f"📊 Análise Integrada: {asset}"
+        f"📊 Análise do Ativo: {asset}"
+    )
+
+    st.caption(
+        f"Sinal atual: {signal_icon} "
+        f"{qualified_signal} "
+        f"| Intensidade: {signal_level}"
     )
 
     # ======================================================
-    # PREÇO E RECOMENDAÇÃO
+    # CARDS PRINCIPAIS
     # ======================================================
 
-    top1, top2, top3, top4 = st.columns(
-        4
+    price_col, tech_col, fund_col, integrated_col = (
+        st.columns(
+            4
+        )
     )
 
-    with top1:
+    with price_col:
 
         st.metric(
             "Preço Atual",
@@ -862,75 +1005,21 @@ if analyze_button:
             ),
         )
 
-    with top2:
+    with tech_col:
 
-        st.metric(
-            "Score Integrado",
-            format_score(
-                integrated_score
-            ),
+        tech_delta = format_score_delta(
+            score_variation
         )
-
-    with top3:
-
-        st.metric(
-            "Tendência",
-            str(trend),
-        )
-
-    with top4:
-
-        st.metric(
-            "Recomendação",
-            str(recommendation),
-        )
-
-    # ======================================================
-    # SINAL PRINCIPAL
-    # ======================================================
-
-    st.info(
-        f"**Sinal:** {qualified_signal} "
-        f"| **Nível:** "
-        f"{signal_icon} {signal_level} "
-        f"| **Classificação:** "
-        f"{integrated_classification}"
-    )
-
-    # ======================================================
-    # OS TRÊS SCORES
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "🧠 Scores InvestIA"
-    )
-
-    score1, score2, score3 = st.columns(
-        3
-    )
-
-    with score1:
 
         st.metric(
             "Score Técnico",
             format_score(
                 technical_score
             ),
+            delta=tech_delta,
         )
 
-        st.caption(
-            f"Classificação: "
-            f"{technical_classification}"
-        )
-
-        st.caption(
-            f"Sinal: "
-            f"{technical_signal}"
-        )
-
-    with score2:
+    with fund_col:
 
         st.metric(
             "Score Fundamentalista",
@@ -939,22 +1028,7 @@ if analyze_button:
             ),
         )
 
-        st.caption(
-            f"Classificação: "
-            f"{fundamental_classification}"
-        )
-
-        st.caption(
-            f"Sinal: "
-            f"{fundamental_signal}"
-        )
-
-        st.caption(
-            f"Status: "
-            f"{fundamental_status}"
-        )
-
-    with score3:
+    with integrated_col:
 
         st.metric(
             "Score Integrado",
@@ -963,184 +1037,65 @@ if analyze_button:
             ),
         )
 
-        st.caption(
-            f"Classificação: "
-            f"{integrated_classification}"
-        )
-
-        st.caption(
-            f"Sinal: "
-            f"{integrated_signal}"
-        )
-
     # ======================================================
-    # PAINEL DE QUALIDADE
+    # STATUS DA ANÁLISE
     # ======================================================
 
-    st.divider()
-
-    st.subheader(
-        "🎯 Qualidade da Análise"
-    )
-
-    quality1, quality2, quality3, quality4 = (
+    status_col1, status_col2, status_col3, status_col4 = (
         st.columns(
             4
         )
     )
 
-    with quality1:
-
-        divergence_value = safe_float(
-            divergence
-        )
-
-        divergence_text = (
-            f"{divergence_value:.1f} pts"
-            if divergence_value is not None
-            else "N/D"
-        )
+    with status_col1:
 
         st.metric(
-            "Divergência",
-            divergence_text,
-        )
-
-    with quality2:
-
-        st.metric(
-            "Consenso",
-            f"{consensus_icon(consensus)} "
-            f"{consensus}",
-        )
-
-    with quality3:
-
-        st.metric(
-            "Confiança",
-            f"{confidence_icon(confidence)} "
-            f"{confidence}",
-        )
-
-    with quality4:
-
-        confidence_value = safe_float(
-            confidence_score,
-            default=0,
-        )
-
-        st.metric(
-            "Score de Confiança",
-            f"{confidence_value:.0f}/100",
-        )
-
-    # ======================================================
-    # INTERPRETAÇÃO DA QUALIDADE
-    # ======================================================
-
-    quality_col1, quality_col2 = st.columns(
-        2
-    )
-
-    with quality_col1:
-
-        st.markdown(
-            "#### Consenso entre os modelos"
-        )
-
-        st.write(
-            consensus_reason
-        )
-
-    with quality_col2:
-
-        st.markdown(
-            "#### Confiabilidade da análise"
-        )
-
-        st.write(
-            confidence_reason
-        )
-
-    # ======================================================
-    # METODOLOGIA DO SCORE INTEGRADO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "⚙️ Composição do Score Integrado"
-    )
-
-    integrated_technical = get_dict_value(
-        integrated_breakdown,
-        "technical",
-        default={},
-    )
-
-    integrated_fundamental = get_dict_value(
-        integrated_breakdown,
-        "fundamental",
-        default={},
-    )
-
-    integrated_data = get_dict_value(
-        integrated_breakdown,
-        "integrated",
-        default={},
-    )
-
-    technical_weight = get_dict_value(
-        integrated_technical,
-        "weight",
-        default=1.0,
-    )
-
-    fundamental_weight = get_dict_value(
-        integrated_fundamental,
-        "weight",
-        default=0.0,
-    )
-
-    integration_method = get_dict_value(
-        integrated_data,
-        "method",
-        default="Método não informado.",
-    )
-
-    weight1, weight2, weight3 = st.columns(
-        3
-    )
-
-    with weight1:
-
-        st.metric(
-            "Peso Técnico",
-            format_percent(
-                technical_weight
+            "Tendência",
+            safe_text(
+                trend,
+                "Indefinida",
             ),
         )
 
-    with weight2:
+    with status_col2:
 
         st.metric(
-            "Peso Fundamentalista",
-            format_percent(
-                fundamental_weight
+            "Risco",
+            safe_text(
+                risk,
+                "Moderado",
             ),
         )
 
-    with weight3:
+    with status_col3:
 
         st.metric(
-            "Cobertura Fundamentalista",
-            format_percent(
-                fundamental_completeness
+            "Evolução do Score",
+            safe_text(
+                score_evolution,
+                "SEM DADOS",
             ),
         )
 
-    st.caption(
-        f"**Método:** {integration_method}"
+    with status_col4:
+
+        st.metric(
+            "Consistência",
+            safe_text(
+                score_consistency,
+                "SEM DADOS",
+            ),
+        )
+
+    # ======================================================
+    # CLASSIFICAÇÃO
+    # ======================================================
+
+    st.info(
+        f"**Score Técnico:** {classification} "
+        f"| **Score Integrado:** "
+        f"{integrated_classification} "
+        f"| **Recomendação:** {recommendation}"
     )
 
     # ======================================================
@@ -1166,7 +1121,52 @@ if analyze_button:
         )
 
     # ======================================================
-    # INDICADORES TÉCNICOS
+    # COMPARAÇÃO DOS SCORES
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "⚖️ Comparação dos Scores"
+    )
+
+    try:
+
+        comparison_fig = (
+            create_scores_comparison_chart(
+                technical_score,
+                fundamental_score,
+                integrated_score,
+            )
+        )
+
+        if comparison_fig is not None:
+
+            st.plotly_chart(
+                comparison_fig,
+                use_container_width=True,
+            )
+
+        else:
+
+            st.info(
+                "Não há dados suficientes para "
+                "comparar os Scores."
+            )
+
+    except Exception as error:
+
+        st.warning(
+            "Não foi possível gerar o gráfico "
+            "de comparação dos Scores."
+        )
+
+        st.caption(
+            str(error)
+        )
+
+    # ======================================================
+    # INDICADORES ATUAIS
     # ======================================================
 
     st.divider()
@@ -1175,363 +1175,491 @@ if analyze_button:
         "📈 Indicadores Técnicos"
     )
 
-    indicator1, indicator2, indicator3, indicator4 = (
-        st.columns(
-            4
+    ma21 = safe_float(
+        analysis_data.get(
+            "ma21"
         )
     )
 
-    with indicator1:
+    ma200 = safe_float(
+        analysis_data.get(
+            "ma200"
+        )
+    )
+
+    rsi = safe_float(
+        analysis_data.get(
+            "rsi"
+        )
+    )
+
+    volatility = safe_float(
+        analysis_data.get(
+            "volatility"
+        )
+    )
+
+    ind1, ind2, ind3, ind4 = st.columns(
+        4
+    )
+
+    with ind1:
 
         st.metric(
             "MA21",
             format_currency(
-                analysis_data[
-                    "ma21"
-                ]
-            ),
+                ma21
+            )
+            if ma21 is not None
+            else "N/D",
         )
 
-    with indicator2:
+    with ind2:
 
         st.metric(
             "MA200",
             format_currency(
-                analysis_data[
-                    "ma200"
-                ]
-            ),
+                ma200
+            )
+            if ma200 is not None
+            else "N/D",
         )
 
-    with indicator3:
-
-        rsi_value = safe_float(
-            analysis_data[
-                "rsi"
-            ]
-        )
+    with ind3:
 
         st.metric(
             "RSI",
-            (
-                f"{rsi_value:.2f}"
-                if rsi_value is not None
-                else "N/D"
-            ),
+            f"{rsi:.2f}"
+            if rsi is not None
+            else "N/D",
         )
 
-    with indicator4:
+    with ind4:
 
-        volatility_value = safe_float(
-            analysis_data[
-                "volatility"
-            ],
-            default=0,
-        )
+        volatility_text = "N/D"
+
+        if volatility is not None:
+
+            volatility_text = (
+                f"{volatility * 100:.2f}%"
+            )
 
         st.metric(
             "Volatilidade",
-            f"{volatility_value * 100:.2f}%",
+            volatility_text,
         )
 
-    st.caption(
-        f"Status do RSI: {rsi_status}"
-    )
-
     # ======================================================
-    # BREAKDOWN TÉCNICO
+    # EVOLUÇÃO HISTÓRICA DO SCORE
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "📊 Composição do Score Técnico"
+        "📈 Evolução Histórica do Score"
     )
 
     if isinstance(
-        technical_breakdown,
-        dict,
-    ):
+        score_history,
+        pd.DataFrame,
+    ) and not score_history.empty:
 
-        base_points = get_dict_value(
-            technical_breakdown,
-            "base",
-            default=50,
+        hist1, hist2, hist3, hist4 = st.columns(
+            4
         )
 
-        raw_score = get_dict_value(
-            technical_breakdown,
-            "raw_score",
-            default=None,
-        )
+        with hist1:
 
-        st.write(
-            f"**Base do Score:** "
-            f"{base_points} pontos"
-        )
-
-        tech1, tech2, tech3 = st.columns(
-            3
-        )
-
-        # --------------------------------------------------
-        # MA21
-        # --------------------------------------------------
-
-        with tech1:
-
-            ma21_data = get_dict_value(
-                technical_breakdown,
-                "ma21",
-                default={},
-            )
-
-            st.markdown(
-                "### 📏 MA21"
-            )
-
-            st.metric(
-                "Contribuição",
-                (
-                    f"{safe_float(get_dict_value(ma21_data, 'points', default=0), 0):+.0f} pts"
-                ),
-            )
-
-            st.write(
-                f"**Sinal:** "
-                f"{get_dict_value(ma21_data, 'signal', default='Neutro')}"
-            )
-
-            st.caption(
-                get_dict_value(
-                    ma21_data,
-                    "reason",
-                    default="Sem informação.",
+            current_historical_score = (
+                historical_summary.get(
+                    "current_score"
                 )
             )
 
-        # --------------------------------------------------
-        # MA200
-        # --------------------------------------------------
-
-        with tech2:
-
-            ma200_data = get_dict_value(
-                technical_breakdown,
-                "ma200",
-                default={},
-            )
-
-            st.markdown(
-                "### 📐 MA200"
-            )
-
             st.metric(
-                "Contribuição",
-                (
-                    f"{safe_float(get_dict_value(ma200_data, 'points', default=0), 0):+.0f} pts"
+                "Score Atual",
+                format_score(
+                    current_historical_score
                 ),
             )
 
-            st.write(
-                f"**Sinal:** "
-                f"{get_dict_value(ma200_data, 'signal', default='Neutro')}"
-            )
+        with hist2:
 
-            st.caption(
-                get_dict_value(
-                    ma200_data,
-                    "reason",
-                    default="Sem informação.",
+            average_score = (
+                historical_summary.get(
+                    "average_score"
                 )
-            )
-
-        # --------------------------------------------------
-        # RSI
-        # --------------------------------------------------
-
-        with tech3:
-
-            rsi_data = get_dict_value(
-                technical_breakdown,
-                "rsi",
-                default={},
-            )
-
-            st.markdown(
-                "### 📊 RSI"
             )
 
             st.metric(
-                "Contribuição",
-                (
-                    f"{safe_float(get_dict_value(rsi_data, 'points', default=0), 0):+.0f} pts"
+                "Média do Período",
+                format_score(
+                    average_score
                 ),
             )
 
-            st.write(
-                f"**Sinal:** "
-                f"{get_dict_value(rsi_data, 'signal', default='Neutro')}"
-            )
+        with hist3:
 
-            st.caption(
-                get_dict_value(
-                    rsi_data,
-                    "reason",
-                    default="Sem informação.",
+            maximum_score = (
+                historical_summary.get(
+                    "maximum_score"
                 )
             )
 
-        if raw_score is not None:
-
-            st.success(
-                f"**Score Técnico Final:** "
-                f"{format_score(technical_score)} "
-                f"| Cálculo bruto: {raw_score}"
+            st.metric(
+                "Score Máximo",
+                format_score(
+                    maximum_score
+                ),
             )
 
-        else:
+        with hist4:
 
-            st.success(
-                f"**Score Técnico Final:** "
-                f"{format_score(technical_score)}"
+            minimum_score = (
+                historical_summary.get(
+                    "minimum_score"
+                )
             )
+
+            st.metric(
+                "Score Mínimo",
+                format_score(
+                    minimum_score
+                ),
+            )
+
+        try:
+
+            score_fig = (
+                create_score_evolution_chart(
+                    score_history
+                )
+            )
+
+            if score_fig is not None:
+
+                st.plotly_chart(
+                    score_fig,
+                    use_container_width=True,
+                )
+
+        except Exception as error:
+
+            st.warning(
+                "Não foi possível gerar o gráfico "
+                "de evolução do Score."
+            )
+
+            st.caption(
+                str(error)
+            )
+
+        # ==================================================
+        # MUDANÇA DE SINAL
+        # ==================================================
+
+        if signal_change:
+
+            changed = signal_change.get(
+                "changed",
+                False,
+            )
+
+            previous_signal = safe_text(
+                signal_change.get(
+                    "previous"
+                ),
+                "N/D",
+            )
+
+            current_signal = safe_text(
+                signal_change.get(
+                    "current"
+                ),
+                qualified_signal,
+            )
+
+            if changed:
+
+                st.warning(
+                    f"⚡ Mudança de sinal identificada: "
+                    f"**{previous_signal} → "
+                    f"{current_signal}**"
+                )
+
+            else:
+
+                st.caption(
+                    f"Sinal permanece em "
+                    f"**{current_signal}** no período analisado."
+                )
 
     else:
 
         st.info(
-            "Detalhamento técnico não disponível."
+            "Histórico de Score ainda não está "
+            "disponível para este período."
         )
 
     # ======================================================
-    # BREAKDOWN FUNDAMENTALISTA
+    # PREÇO E MÉDIAS MÓVEIS
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "🏢 Análise Fundamentalista"
-    )
-
-    if fundamental_score is None:
-
-        st.warning(
-            "Os dados fundamentalistas não estão "
-            "disponíveis para este ativo."
-        )
-
-    else:
-
-        fundamental_cols = st.columns(
-            3
-        )
-
-        with fundamental_cols[0]:
-
-            st.metric(
-                "Score Fundamentalista",
-                format_score(
-                    fundamental_score
-                ),
-            )
-
-        with fundamental_cols[1]:
-
-            st.metric(
-                "Status dos Dados",
-                str(
-                    fundamental_status
-                ),
-            )
-
-        with fundamental_cols[2]:
-
-            st.metric(
-                "Cobertura",
-                format_percent(
-                    fundamental_completeness
-                ),
-            )
-
-        if fundamental_breakdown:
-
-            st.caption(
-                "Detalhamento dos fundamentos "
-                "utilizados no Score:"
-            )
-
-            st.write(
-                fundamental_breakdown
-            )
-
-    # ======================================================
-    # GRÁFICO
-    # ======================================================
-
-    st.divider()
-
-    st.subheader(
-        "📈 Evolução do Preço"
+        "📉 Evolução do Preço e Médias"
     )
 
     try:
 
-        fig = create_price_chart(
-            history
+        indicators_fig = (
+            create_price_indicators_chart(
+                historical_indicators
+            )
         )
 
-        if fig is not None:
+        if indicators_fig is not None:
 
             st.plotly_chart(
-                fig,
+                indicators_fig,
                 use_container_width=True,
             )
 
         else:
 
-            st.warning(
-                "Não foi possível gerar "
-                "o gráfico."
+            price_fig = create_price_chart(
+                history
             )
+
+            if price_fig is not None:
+
+                st.plotly_chart(
+                    price_fig,
+                    use_container_width=True,
+                )
+
+            else:
+
+                st.info(
+                    "Não foi possível gerar o "
+                    "histórico de preço."
+                )
 
     except Exception as error:
 
         st.warning(
-            "O gráfico não pôde ser gerado."
+            "Não foi possível gerar o gráfico "
+            "de preço e médias."
         )
 
-        st.exception(
-            error
+        st.caption(
+            str(error)
         )
 
     # ======================================================
-    # ANÁLISE DETALHADA
+    # ANÁLISE INTEGRADA
     # ======================================================
 
     st.divider()
 
     st.subheader(
-        "🔎 Análise Detalhada"
+        "📊 Análise Histórica Integrada"
+    )
+
+    if (
+        isinstance(
+            historical_indicators,
+            pd.DataFrame,
+        )
+        and not historical_indicators.empty
+        and isinstance(
+            score_history,
+            pd.DataFrame,
+        )
+        and not score_history.empty
+    ):
+
+        try:
+
+            integrated_fig = (
+                create_integrated_analysis_chart(
+                    historical_indicators,
+                    score_history,
+                )
+            )
+
+            if integrated_fig is not None:
+
+                st.plotly_chart(
+                    integrated_fig,
+                    use_container_width=True,
+                )
+
+        except Exception as error:
+
+            st.warning(
+                "Não foi possível gerar a análise "
+                "histórica integrada."
+            )
+
+            st.caption(
+                str(error)
+            )
+
+    else:
+
+        st.info(
+            "Dados históricos insuficientes "
+            "para a análise integrada."
+        )
+
+    # ======================================================
+    # COMPOSIÇÃO DO SCORE
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🧠 Composição do Score Técnico"
+    )
+
+    base_points = safe_float(
+        breakdown.get(
+            "base"
+        ),
+        50,
+    )
+
+    raw_score = safe_float(
+        breakdown.get(
+            "raw_score"
+        )
+    )
+
+    st.caption(
+        "O Score Técnico parte de uma base de "
+        "50 pontos e é ajustado conforme MA21, "
+        "MA200 e RSI."
+    )
+
+    st.write(
+        f"**Base inicial:** {base_points:.0f} pontos"
+    )
+
+    breakdown_col1, breakdown_col2, breakdown_col3 = (
+        st.columns(
+            3
+        )
+    )
+
+    breakdown_items = [
+
+        (
+            breakdown_col1,
+            "📏 MA21",
+            "ma21",
+        ),
+
+        (
+            breakdown_col2,
+            "📐 MA200",
+            "ma200",
+        ),
+
+        (
+            breakdown_col3,
+            "📊 RSI",
+            "rsi",
+        ),
+
+    ]
+
+    for column, title, key in breakdown_items:
+
+        with column:
+
+            item = safe_dict(
+                breakdown.get(
+                    key
+                )
+            )
+
+            points = safe_float(
+                item.get(
+                    "points"
+                ),
+                0,
+            )
+
+            item_signal = safe_text(
+                item.get(
+                    "signal"
+                ),
+                "Neutro",
+            )
+
+            item_reason = safe_text(
+                item.get(
+                    "reason"
+                ),
+                "Sem informação.",
+            )
+
+            st.markdown(
+                f"### {title}"
+            )
+
+            st.metric(
+                "Contribuição",
+                f"{points:+.0f} pts",
+            )
+
+            st.write(
+                f"**Sinal:** {item_signal}"
+            )
+
+            st.caption(
+                item_reason
+            )
+
+    if raw_score is not None:
+
+        st.success(
+            f"**Score Técnico Final: "
+            f"{format_score(technical_score)}** "
+            f"| Cálculo bruto: "
+            f"{raw_score:.0f}"
+        )
+
+    else:
+
+        st.success(
+            f"**Score Técnico Final: "
+            f"{format_score(technical_score)}**"
+        )
+
+    # ======================================================
+    # FUNDAMENTAÇÃO
+    # ======================================================
+
+    st.divider()
+
+    st.subheader(
+        "🔎 Fundamentação da Análise"
     )
 
     analysis_col1, analysis_col2 = st.columns(
         2
     )
 
-    # ======================================================
-    # FUNDAMENTAÇÃO
-    # ======================================================
-
     with analysis_col1:
 
         st.markdown(
-            "### Fundamentação"
+            "### Indicadores e Tendência"
         )
 
-        if isinstance(
-            reasons,
-            list,
-        ) and reasons:
+        if reasons:
 
             for reason in reasons:
 
@@ -1542,13 +1670,8 @@ if analyze_button:
         else:
 
             st.info(
-                "Nenhuma justificativa "
-                "foi retornada."
+                "Nenhuma justificativa foi retornada."
             )
-
-    # ======================================================
-    # GESTÃO DE RISCO
-    # ======================================================
 
     with analysis_col2:
 
@@ -1561,35 +1684,34 @@ if analyze_button:
         )
 
         st.write(
+            f"**Score Técnico:** "
+            f"{format_score(technical_score)}"
+        )
+
+        st.write(
+            f"**Score Fundamentalista:** "
+            f"{format_score(fundamental_score)}"
+        )
+
+        st.write(
             f"**Score Integrado:** "
             f"{format_score(integrated_score)}"
         )
 
         st.write(
-            f"**Consenso:** "
-            f"{consensus_icon(consensus)} "
-            f"{consensus}"
+            f"**Tendência:** {trend}"
         )
 
         st.write(
-            f"**Confiança:** "
-            f"{confidence_icon(confidence)} "
-            f"{confidence}"
+            f"**RSI:** {rsi_status}"
         )
 
         st.write(
-            f"**Tendência:** "
-            f"{trend}"
+            f"**Sinal:** {qualified_signal}"
         )
 
         st.write(
-            f"**RSI:** "
-            f"{rsi_status}"
-        )
-
-        st.write(
-            f"**Recomendação:** "
-            f"{recommendation}"
+            f"**Recomendação:** {recommendation}"
         )
 
     # ======================================================
@@ -1602,10 +1724,8 @@ if analyze_button:
         "📋 Resumo da Análise"
     )
 
-    summary_col1, summary_col2, summary_col3 = (
-        st.columns(
-            3
-        )
+    summary_col1, summary_col2 = st.columns(
+        2
     )
 
     with summary_col1:
@@ -1624,8 +1744,6 @@ if analyze_button:
             f"{format_score(technical_score)}"
         )
 
-    with summary_col2:
-
         st.write(
             f"**Score Fundamentalista:** "
             f"{format_score(fundamental_score)}"
@@ -1636,16 +1754,21 @@ if analyze_button:
             f"{format_score(integrated_score)}"
         )
 
+    with summary_col2:
+
         st.write(
-            f"**Consenso:** "
-            f"{consensus}"
+            f"**Classificação Técnica:** "
+            f"{classification}"
         )
 
-    with summary_col3:
+        st.write(
+            f"**Classificação Integrada:** "
+            f"{integrated_classification}"
+        )
 
         st.write(
-            f"**Confiança:** "
-            f"{confidence}"
+            f"**Evolução do Score:** "
+            f"{score_evolution}"
         )
 
         st.write(
@@ -1666,31 +1789,29 @@ if analyze_button:
 else:
 
     st.info(
-        "Digite um ativo e clique em "
-        "🔎 Analisar ativo."
+        "Digite o código de um ativo e clique em "
+        "**🔎 Analisar ativo**."
     )
 
     st.markdown(
         """
-### Como funciona a análise
+### Como utilizar
 
 1. Informe o código do ativo.
 2. Escolha o período de análise.
 3. Clique em **Analisar ativo**.
-4. O InvestIA calcula o Score Técnico.
-5. Os fundamentos disponíveis são avaliados.
-6. É calculado o Score Fundamentalista.
-7. Os modelos são integrados em um Score Final.
-8. O sistema mede a divergência e o consenso.
-9. A confiança da análise ajusta a recomendação.
+4. Analise o **Score Técnico**.
+5. Consulte o **Score Fundamentalista**, quando disponível.
+6. Avalie o **Score Integrado**.
+7. Observe a evolução histórica do Score.
+8. Compare o preço com as médias MA21 e MA200.
 
-### Exemplo de interpretação
+**Exemplos de ativos brasileiros:**
 
-- **Score Técnico alto + Fundamentalista alto:** maior convergência.
-- **Scores próximos:** maior consenso.
-- **Scores muito diferentes:** análise divergente.
-- **Baixa cobertura fundamentalista:** maior peso para o técnico.
-
-**Exemplos de ativos:** PETR4, VALE3, ITUB4.
+- PETR4
+- VALE3
+- ITUB4
+- BBAS3
+- WEGE3
 """
     )
