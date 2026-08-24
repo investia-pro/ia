@@ -3,7 +3,17 @@ InvestIA PRO
 Módulo de Mercado e Dados Fundamentalistas
 
 Versão: v0.7
-Fase: 3.0.1 - Coleta e Tratamento de Dados Fundamentalistas
+Fase: 3.0.6 - Análise Fundamentalista Real
+
+Responsabilidades:
+- Buscar dados históricos de mercado
+- Normalizar o ticker do ativo
+- Preparar o histórico de preços
+- Obter o preço atual
+- Buscar informações da empresa
+- Buscar indicadores fundamentalistas
+- Normalizar valores ausentes
+- Fornecer uma estrutura estável para o restante da aplicação
 """
 
 import time
@@ -18,29 +28,140 @@ import yfinance as yf
 
 DEFAULT_PERIOD = "1y"
 
-MAX_RETRIES = 3
+VALID_PERIODS = [
+    "6mo",
+    "1y",
+    "2y",
+    "5y",
+]
 
-RETRY_DELAY = 2
+BR_TICKER_SUFFIX = ".SA"
+
+
+# ==========================================================
+# FUNÇÕES AUXILIARES
+# ==========================================================
+
+def safe_float(
+    value,
+    default=None,
+):
+    """
+    Converte um valor para float com segurança.
+
+    Retorna default quando o valor:
+    - é None
+    - não pode ser convertido
+    - é NaN
+    - é infinito
+    """
+
+    if value is None:
+        return default
+
+    try:
+
+        value = float(value)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return default
+
+    if pd.isna(value):
+        return default
+
+    if value == float("inf"):
+        return default
+
+    if value == float("-inf"):
+        return default
+
+    return value
+
+
+def safe_text(
+    value,
+    default=None,
+):
+    """
+    Converte valores para texto com segurança.
+    """
+
+    if value is None:
+        return default
+
+    try:
+
+        value = str(value).strip()
+
+    except Exception:
+
+        return default
+
+    if not value:
+        return default
+
+    if value.lower() == "nan":
+        return default
+
+    return value
+
+
+def get_dict_value(
+    data,
+    *keys,
+    default=None,
+):
+    """
+    Procura um valor em um dicionário
+    utilizando múltiplas chaves possíveis.
+    """
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return default
+
+    for key in keys:
+
+        if key in data:
+
+            value = data.get(
+                key
+            )
+
+            if value is not None:
+
+                return value
+
+    return default
 
 
 # ==========================================================
 # NORMALIZAÇÃO DO ATIVO
 # ==========================================================
 
-def normalize_market_asset(asset):
+def normalize_asset(
+    asset,
+):
     """
-    Normaliza o ativo para consulta no Yahoo Finance.
+    Normaliza o ticker informado pelo usuário.
 
     Exemplos:
 
-        PETR4
-        -> PETR4.SA
+    PETR4   -> PETR4.SA
+    VALE3   -> VALE3.SA
+    ITUB4   -> ITUB4.SA
 
-        PETR4.SA
-        -> PETR4.SA
-
-        AAPL
-        -> AAPL
+    Também mantém compatibilidade com:
+    - PETR4.SA
+    - AAPL
+    - MSFT
+    - ETFs internacionais
     """
 
     if asset is None:
@@ -57,649 +178,160 @@ def normalize_market_asset(asset):
         return ""
 
     # ------------------------------------------------------
-    # Tickers brasileiros mais comuns
+    # ATIVOS JÁ NORMALIZADOS
     # ------------------------------------------------------
 
-    if (
-        asset.isalnum()
-        and asset[-1:].isdigit()
-        and not asset.endswith(".SA")
-    ):
+    if "." in asset:
 
-        return f"{asset}.SA"
+        return asset
+
+    # ------------------------------------------------------
+    # AÇÕES BRASILEIRAS
+    # ------------------------------------------------------
+    # Regra básica:
+    # códigos com 4 letras + número são tratados
+    # como ativos negociados na B3.
+    #
+    # Exemplos:
+    # PETR4
+    # VALE3
+    # ITUB4
+    # BBAS3
+    # WEGE3
+    # BBDC4
+    # ABEV3
+    # PETR3
+    # SANB11
+    # XPML11
+    # HGLG11
+
+    if len(asset) >= 5:
+
+        letters = "".join(
+            char
+            for char in asset
+            if char.isalpha()
+        )
+
+        numbers = "".join(
+            char
+            for char in asset
+            if char.isdigit()
+        )
+
+        if letters and numbers:
+
+            return (
+                asset
+                + BR_TICKER_SUFFIX
+            )
 
     return asset
 
 
 # ==========================================================
-# VALIDAÇÃO DO DATAFRAME
+# VALIDAÇÃO DO PERÍODO
 # ==========================================================
 
-def validate_market_history(data):
+def normalize_period(
+    period,
+):
     """
-    Valida o histórico retornado pelo Yahoo Finance.
+    Normaliza o período informado.
     """
 
-    if data is None:
-        return False
+    if period in VALID_PERIODS:
 
-    if not isinstance(
-        data,
-        pd.DataFrame,
-    ):
-        return False
+        return period
 
-    if data.empty:
-        return False
-
-    return True
+    return DEFAULT_PERIOD
 
 
 # ==========================================================
-# NORMALIZAÇÃO DAS COLUNAS
+# OBTENÇÃO DO TICKER
 # ==========================================================
 
-def normalize_history_columns(data):
+def create_ticker(
+    asset,
+):
     """
-    Normaliza as colunas do histórico.
-
-    Trata DataFrames com MultiIndex e garante
-    compatibilidade com os demais módulos.
+    Cria o objeto yfinance.Ticker.
     """
 
-    if not validate_market_history(
-        data
-    ):
-        return None
+    ticker_symbol = normalize_asset(
+        asset
+    )
 
-    history = data.copy()
+    if not ticker_symbol:
 
-    # ------------------------------------------------------
-    # MULTIINDEX
-    # ------------------------------------------------------
+        raise ValueError(
+            "Código do ativo não informado."
+        )
 
-    if isinstance(
-        history.columns,
-        pd.MultiIndex,
-    ):
-
-        try:
-
-            history.columns = [
-                str(column[0])
-                for column in history.columns
-            ]
-
-        except Exception:
-
-            return None
-
-    # ------------------------------------------------------
-    # LIMPEZA DOS NOMES
-    # ------------------------------------------------------
-
-    history.columns = [
-        str(column).strip()
-        for column in history.columns
-    ]
-
-    return history
+    return yf.Ticker(
+        ticker_symbol
+    )
 
 
 # ==========================================================
 # BUSCA DO HISTÓRICO
 # ==========================================================
 
-def fetch_price_history(
-    ticker_symbol,
-    period=DEFAULT_PERIOD,
+def fetch_history(
+    ticker,
+    period,
+    retries=3,
+    retry_delay=2,
 ):
     """
     Busca o histórico de preços.
 
-    Possui tentativas automáticas para reduzir
-    falhas temporárias e erros de rate limit.
+    Implementa tentativas adicionais para
+    reduzir falhas temporárias ou rate limits.
     """
-
-    if not ticker_symbol:
-        return None
-
-    ticker = yf.Ticker(
-        ticker_symbol
-    )
 
     last_error = None
 
     for attempt in range(
-        MAX_RETRIES
+        retries
     ):
 
         try:
 
-            data = ticker.history(
+            history = ticker.history(
                 period=period,
                 auto_adjust=False,
+                actions=False,
             )
 
-            if validate_market_history(
-                data
+            if isinstance(
+                history,
+                pd.DataFrame,
             ):
 
-                return data
+                if not history.empty:
+
+                    return history
 
         except Exception as error:
 
             last_error = error
 
-        if attempt < (
-            MAX_RETRIES - 1
-        ):
+        if attempt < retries - 1:
 
             time.sleep(
-                RETRY_DELAY
-                * (
-                    attempt + 1
-                )
+                retry_delay
             )
 
-    return None
+    if last_error is not None:
+
+        raise last_error
+
+    return pd.DataFrame()
 
 
 # ==========================================================
-# CONVERSÃO SEGURA
-# ==========================================================
-
-def safe_float(
-    value,
-    default=None,
-):
-    """
-    Converte um valor para float.
-    """
-
-    try:
-
-        if value is None:
-            return default
-
-        if isinstance(
-            value,
-            bool,
-        ):
-            return default
-
-        value = float(
-            value
-        )
-
-        if pd.isna(
-            value
-        ):
-
-            return default
-
-        return value
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return default
-
-
-# ==========================================================
-# EXTRAÇÃO SEGURA DE FUNDAMENTOS
-# ==========================================================
-
-def get_info_value(
-    info,
-    key,
-    default=None,
-):
-    """
-    Obtém um valor do dicionário de informações
-    fundamentalistas.
-    """
-
-    if not isinstance(
-        info,
-        dict,
-    ):
-        return default
-
-    value = info.get(
-        key,
-        default,
-    )
-
-    if pd.isna(
-        value
-    ) if value is not None else False:
-
-        return default
-
-    return value
-
-
-# ==========================================================
-# MARKET CAP
-# ==========================================================
-
-def get_market_cap(
-    info,
-):
-    """
-    Retorna o valor de mercado da empresa.
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "marketCap",
-        )
-    )
-
-
-# ==========================================================
-# P/L
-# ==========================================================
-
-def get_pe_ratio(
-    info,
-):
-    """
-    Retorna o indicador Preço/Lucro.
-
-    Prioridade:
-        1. trailingPE
-        2. forwardPE
-    """
-
-    value = safe_float(
-        get_info_value(
-            info,
-            "trailingPE",
-        )
-    )
-
-    if value is not None:
-        return value
-
-    return safe_float(
-        get_info_value(
-            info,
-            "forwardPE",
-        )
-    )
-
-
-# ==========================================================
-# P/VP
-# ==========================================================
-
-def get_price_to_book(
-    info,
-):
-    """
-    Retorna o indicador Preço/Valor Patrimonial.
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "priceToBook",
-        )
-    )
-
-
-# ==========================================================
-# DIVIDEND YIELD
-# ==========================================================
-
-def get_dividend_yield(
-    info,
-):
-    """
-    Retorna o Dividend Yield.
-
-    O Yahoo Finance normalmente retorna o valor
-    em formato decimal.
-
-    Exemplo:
-        0.08 = 8%
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "dividendYield",
-        )
-    )
-
-
-# ==========================================================
-# ROE
-# ==========================================================
-
-def get_roe(
-    info,
-):
-    """
-    Retorna o Return on Equity.
-
-    Exemplo:
-        0.15 = 15%
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "returnOnEquity",
-        )
-    )
-
-
-# ==========================================================
-# MARGEM DE LUCRO
-# ==========================================================
-
-def get_profit_margin(
-    info,
-):
-    """
-    Retorna a margem líquida.
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "profitMargins",
-        )
-    )
-
-
-# ==========================================================
-# ENDIVIDAMENTO
-# ==========================================================
-
-def get_debt_to_equity(
-    info,
-):
-    """
-    Retorna a relação Dívida/Patrimônio.
-
-    Dependendo da fonte, o Yahoo Finance pode
-    retornar o indicador em percentual.
-
-    Exemplo:
-        85 = 85%
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "debtToEquity",
-        )
-    )
-
-
-# ==========================================================
-# RECEITA
-# ==========================================================
-
-def get_total_revenue(
-    info,
-):
-    """
-    Retorna a receita total da empresa.
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "totalRevenue",
-        )
-    )
-
-
-# ==========================================================
-# LUCRO
-# ==========================================================
-
-def get_net_income(
-    info,
-):
-    """
-    Retorna o lucro líquido.
-
-    Caso o campo não esteja disponível,
-    retorna None.
-    """
-
-    return safe_float(
-        get_info_value(
-            info,
-            "netIncomeToCommon",
-        )
-    )
-
-
-# ==========================================================
-# NOME DA EMPRESA
-# ==========================================================
-
-def get_company_name(
-    info,
-    fallback="",
-):
-    """
-    Retorna o nome da empresa.
-    """
-
-    if not isinstance(
-        info,
-        dict,
-    ):
-        return fallback
-
-    for key in [
-        "longName",
-        "shortName",
-    ]:
-
-        value = info.get(
-            key
-        )
-
-        if value:
-
-            return str(
-                value
-            )
-
-    return fallback
-
-
-# ==========================================================
-# SETOR
-# ==========================================================
-
-def get_sector(
-    info,
-):
-    """
-    Retorna o setor da empresa.
-    """
-
-    value = get_info_value(
-        info,
-        "sector",
-    )
-
-    if value is None:
-        return None
-
-    return str(
-        value
-    )
-
-
-# ==========================================================
-# INDÚSTRIA
-# ==========================================================
-
-def get_industry(
-    info,
-):
-    """
-    Retorna a indústria da empresa.
-    """
-
-    value = get_info_value(
-        info,
-        "industry",
-    )
-
-    if value is None:
-        return None
-
-    return str(
-        value
-    )
-
-
-# ==========================================================
-# COLETA DOS FUNDAMENTOS
-# ==========================================================
-
-def fetch_fundamentals(
-    ticker_symbol,
-):
-    """
-    Coleta os dados fundamentalistas do ativo.
-
-    Retorna um dicionário padronizado mesmo
-    quando alguns dados não estão disponíveis.
-    """
-
-    fundamentals = {
-
-        "company_name": None,
-
-        "sector": None,
-
-        "industry": None,
-
-        "market_cap": None,
-
-        "pe_ratio": None,
-
-        "price_to_book": None,
-
-        "dividend_yield": None,
-
-        "roe": None,
-
-        "profit_margin": None,
-
-        "debt_to_equity": None,
-
-        "total_revenue": None,
-
-        "net_income": None,
-    }
-
-    if not ticker_symbol:
-        return fundamentals
-
-    try:
-
-        ticker = yf.Ticker(
-            ticker_symbol
-        )
-
-        info = ticker.info
-
-        if not isinstance(
-            info,
-            dict,
-        ):
-            return fundamentals
-
-        fundamentals = {
-
-            "company_name":
-                get_company_name(
-                    info,
-                    fallback=ticker_symbol,
-                ),
-
-            "sector":
-                get_sector(
-                    info,
-                ),
-
-            "industry":
-                get_industry(
-                    info,
-                ),
-
-            "market_cap":
-                get_market_cap(
-                    info,
-                ),
-
-            "pe_ratio":
-                get_pe_ratio(
-                    info,
-                ),
-
-            "price_to_book":
-                get_price_to_book(
-                    info,
-                ),
-
-            "dividend_yield":
-                get_dividend_yield(
-                    info,
-                ),
-
-            "roe":
-                get_roe(
-                    info,
-                ),
-
-            "profit_margin":
-                get_profit_margin(
-                    info,
-                ),
-
-            "debt_to_equity":
-                get_debt_to_equity(
-                    info,
-                ),
-
-            "total_revenue":
-                get_total_revenue(
-                    info,
-                ),
-
-            "net_income":
-                get_net_income(
-                    info,
-                ),
-        }
-
-    except Exception:
-
-        pass
-
-    return fundamentals
-
-
-# ==========================================================
-# FUNÇÃO PRINCIPAL DE MERCADO
+# BUSCA DOS DADOS DO MERCADO
 # ==========================================================
 
 def get_market_data(
@@ -707,91 +339,567 @@ def get_market_data(
     period=DEFAULT_PERIOD,
 ):
     """
-    Busca todos os dados necessários para
-    a análise do ativo.
+    Busca os dados principais do ativo.
 
-    Retorna:
-
-        {
-            "asset": ...,
-            "ticker": ...,
-            "period": ...,
-            "history": ...,
-            "fundamentals": {...}
-        }
+    Retorna uma estrutura com:
+    - asset
+    - ticker
+    - period
+    - history
+    - info
+    - fast_info
+    - fundamentals
     """
 
-    normalized_asset = (
+    asset = (
         str(asset)
         .strip()
         .upper()
-        if asset is not None
-        else ""
     )
 
-    if not normalized_asset:
+    if not asset:
 
-        return None
+        raise ValueError(
+            "Informe um código de ativo."
+        )
 
-    ticker_symbol = normalize_market_asset(
-        normalized_asset
+    period = normalize_period(
+        period
     )
 
-    if not ticker_symbol:
+    ticker_symbol = normalize_asset(
+        asset
+    )
 
-        return None
+    ticker = create_ticker(
+        asset
+    )
 
-    # ------------------------------------------------------
+    # ======================================================
     # HISTÓRICO
-    # ------------------------------------------------------
+    # ======================================================
 
-    history = fetch_price_history(
-        ticker_symbol,
+    history = fetch_history(
+        ticker,
         period,
-    )
-
-    if not validate_market_history(
-        history
-    ):
-
-        return None
-
-    history = normalize_history_columns(
-        history
     )
 
     if history is None:
 
-        return None
+        history = pd.DataFrame()
 
-    # ------------------------------------------------------
+    # ======================================================
+    # INFO
+    # ======================================================
+    # A propriedade info pode falhar ou sofrer
+    # limitação temporária no Yahoo Finance.
+    # Por isso, falhas aqui não impedem o retorno
+    # do histórico de preços.
+
+    info = {}
+
+    try:
+
+        ticker_info = ticker.info
+
+        if isinstance(
+            ticker_info,
+            dict,
+        ):
+
+            info = ticker_info
+
+    except Exception:
+
+        info = {}
+
+    # ======================================================
+    # FAST INFO
+    # ======================================================
+
+    fast_info = {}
+
+    try:
+
+        ticker_fast_info = ticker.fast_info
+
+        if ticker_fast_info is not None:
+
+            try:
+
+                fast_info = dict(
+                    ticker_fast_info
+                )
+
+            except Exception:
+
+                fast_info = {}
+
+    except Exception:
+
+        fast_info = {}
+
+    # ======================================================
     # FUNDAMENTOS
-    # ------------------------------------------------------
+    # ======================================================
 
-    fundamentals = fetch_fundamentals(
-        ticker_symbol
+    fundamentals = extract_fundamentals(
+        info
     )
 
-    # ------------------------------------------------------
+    # ======================================================
     # RETORNO
-    # ------------------------------------------------------
+    # ======================================================
 
     return {
 
-        "asset":
-            normalized_asset,
+        "asset": asset,
 
-        "ticker":
-            ticker_symbol,
+        "ticker": ticker_symbol,
 
-        "period":
-            period,
+        "period": period,
 
-        "history":
-            history,
+        "history": history,
 
-        "fundamentals":
-            fundamentals,
+        "info": info,
+
+        "fast_info": fast_info,
+
+        "fundamentals": fundamentals,
+    }
+
+
+# ==========================================================
+# EXTRAÇÃO DOS FUNDAMENTOS
+# ==========================================================
+
+def extract_fundamentals(
+    info,
+):
+    """
+    Extrai e padroniza os indicadores
+    fundamentalistas disponíveis no Yahoo Finance.
+
+    Os valores retornados são mantidos em formato
+    numérico bruto.
+
+    Exemplos:
+    - ROE: 0.18 = 18%
+    - Dividend Yield: 0.08 = 8%
+    - Margem: 0.12 = 12%
+    """
+
+    if not isinstance(
+        info,
+        dict,
+    ):
+
+        info = {}
+
+    # ======================================================
+    # IDENTIFICAÇÃO DA EMPRESA
+    # ======================================================
+
+    company_name = safe_text(
+        get_dict_value(
+            info,
+            "longName",
+            "shortName",
+        )
+    )
+
+    sector = safe_text(
+        get_dict_value(
+            info,
+            "sector",
+        )
+    )
+
+    industry = safe_text(
+        get_dict_value(
+            info,
+            "industry",
+        )
+    )
+
+    country = safe_text(
+        get_dict_value(
+            info,
+            "country",
+        )
+    )
+
+    # ======================================================
+    # VALUATION
+    # ======================================================
+
+    price_to_earnings = safe_float(
+        get_dict_value(
+            info,
+            "trailingPE",
+            "forwardPE",
+        )
+    )
+
+    price_to_book = safe_float(
+        get_dict_value(
+            info,
+            "priceToBook",
+        )
+    )
+
+    enterprise_to_revenue = safe_float(
+        get_dict_value(
+            info,
+            "enterpriseToRevenue",
+        )
+    )
+
+    enterprise_to_ebitda = safe_float(
+        get_dict_value(
+            info,
+            "enterpriseToEbitda",
+        )
+    )
+
+    # ======================================================
+    # RENTABILIDADE
+    # ======================================================
+
+    return_on_equity = safe_float(
+        get_dict_value(
+            info,
+            "returnOnEquity",
+        )
+    )
+
+    return_on_assets = safe_float(
+        get_dict_value(
+            info,
+            "returnOnAssets",
+        )
+    )
+
+    profit_margin = safe_float(
+        get_dict_value(
+            info,
+            "profitMargins",
+        )
+    )
+
+    operating_margin = safe_float(
+        get_dict_value(
+            info,
+            "operatingMargins",
+        )
+    )
+
+    gross_margin = safe_float(
+        get_dict_value(
+            info,
+            "grossMargins",
+        )
+    )
+
+    # ======================================================
+    # DIVIDENDOS
+    # ======================================================
+
+    dividend_yield = safe_float(
+        get_dict_value(
+            info,
+            "dividendYield",
+        )
+    )
+
+    trailing_annual_dividend_yield = safe_float(
+        get_dict_value(
+            info,
+            "trailingAnnualDividendYield",
+        )
+    )
+
+    dividend_rate = safe_float(
+        get_dict_value(
+            info,
+            "dividendRate",
+        )
+    )
+
+    payout_ratio = safe_float(
+        get_dict_value(
+            info,
+            "payoutRatio",
+        )
+    )
+
+    # ======================================================
+    # CRESCIMENTO
+    # ======================================================
+
+    revenue_growth = safe_float(
+        get_dict_value(
+            info,
+            "revenueGrowth",
+        )
+    )
+
+    earnings_growth = safe_float(
+        get_dict_value(
+            info,
+            "earningsGrowth",
+        )
+    )
+
+    # ======================================================
+    # ENDIVIDAMENTO
+    # ======================================================
+
+    debt_to_equity = safe_float(
+        get_dict_value(
+            info,
+            "debtToEquity",
+        )
+    )
+
+    total_debt = safe_float(
+        get_dict_value(
+            info,
+            "totalDebt",
+        )
+    )
+
+    total_cash = safe_float(
+        get_dict_value(
+            info,
+            "totalCash",
+        )
+    )
+
+    # ======================================================
+    # BALANÇO
+    # ======================================================
+
+    total_revenue = safe_float(
+        get_dict_value(
+            info,
+            "totalRevenue",
+        )
+    )
+
+    net_income = safe_float(
+        get_dict_value(
+            info,
+            "netIncomeToCommon",
+        )
+    )
+
+    total_equity = safe_float(
+        get_dict_value(
+            info,
+            "totalStockholderEquity",
+            "stockholdersEquity",
+        )
+    )
+
+    # ======================================================
+    # LIQUIDEZ
+    # ======================================================
+
+    current_ratio = safe_float(
+        get_dict_value(
+            info,
+            "currentRatio",
+        )
+    )
+
+    quick_ratio = safe_float(
+        get_dict_value(
+            info,
+            "quickRatio",
+        )
+    )
+
+    # ======================================================
+    # TAMANHO
+    # ======================================================
+
+    market_cap = safe_float(
+        get_dict_value(
+            info,
+            "marketCap",
+        )
+    )
+
+    enterprise_value = safe_float(
+        get_dict_value(
+            info,
+            "enterpriseValue",
+        )
+    )
+
+    # ======================================================
+    # RETORNO
+    # ======================================================
+
+    fifty_two_week_change = safe_float(
+        get_dict_value(
+            info,
+            "52WeekChange",
+        )
+    )
+
+    fifty_two_week_high = safe_float(
+        get_dict_value(
+            info,
+            "fiftyTwoWeekHigh",
+        )
+    )
+
+    fifty_two_week_low = safe_float(
+        get_dict_value(
+            info,
+            "fiftyTwoWeekLow",
+        )
+    )
+
+    # ======================================================
+    # ESTRUTURA PADRONIZADA
+    # ======================================================
+
+    return {
+
+        # --------------------------------------------------
+        # IDENTIFICAÇÃO
+        # --------------------------------------------------
+
+        "company_name": company_name,
+
+        "sector": sector,
+
+        "industry": industry,
+
+        "country": country,
+
+        # --------------------------------------------------
+        # VALUATION
+        # --------------------------------------------------
+
+        "price_to_earnings":
+            price_to_earnings,
+
+        "price_to_book":
+            price_to_book,
+
+        "enterprise_to_revenue":
+            enterprise_to_revenue,
+
+        "enterprise_to_ebitda":
+            enterprise_to_ebitda,
+
+        # --------------------------------------------------
+        # RENTABILIDADE
+        # --------------------------------------------------
+
+        "return_on_equity":
+            return_on_equity,
+
+        "return_on_assets":
+            return_on_assets,
+
+        "profit_margin":
+            profit_margin,
+
+        "operating_margin":
+            operating_margin,
+
+        "gross_margin":
+            gross_margin,
+
+        # --------------------------------------------------
+        # DIVIDENDOS
+        # --------------------------------------------------
+
+        "dividend_yield":
+            dividend_yield,
+
+        "trailing_annual_dividend_yield":
+            trailing_annual_dividend_yield,
+
+        "dividend_rate":
+            dividend_rate,
+
+        "payout_ratio":
+            payout_ratio,
+
+        # --------------------------------------------------
+        # CRESCIMENTO
+        # --------------------------------------------------
+
+        "revenue_growth":
+            revenue_growth,
+
+        "earnings_growth":
+            earnings_growth,
+
+        # --------------------------------------------------
+        # ENDIVIDAMENTO
+        # --------------------------------------------------
+
+        "debt_to_equity":
+            debt_to_equity,
+
+        "total_debt":
+            total_debt,
+
+        "total_cash":
+            total_cash,
+
+        # --------------------------------------------------
+        # BALANÇO
+        # --------------------------------------------------
+
+        "total_revenue":
+            total_revenue,
+
+        "net_income":
+            net_income,
+
+        "total_equity":
+            total_equity,
+
+        # --------------------------------------------------
+        # LIQUIDEZ
+        # --------------------------------------------------
+
+        "current_ratio":
+            current_ratio,
+
+        "quick_ratio":
+            quick_ratio,
+
+        # --------------------------------------------------
+        # TAMANHO
+        # --------------------------------------------------
+
+        "market_cap":
+            market_cap,
+
+        "enterprise_value":
+            enterprise_value,
+
+        # --------------------------------------------------
+        # MERCADO
+        # --------------------------------------------------
+
+        "fifty_two_week_change":
+            fifty_two_week_change,
+
+        "fifty_two_week_high":
+            fifty_two_week_high,
+
+        "fifty_two_week_low":
+            fifty_two_week_low,
     }
 
 
@@ -803,67 +911,121 @@ def prepare_market_data(
     market_data,
 ):
     """
-    Prepara os dados de mercado para uso
-    pelos módulos de indicadores e análise.
+    Prepara os dados recebidos do mercado
+    para consumo pelos demais módulos.
 
-    Mantém:
-        - asset
-        - ticker
-        - period
-        - history
-        - price
-        - fundamentals
+    Garante:
+    - history válido
+    - Close numérico
+    - índice organizado
+    - fundamentals como dicionário
     """
 
     if not isinstance(
         market_data,
         dict,
     ):
-        return None
+
+        raise ValueError(
+            "Dados de mercado inválidos."
+        )
 
     history = market_data.get(
         "history"
     )
 
-    if not validate_market_history(
-        history
+    if not isinstance(
+        history,
+        pd.DataFrame,
     ):
-        return None
 
-    history = normalize_history_columns(
-        history
+        raise ValueError(
+            "Histórico de preços inválido."
+        )
+
+    if history.empty:
+
+        raise ValueError(
+            "Histórico de preços vazio."
+        )
+
+    history = history.copy()
+
+    # ======================================================
+    # NORMALIZAÇÃO DAS COLUNAS
+    # ======================================================
+
+    history.columns = [
+        str(column).strip()
+        for column in history.columns
+    ]
+
+    # ======================================================
+    # VALIDAÇÃO DO PREÇO DE FECHAMENTO
+    # ======================================================
+
+    close_column = None
+
+    for column in [
+        "Close",
+        "close",
+        "Adj Close",
+        "adj_close",
+    ]:
+
+        if column in history.columns:
+
+            close_column = column
+            break
+
+    if close_column is None:
+
+        raise ValueError(
+            "Coluna de preço de fechamento não encontrada."
+        )
+
+    # ======================================================
+    # CRIAÇÃO DA COLUNA PADRONIZADA
+    # ======================================================
+
+    history["price"] = pd.to_numeric(
+        history[
+            close_column
+        ],
+        errors="coerce",
     )
 
-    if history is None:
-        return None
+    history = history.dropna(
+        subset=[
+            "price"
+        ]
+    )
 
-    if "Close" not in history.columns:
-        return None
+    if history.empty:
+
+        raise ValueError(
+            "Não existem preços válidos no histórico."
+        )
+
+    # ======================================================
+    # ORDENAÇÃO
+    # ======================================================
 
     try:
 
-        close = pd.to_numeric(
-            history["Close"],
-            errors="coerce",
-        ).dropna()
+        history = history.sort_index()
 
     except Exception:
 
-        return None
+        pass
 
-    if close.empty:
-        return None
-
-    price = safe_float(
-        close.iloc[-1]
-    )
-
-    if price is None:
-        return None
+    # ======================================================
+    # FUNDAMENTOS
+    # ======================================================
 
     fundamentals = market_data.get(
         "fundamentals",
-        {},
+        {}
     )
 
     if not isinstance(
@@ -872,6 +1034,10 @@ def prepare_market_data(
     ):
 
         fundamentals = {}
+
+    # ======================================================
+    # RETORNO
+    # ======================================================
 
     return {
 
@@ -893,8 +1059,17 @@ def prepare_market_data(
         "history":
             history,
 
-        "price":
-            price,
+        "info":
+            market_data.get(
+                "info",
+                {}
+            ),
+
+        "fast_info":
+            market_data.get(
+                "fast_info",
+                {}
+            ),
 
         "fundamentals":
             fundamentals,
@@ -906,97 +1081,237 @@ def prepare_market_data(
 # ==========================================================
 
 def get_current_price(
-    market_data,
+    prepared_data,
 ):
     """
-    Retorna o último preço disponível.
+    Obtém o preço atual do ativo.
 
-    Primeiro tenta utilizar o preço já preparado.
-    Caso necessário, utiliza o histórico.
+    Ordem de prioridade:
+
+    1. fast_info.last_price
+    2. fast_info.regular_market_price
+    3. info.currentPrice
+    4. info.regularMarketPrice
+    5. último preço do histórico
     """
 
     if not isinstance(
-        market_data,
+        prepared_data,
         dict,
     ):
+
         return None
 
-    # ------------------------------------------------------
-    # PREÇO DIRETO
-    # ------------------------------------------------------
+    # ======================================================
+    # FAST INFO
+    # ======================================================
 
-    price = safe_float(
-        market_data.get(
-            "price"
-        )
+    fast_info = prepared_data.get(
+        "fast_info",
+        {}
     )
 
-    if price is not None:
+    if isinstance(
+        fast_info,
+        dict,
+    ):
 
-        return price
+        for key in [
 
-    # ------------------------------------------------------
+            "last_price",
+            "regular_market_price",
+            "lastPrice",
+
+        ]:
+
+            value = safe_float(
+                fast_info.get(
+                    key
+                )
+            )
+
+            if value is not None:
+
+                return value
+
+    # ======================================================
+    # INFO
+    # ======================================================
+
+    info = prepared_data.get(
+        "info",
+        {}
+    )
+
+    if isinstance(
+        info,
+        dict,
+    ):
+
+        for key in [
+
+            "currentPrice",
+            "regularMarketPrice",
+            "previousClose",
+
+        ]:
+
+            value = safe_float(
+                info.get(
+                    key
+                )
+            )
+
+            if value is not None:
+
+                return value
+
+    # ======================================================
     # HISTÓRICO
-    # ------------------------------------------------------
+    # ======================================================
 
-    history = market_data.get(
+    history = prepared_data.get(
         "history"
     )
 
-    if not validate_market_history(
-        history
-    ):
-        return None
+    if isinstance(
+        history,
+        pd.DataFrame,
+    ) and not history.empty:
 
-    if "Close" not in history.columns:
-        return None
+        for column in [
 
-    try:
+            "price",
+            "Close",
+            "close",
 
-        close = pd.to_numeric(
-            history["Close"],
-            errors="coerce",
-        ).dropna()
+        ]:
 
-        if close.empty:
-            return None
+            if column in history.columns:
 
-        return safe_float(
-            close.iloc[-1]
-        )
+                prices = pd.to_numeric(
+                    history[
+                        column
+                    ],
+                    errors="coerce",
+                ).dropna()
 
-    except Exception:
+                if not prices.empty:
 
-        return None
+                    return safe_float(
+                        prices.iloc[-1]
+                    )
+
+    return None
 
 
 # ==========================================================
-# FUNDAMENTOS PREPARADOS
+# DADOS FUNDAMENTALISTAS
 # ==========================================================
 
 def get_fundamentals(
-    market_data,
+    prepared_data,
 ):
     """
     Retorna os dados fundamentalistas
-    de forma segura.
+    já preparados.
+
+    Função pública para utilização
+    pelos módulos analysis.py e score.py.
     """
 
     if not isinstance(
-        market_data,
+        prepared_data,
         dict,
     ):
+
         return {}
 
-    fundamentals = market_data.get(
+    fundamentals = prepared_data.get(
         "fundamentals",
-        {},
+        {}
     )
 
     if not isinstance(
         fundamentals,
         dict,
     ):
+
         return {}
 
-    return fundamentals
+    return fundamentals.copy()
+
+
+# ==========================================================
+# RESUMO FUNDAMENTALISTA
+# ==========================================================
+
+def get_fundamental_summary(
+    fundamentals,
+):
+    """
+    Retorna um resumo compacto dos
+    principais indicadores fundamentalistas.
+
+    Utilizado principalmente pela interface.
+    """
+
+    if not isinstance(
+        fundamentals,
+        dict,
+    ):
+
+        fundamentals = {}
+
+    return {
+
+        "company_name":
+            fundamentals.get(
+                "company_name"
+            ),
+
+        "sector":
+            fundamentals.get(
+                "sector"
+            ),
+
+        "industry":
+            fundamentals.get(
+                "industry"
+            ),
+
+        "p_e":
+            fundamentals.get(
+                "price_to_earnings"
+            ),
+
+        "p_b":
+            fundamentals.get(
+                "price_to_book"
+            ),
+
+        "roe":
+            fundamentals.get(
+                "return_on_equity"
+            ),
+
+        "dividend_yield":
+            fundamentals.get(
+                "dividend_yield"
+            ),
+
+        "profit_margin":
+            fundamentals.get(
+                "profit_margin"
+            ),
+
+        "revenue_growth":
+            fundamentals.get(
+                "revenue_growth"
+            ),
+
+        "debt_to_equity":
+            fundamentals.get(
+                "debt_to_equity"
+            ),
+    }
