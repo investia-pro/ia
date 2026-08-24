@@ -1,25 +1,27 @@
 """
 InvestIA PRO
-Motor de Análise
+Motor Principal de Análise
 
 Versão: v0.7
-Fase: 3.0.5 - Evolução Histórica da Análise
+Fase: 3.0.6 - Análise Fundamentalista Real
 
 Responsabilidades:
-- Executar análise técnica atual
-- Consolidar Score Técnico
-- Preservar Score Fundamentalista
-- Consolidar Score Integrado
-- Analisar histórico do Score Técnico
-- Identificar evolução do Score
-- Identificar mudanças de sinal
-- Avaliar consistência do Score
-- Gerar resumo executivo
+- Receber dados técnicos e fundamentalistas
+- Calcular Score Técnico
+- Calcular Score Fundamentalista
+- Calcular Score Integrado
+- Identificar tendência
+- Identificar condição do RSI
+- Avaliar risco
+- Gerar recomendação
+- Criar resumo executivo
+- Explicar os principais fatores da análise
 """
 
 from score import (
     calculate_score_details,
-    calculate_historical_score_analysis,
+    calculate_fundamental_score_details,
+    calculate_integrated_score,
 )
 
 
@@ -36,18 +38,24 @@ def safe_float(
     """
 
     if value is None:
-
         return default
 
     try:
-
         value = float(value)
 
     except (
         TypeError,
         ValueError,
     ):
+        return default
 
+    if value != value:
+        return default
+
+    if value == float("inf"):
+        return default
+
+    if value == float("-inf"):
         return default
 
     return value
@@ -57,96 +65,112 @@ def safe_dict(
     value,
 ):
     """
-    Garante o retorno de um dicionário.
+    Garante que o retorno seja um dicionário.
     """
 
     if isinstance(
         value,
         dict,
     ):
-
         return value
 
     return {}
 
 
-def safe_text(
+def get_value(
+    data,
+    *keys,
+    default=None,
+):
+    """
+    Busca um valor em um dicionário
+    utilizando diferentes nomes possíveis.
+    """
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return default
+
+    for key in keys:
+
+        if key in data:
+
+            value = data.get(
+                key
+            )
+
+            if value is not None:
+
+                return value
+
+    return default
+
+
+def normalize_percent(
     value,
-    default="",
 ):
     """
-    Converte valores para texto.
+    Normaliza valores percentuais.
+
+    Exemplos:
+
+    0.15 -> 15
+    15   -> 15
     """
 
-    if value is None:
-
-        return default
-
-    text = str(
+    value = safe_float(
         value
-    ).strip()
-
-    if not text:
-
-        return default
-
-    return text
-
-
-# ==========================================================
-# STATUS DO RSI
-# ==========================================================
-
-def get_rsi_status(
-    rsi,
-):
-    """
-    Define o status do RSI.
-    """
-
-    rsi = safe_float(
-        rsi
     )
 
-    if rsi is None:
+    if value is None:
+        return None
 
-        return "Sem dados"
+    if abs(value) <= 1:
+        return value * 100
 
-    if rsi <= 30:
-
-        return "Sobrevendido"
-
-    if rsi >= 70:
-
-        return "Sobrecomprado"
-
-    return "Neutro"
+    return value
 
 
 # ==========================================================
 # TENDÊNCIA
 # ==========================================================
 
-def get_trend(
-    price,
-    ma21,
-    ma200,
+def analyze_trend(
+    data,
 ):
     """
-    Define a tendência principal
-    do ativo.
+    Analisa a tendência utilizando:
+
+    - Preço
+    - MA21
+    - MA200
     """
 
+    data = safe_dict(
+        data
+    )
+
     price = safe_float(
-        price
+        get_value(
+            data,
+            "price",
+        )
     )
 
     ma21 = safe_float(
-        ma21
+        get_value(
+            data,
+            "ma21",
+        )
     )
 
     ma200 = safe_float(
-        ma200
+        get_value(
+            data,
+            "ma200",
+        )
     )
 
     if (
@@ -155,699 +179,833 @@ def get_trend(
         or ma200 is None
     ):
 
-        return "Indefinida"
+        return {
+            "trend": "INDISPONÍVEL",
+            "level": "Indisponível",
+            "reason": (
+                "Dados insuficientes para "
+                "determinar a tendência."
+            ),
+        }
+
+    # ======================================================
+    # FORTE ALTA
+    # ======================================================
+
+    if (
+        price > ma21
+        and ma21 > ma200
+    ):
+
+        return {
+            "trend": "ALTA",
+            "level": "Forte",
+            "reason": (
+                "Preço acima da MA21 e "
+                "MA21 acima da MA200."
+            ),
+        }
+
+    # ======================================================
+    # ALTA
+    # ======================================================
 
     if (
         price > ma21
         and price > ma200
     ):
 
-        return "Alta"
+        return {
+            "trend": "ALTA",
+            "level": "Moderada",
+            "reason": (
+                "Preço acima das principais "
+                "médias móveis."
+            ),
+        }
+
+    # ======================================================
+    # BAIXA
+    # ======================================================
 
     if (
         price < ma21
         and price < ma200
     ):
 
-        return "Baixa"
+        return {
+            "trend": "BAIXA",
+            "level": "Forte",
+            "reason": (
+                "Preço abaixo da MA21 e "
+                "da MA200."
+            ),
+        }
 
-    if (
-        price > ma200
-        and price < ma21
-    ):
+    # ======================================================
+    # TRANSIÇÃO
+    # ======================================================
 
-        return "Correção"
+    return {
+        "trend": "LATERAL",
+        "level": "Transição",
+        "reason": (
+            "Preço sem alinhamento claro "
+            "entre as médias móveis."
+        ),
+    }
 
-    if (
-        price < ma200
-        and price > ma21
-    ):
 
-        return "Recuperação"
+# ==========================================================
+# STATUS DO RSI
+# ==========================================================
 
-    return "Neutra"
+def analyze_rsi(
+    data,
+):
+    """
+    Classifica a condição do RSI.
+
+    Faixas:
+
+    <= 30  : Sobrevendido
+    <= 45  : Pressão vendedora
+    < 55   : Neutro
+    < 70   : Pressão compradora
+    >= 70  : Sobrecomprado
+    """
+
+    data = safe_dict(
+        data
+    )
+
+    rsi = safe_float(
+        get_value(
+            data,
+            "rsi",
+        )
+    )
+
+    if rsi is None:
+
+        return {
+            "status": "INDISPONÍVEL",
+            "value": None,
+            "reason": (
+                "RSI não disponível."
+            ),
+        }
+
+    if rsi <= 30:
+
+        return {
+            "status": "SOBREVENDIDO",
+            "value": rsi,
+            "reason": (
+                "RSI em região de sobrevenda."
+            ),
+        }
+
+    if rsi <= 45:
+
+        return {
+            "status": "PRESSÃO VENDEDORA",
+            "value": rsi,
+            "reason": (
+                "RSI abaixo da região neutra."
+            ),
+        }
+
+    if rsi < 55:
+
+        return {
+            "status": "NEUTRO",
+            "value": rsi,
+            "reason": (
+                "RSI em região neutra."
+            ),
+        }
+
+    if rsi < 70:
+
+        return {
+            "status": "PRESSÃO COMPRADORA",
+            "value": rsi,
+            "reason": (
+                "RSI demonstra força compradora."
+            ),
+        }
+
+    return {
+        "status": "SOBRECOMPRADO",
+        "value": rsi,
+        "reason": (
+            "RSI em região de sobrecompra."
+        ),
+    }
+
+
+# ==========================================================
+# ANÁLISE DE RISCO
+# ==========================================================
+
+def analyze_risk(
+    data,
+    technical_score,
+    fundamental_score,
+    integrated_score,
+):
+    """
+    Avalia o risco geral do ativo.
+
+    Considera:
+
+    - Volatilidade
+    - Score Técnico
+    - Score Fundamentalista
+    - Score Integrado
+    """
+
+    data = safe_dict(
+        data
+    )
+
+    volatility = safe_float(
+        get_value(
+            data,
+            "volatility",
+        )
+    )
+
+    technical_score = safe_float(
+        technical_score,
+        50,
+    )
+
+    fundamental_score = safe_float(
+        fundamental_score,
+        50,
+    )
+
+    integrated_score = safe_float(
+        integrated_score,
+        50,
+    )
+
+    risk_points = 0
+    reasons = []
+
+    # ======================================================
+    # VOLATILIDADE
+    # ======================================================
+
+    if volatility is not None:
+
+        if volatility >= 0.04:
+
+            risk_points += 3
+
+            reasons.append(
+                "Volatilidade elevada."
+            )
+
+        elif volatility >= 0.025:
+
+            risk_points += 2
+
+            reasons.append(
+                "Volatilidade moderada."
+            )
+
+        else:
+
+            reasons.append(
+                "Volatilidade controlada."
+            )
+
+    # ======================================================
+    # SCORE TÉCNICO
+    # ======================================================
+
+    if technical_score < 35:
+
+        risk_points += 2
+
+        reasons.append(
+            "Score Técnico fraco."
+        )
+
+    elif technical_score < 50:
+
+        risk_points += 1
+
+        reasons.append(
+            "Score Técnico abaixo do neutro."
+        )
+
+    # ======================================================
+    # SCORE FUNDAMENTALISTA
+    # ======================================================
+
+    if fundamental_score < 35:
+
+        risk_points += 2
+
+        reasons.append(
+            "Fundamentos fracos."
+        )
+
+    elif fundamental_score < 50:
+
+        risk_points += 1
+
+        reasons.append(
+            "Fundamentos abaixo do neutro."
+        )
+
+    # ======================================================
+    # SCORE INTEGRADO
+    # ======================================================
+
+    if integrated_score < 35:
+
+        risk_points += 2
+
+        reasons.append(
+            "Score Integrado muito fraco."
+        )
+
+    elif integrated_score < 50:
+
+        risk_points += 1
+
+        reasons.append(
+            "Score Integrado abaixo do neutro."
+        )
+
+    # ======================================================
+    # CLASSIFICAÇÃO
+    # ======================================================
+
+    if risk_points >= 6:
+
+        level = "ALTO"
+
+    elif risk_points >= 3:
+
+        level = "MODERADO"
+
+    else:
+
+        level = "BAIXO"
+
+    return {
+        "level": level,
+        "points": risk_points,
+        "volatility": volatility,
+        "reasons": reasons,
+    }
 
 
 # ==========================================================
 # RECOMENDAÇÃO
 # ==========================================================
 
-def get_recommendation(
-    signal,
-    trend,
-    risk,
-):
-    """
-    Gera recomendação operacional.
-    """
-
-    signal = safe_text(
-        signal
-    ).upper()
-
-    trend = safe_text(
-        trend
-    )
-
-    risk = safe_text(
-        risk
-    )
-
-    if (
-        signal == "POSITIVO"
-        and trend == "Alta"
-        and risk != "Alto"
-    ):
-
-        return "Favorável"
-
-    if (
-        signal == "POSITIVO"
-        and trend in [
-            "Recuperação",
-            "Neutra",
-        ]
-    ):
-
-        return "Acompanhar oportunidade"
-
-    if signal == "NEGATIVO":
-
-        return "Evitar novas entradas"
-
-    if risk == "Alto":
-
-        return "Aguardar"
-
-    return "Aguardar confirmação"
-
-
-# ==========================================================
-# RISCO TÉCNICO
-# ==========================================================
-
-def get_risk_level(
-    volatility,
-    signal,
-):
-    """
-    Define o risco técnico com base
-    na volatilidade e no sinal.
-    """
-
-    volatility = safe_float(
-        volatility
-    )
-
-    signal = safe_text(
-        signal
-    ).upper()
-
-    if volatility is None:
-
-        return "Moderado"
-
-    if volatility >= 0.04:
-
-        return "Alto"
-
-    if volatility >= 0.025:
-
-        return "Moderado"
-
-    if signal == "NEGATIVO":
-
-        return "Moderado"
-
-    return "Baixo"
-
-
-# ==========================================================
-# SCORE FUNDAMENTALISTA
-# ==========================================================
-
-def get_fundamental_score(
-    data,
-):
-    """
-    Obtém o Score Fundamentalista.
-
-    Mantém compatibilidade com as fases
-    anteriores do InvestIA PRO.
-
-    Caso o dado não esteja disponível,
-    retorna None.
-    """
-
-    data = safe_dict(
-        data
-    )
-
-    possible_keys = [
-
-        "fundamental_score",
-        "score_fundamental",
-        "fundamental",
-        "fundamentalist_score",
-
-    ]
-
-    for key in possible_keys:
-
-        value = safe_float(
-            data.get(
-                key
-            )
-        )
-
-        if value is not None:
-
-            return max(
-                0,
-                min(
-                    100,
-                    round(value),
-                ),
-            )
-
-    return None
-
-
-# ==========================================================
-# SCORE INTEGRADO
-# ==========================================================
-
-def calculate_integrated_score(
+def generate_recommendation(
+    integrated_score,
     technical_score,
-    fundamental_score=None,
+    fundamental_score,
+    trend,
+    risk_level,
 ):
     """
-    Calcula o Score Integrado.
-
-    Regra:
-
-    Se houver Score Fundamentalista:
-
-        60% Técnico
-        40% Fundamentalista
-
-    Caso contrário:
-
-        Score Integrado = Score Técnico
+    Gera uma recomendação baseada
+    no conjunto da análise.
     """
+
+    integrated_score = safe_float(
+        integrated_score,
+        50,
+    )
 
     technical_score = safe_float(
-        technical_score
+        technical_score,
+        50,
     )
 
     fundamental_score = safe_float(
-        fundamental_score
+        fundamental_score,
+        50,
     )
 
-    if technical_score is None:
+    trend = str(
+        trend
+        or ""
+    ).upper()
 
-        return None
+    risk_level = str(
+        risk_level
+        or ""
+    ).upper()
 
-    if fundamental_score is None:
+    # ======================================================
+    # COMPRA FORTE
+    # ======================================================
 
-        return round(
-            technical_score
-        )
+    if (
+        integrated_score >= 75
+        and technical_score >= 65
+        and fundamental_score >= 65
+        and trend == "ALTA"
+        and risk_level != "ALTO"
+    ):
 
-    integrated_score = (
-        technical_score * 0.60
-        + fundamental_score * 0.40
-    )
-
-    return max(
-        0,
-        min(
-            100,
-            round(
-                integrated_score
+        return {
+            "recommendation": "COMPRA FORTE",
+            "signal_level": "ALTO",
+            "reason": (
+                "Indicadores técnicos e "
+                "fundamentalistas apresentam "
+                "alinhamento positivo."
             ),
+        }
+
+    # ======================================================
+    # COMPRA
+    # ======================================================
+
+    if (
+        integrated_score >= 65
+        and fundamental_score >= 50
+        and risk_level != "ALTO"
+    ):
+
+        return {
+            "recommendation": "COMPRA",
+            "signal_level": "MODERADO",
+            "reason": (
+                "Score Integrado favorável, "
+                "com fundamentos aceitáveis."
+            ),
+        }
+
+    # ======================================================
+    # COMPRA COM CAUTELA
+    # ======================================================
+
+    if (
+        integrated_score >= 55
+        and fundamental_score >= 45
+    ):
+
+        return {
+            "recommendation": "COMPRA COM CAUTELA",
+            "signal_level": "BAIXO",
+            "reason": (
+                "Cenário levemente favorável, "
+                "mas sem confirmação forte "
+                "de todos os indicadores."
+            ),
+        }
+
+    # ======================================================
+    # VENDA FORTE
+    # ======================================================
+
+    if (
+        integrated_score <= 30
+        and technical_score <= 35
+        and fundamental_score <= 35
+        and risk_level == "ALTO"
+    ):
+
+        return {
+            "recommendation": "VENDA FORTE",
+            "signal_level": "ALTO",
+            "reason": (
+                "Indicadores técnicos e "
+                "fundamentalistas apresentam "
+                "fraqueza relevante."
+            ),
+        }
+
+    # ======================================================
+    # VENDA
+    # ======================================================
+
+    if integrated_score <= 40:
+
+        return {
+            "recommendation": "VENDA",
+            "signal_level": "MODERADO",
+            "reason": (
+                "Score Integrado desfavorável."
+            ),
+        }
+
+    # ======================================================
+    # NEUTRO
+    # ======================================================
+
+    return {
+        "recommendation": "AGUARDAR",
+        "signal_level": "NEUTRO",
+        "reason": (
+            "Não há alinhamento suficiente "
+            "para uma recomendação direcional forte."
         ),
+    }
+
+
+# ==========================================================
+# QUALIFICAÇÃO DO SINAL
+# ==========================================================
+
+def qualify_signal(
+    recommendation,
+    integrated_score,
+    risk_level,
+):
+    """
+    Define uma qualificação adicional
+    para o sinal principal.
+    """
+
+    recommendation = str(
+        recommendation
+        or ""
+    ).upper()
+
+    integrated_score = safe_float(
+        integrated_score,
+        50,
+    )
+
+    risk_level = str(
+        risk_level
+        or ""
+    ).upper()
+
+    if risk_level == "ALTO":
+
+        return "ALTA CAUTELA"
+
+    if recommendation == "COMPRA FORTE":
+
+        return "SINAL MUITO FORTE"
+
+    if recommendation == "COMPRA":
+
+        if integrated_score >= 75:
+
+            return "SINAL FORTE"
+
+        return "SINAL FAVORÁVEL"
+
+    if recommendation == "COMPRA COM CAUTELA":
+
+        return "SINAL EM FORMAÇÃO"
+
+    if recommendation == "VENDA FORTE":
+
+        return "SINAL MUITO NEGATIVO"
+
+    if recommendation == "VENDA":
+
+        return "SINAL NEGATIVO"
+
+    return "SEM CONFIRMAÇÃO"
+
+
+# ==========================================================
+# ÍCONE DO SINAL
+# ==========================================================
+
+def get_signal_icon(
+    recommendation,
+):
+    """
+    Retorna um ícone para a interface.
+    """
+
+    recommendation = str(
+        recommendation
+        or ""
+    ).upper()
+
+    icons = {
+
+        "COMPRA FORTE": "🟢",
+
+        "COMPRA": "🟩",
+
+        "COMPRA COM CAUTELA": "🟡",
+
+        "AGUARDAR": "⚪",
+
+        "VENDA": "🟠",
+
+        "VENDA FORTE": "🔴",
+    }
+
+    return icons.get(
+        recommendation,
+        "⚪",
     )
 
 
 # ==========================================================
-# CLASSIFICAÇÃO DO SCORE INTEGRADO
+# RAZÕES PRINCIPAIS
 # ==========================================================
 
-def classify_integrated_score(
-    score,
+def get_analysis_reasons(
+    technical_details,
+    fundamental_details,
+    trend_data,
+    rsi_data,
+    risk_data,
+    recommendation_data,
 ):
     """
-    Classifica o Score Integrado.
-    """
-
-    score = safe_float(
-        score
-    )
-
-    if score is None:
-
-        return "SEM DADOS"
-
-    if score >= 80:
-
-        return "MUITO FAVORÁVEL"
-
-    if score >= 65:
-
-        return "FAVORÁVEL"
-
-    if score >= 50:
-
-        return "NEUTRO"
-
-    if score >= 35:
-
-        return "DESFAVORÁVEL"
-
-    return "MUITO DESFAVORÁVEL"
-
-
-# ==========================================================
-# JUSTIFICATIVAS TÉCNICAS
-# ==========================================================
-
-def build_reasons(
-    price,
-    ma21,
-    ma200,
-    rsi,
-    trend,
-    risk,
-    score_details,
-):
-    """
-    Constrói as justificativas
-    da análise.
+    Gera uma lista consolidada dos
+    principais fatores da análise.
     """
 
     reasons = []
-
-    price = safe_float(
-        price
-    )
-
-    ma21 = safe_float(
-        ma21
-    )
-
-    ma200 = safe_float(
-        ma200
-    )
-
-    rsi = safe_float(
-        rsi
-    )
-
-    score_details = safe_dict(
-        score_details
-    )
-
-    breakdown = safe_dict(
-        score_details.get(
-            "breakdown"
-        )
-    )
-
-    # ======================================================
-    # MA21
-    # ======================================================
-
-    if (
-        price is not None
-        and ma21 is not None
-    ):
-
-        if price > ma21:
-
-            reasons.append(
-                "Preço acima da média móvel de 21 períodos."
-            )
-
-        elif price < ma21:
-
-            reasons.append(
-                "Preço abaixo da média móvel de 21 períodos."
-            )
-
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    if (
-        price is not None
-        and ma200 is not None
-    ):
-
-        if price > ma200:
-
-            reasons.append(
-                "Preço acima da média móvel de 200 períodos."
-            )
-
-        elif price < ma200:
-
-            reasons.append(
-                "Preço abaixo da média móvel de 200 períodos."
-            )
-
-    # ======================================================
-    # RSI
-    # ======================================================
-
-    if rsi is not None:
-
-        if rsi <= 30:
-
-            reasons.append(
-                "RSI indica região de sobrevenda."
-            )
-
-        elif rsi >= 70:
-
-            reasons.append(
-                "RSI indica região de sobrecompra."
-            )
-
-        else:
-
-            reasons.append(
-                "RSI permanece em região neutra."
-            )
 
     # ======================================================
     # TENDÊNCIA
     # ======================================================
 
-    reasons.append(
-        f"Tendência técnica atual: {trend}."
+    trend_reason = get_value(
+        trend_data,
+        "reason",
     )
+
+    if trend_reason:
+        reasons.append(
+            trend_reason
+        )
+
+    # ======================================================
+    # RSI
+    # ======================================================
+
+    rsi_reason = get_value(
+        rsi_data,
+        "reason",
+    )
+
+    if rsi_reason:
+        reasons.append(
+            rsi_reason
+        )
+
+    # ======================================================
+    # FUNDAMENTALISTA
+    # ======================================================
+
+    fundamental_breakdown = get_value(
+        fundamental_details,
+        "breakdown",
+        default={},
+    )
+
+    fundamental_breakdown = safe_dict(
+        fundamental_breakdown
+    )
+
+    positive_fundamentals = []
+    negative_fundamentals = []
+
+    indicators = [
+
+        "price_to_earnings",
+        "price_to_book",
+        "return_on_equity",
+        "dividend_yield",
+        "profit_margin",
+        "revenue_growth",
+        "debt_to_equity",
+    ]
+
+    for indicator in indicators:
+
+        item = safe_dict(
+            fundamental_breakdown.get(
+                indicator
+            )
+        )
+
+        points = safe_float(
+            item.get(
+                "points"
+            ),
+            0,
+        )
+
+        reason = item.get(
+            "reason"
+        )
+
+        if not reason:
+            continue
+
+        if points > 0:
+
+            positive_fundamentals.append(
+                (
+                    points,
+                    reason,
+                )
+            )
+
+        elif points < 0:
+
+            negative_fundamentals.append(
+                (
+                    points,
+                    reason,
+                )
+            )
+
+    positive_fundamentals.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    negative_fundamentals.sort(
+        key=lambda item: item[0],
+    )
+
+    for _, reason in positive_fundamentals[:2]:
+
+        reasons.append(
+            reason
+        )
+
+    for _, reason in negative_fundamentals[:2]:
+
+        reasons.append(
+            reason
+        )
 
     # ======================================================
     # RISCO
     # ======================================================
 
-    reasons.append(
-        f"Nível de risco técnico: {risk}."
+    risk_level = get_value(
+        risk_data,
+        "level",
     )
 
-    # ======================================================
-    # BREAKDOWN
-    # ======================================================
+    if risk_level:
 
-    for indicator in [
-        "ma21",
-        "ma200",
-        "rsi",
-    ]:
-
-        indicator_data = safe_dict(
-            breakdown.get(
-                indicator
-            )
+        reasons.append(
+            f"Classificação de risco: {risk_level}."
         )
 
-        reason = safe_text(
-            indicator_data.get(
-                "reason"
-            )
+    # ======================================================
+    # RECOMENDAÇÃO
+    # ======================================================
+
+    recommendation_reason = get_value(
+        recommendation_data,
+        "reason",
+    )
+
+    if recommendation_reason:
+
+        reasons.append(
+            recommendation_reason
         )
-
-        if (
-            reason
-            and reason not in reasons
-        ):
-
-            reasons.append(
-                reason
-            )
 
     return reasons
-
-
-# ==========================================================
-# EVOLUÇÃO HISTÓRICA
-# ==========================================================
-
-def get_historical_analysis(
-    data,
-):
-    """
-    Obtém a análise histórica do Score Técnico.
-
-    O DataFrame histórico pode ser recebido
-    em uma das chaves abaixo:
-
-    - historical
-    - historical_indicators
-    - indicators_history
-    """
-
-    data = safe_dict(
-        data
-    )
-
-    historical_indicators = None
-
-    possible_keys = [
-
-        "historical",
-        "historical_indicators",
-        "indicators_history",
-
-    ]
-
-    for key in possible_keys:
-
-        value = data.get(
-            key
-        )
-
-        if value is not None:
-
-            historical_indicators = value
-            break
-
-    if historical_indicators is None:
-
-        return {
-
-            "history": None,
-
-            "summary": {},
-        }
-
-    try:
-
-        historical_analysis = (
-            calculate_historical_score_analysis(
-                historical_indicators
-            )
-        )
-
-    except Exception:
-
-        return {
-
-            "history": None,
-
-            "summary": {},
-        }
-
-    if not isinstance(
-        historical_analysis,
-        dict,
-    ):
-
-        return {
-
-            "history": None,
-
-            "summary": {},
-        }
-
-    return {
-
-        "history":
-            historical_analysis.get(
-                "history"
-            ),
-
-        "summary":
-            safe_dict(
-                historical_analysis.get(
-                    "summary"
-                )
-            ),
-    }
-
-
-# ==========================================================
-# INTERPRETAÇÃO DA EVOLUÇÃO
-# ==========================================================
-
-def get_evolution_interpretation(
-    historical_summary,
-):
-    """
-    Converte a evolução histórica
-    em uma interpretação executiva.
-    """
-
-    historical_summary = safe_dict(
-        historical_summary
-    )
-
-    evolution = safe_text(
-        historical_summary.get(
-            "evolution"
-        ),
-        "SEM DADOS",
-    )
-
-    variation = safe_float(
-        historical_summary.get(
-            "variation"
-        )
-    )
-
-    consistency = safe_text(
-        historical_summary.get(
-            "consistency"
-        ),
-        "SEM DADOS",
-    )
-
-    if variation is None:
-
-        return (
-            "Histórico insuficiente para avaliar "
-            "a evolução do Score."
-        )
-
-    if evolution == "MELHORANDO FORTE":
-
-        return (
-            f"O Score apresentou melhora relevante "
-            f"de {variation:+.0f} pontos no período, "
-            f"com consistência {consistency.lower()}."
-        )
-
-    if evolution == "MELHORANDO":
-
-        return (
-            f"O Score apresentou evolução positiva "
-            f"de {variation:+.0f} pontos no período."
-        )
-
-    if evolution == "PIORANDO FORTE":
-
-        return (
-            f"O Score apresentou deterioração relevante "
-            f"de {variation:.0f} pontos no período."
-        )
-
-    if evolution == "PIORANDO":
-
-        return (
-            f"O Score apresentou perda de força "
-            f"de {variation:.0f} pontos no período."
-        )
-
-    return (
-        "O Score permanece relativamente estável "
-        "no período analisado."
-    )
 
 
 # ==========================================================
 # RESUMO EXECUTIVO
 # ==========================================================
 
-def build_executive_summary(
+def generate_executive_summary(
     asset,
     technical_score,
     fundamental_score,
     integrated_score,
+    technical_classification,
+    fundamental_classification,
     trend,
+    risk_level,
     recommendation,
-    risk,
-    historical_summary,
+    fundamental_coverage,
 ):
     """
     Gera o resumo executivo final.
     """
 
-    asset = safe_text(
-        asset,
-        "Ativo"
-    )
+    asset = str(
+        asset
+        or "ATIVO"
+    ).upper()
 
     technical_score = safe_float(
-        technical_score
+        technical_score,
+        0,
     )
 
     fundamental_score = safe_float(
-        fundamental_score
+        fundamental_score,
+        0,
     )
 
     integrated_score = safe_float(
-        integrated_score
+        integrated_score,
+        0,
     )
 
-    trend = safe_text(
-        trend,
-        "Indefinida"
-    )
-
-    recommendation = safe_text(
-        recommendation,
-        "Aguardar"
-    )
-
-    risk = safe_text(
-        risk,
-        "Moderado"
+    coverage = safe_float(
+        fundamental_coverage,
+        0,
     )
 
     summary = (
-        f"{asset} apresenta tendência {trend.lower()}, "
-        f"com Score Técnico de {technical_score:.0f}/100"
+        f"{asset}: Score Técnico de "
+        f"{technical_score:.0f}/100 "
+        f"({technical_classification}), "
+        f"Score Fundamentalista de "
+        f"{fundamental_score:.0f}/100 "
+        f"({fundamental_classification}) "
+        f"e Score Integrado de "
+        f"{integrated_score:.0f}/100. "
+        f"A tendência identificada é "
+        f"{trend}, com risco {risk_level}. "
+        f"A recomendação atual é "
+        f"{recommendation}."
     )
 
-    if fundamental_score is not None:
+    if coverage < 50:
 
         summary += (
-            f", Score Fundamentalista de "
-            f"{fundamental_score:.0f}/100"
+            " A cobertura dos dados "
+            "fundamentalistas é limitada, "
+            "portanto o resultado deve ser "
+            "interpretado com cautela."
         )
 
-    if integrated_score is not None:
+    elif coverage < 80:
 
         summary += (
-            f" e Score Integrado de "
-            f"{integrated_score:.0f}/100"
+            f" A análise fundamentalista possui "
+            f"cobertura de {coverage:.0f}% "
+            f"dos indicadores avaliados."
         )
 
-    summary += (
-        f". O risco atual é classificado como "
-        f"{risk.lower()} e a recomendação é "
-        f"{recommendation.lower()}."
-    )
-
-    evolution_text = get_evolution_interpretation(
-        historical_summary
-    )
-
-    if evolution_text:
+    else:
 
         summary += (
-            f" {evolution_text}"
+            f" A análise fundamentalista possui "
+            f"boa cobertura de dados "
+            f"({coverage:.0f}%)."
         )
 
     return summary
@@ -860,315 +1018,357 @@ def build_executive_summary(
 def analyze_asset(
     data,
     asset=None,
+    technical_weight=0.50,
+    fundamental_weight=0.50,
 ):
     """
-    Executa a análise completa do ativo.
+    Executa a análise completa do InvestIA PRO.
 
-    Entrada mínima:
+    Estrutura esperada:
 
     {
         "price": ...,
         "ma21": ...,
         "ma200": ...,
         "rsi": ...,
-        "volatility": ...
+        "volatility": ...,
+        "fundamentals": {
+            ...
+        }
     }
 
-    Entrada opcional:
+    Retorno:
 
-    {
-        "fundamental_score": ...,
-        "historical": DataFrame
-    }
+    - Score Técnico
+    - Score Fundamentalista
+    - Score Integrado
+    - Tendência
+    - RSI
+    - Risco
+    - Recomendação
+    - Explicabilidade
+    - Resumo Executivo
     """
 
-    data = safe_dict(
-        data
-    )
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise ValueError(
+            "Dados inválidos para análise."
+        )
 
     # ======================================================
-    # IDENTIFICAÇÃO DO ATIVO
+    # ATIVO
     # ======================================================
 
     if asset is None:
 
-        asset = safe_text(
-            data.get(
-                "asset"
-            ),
-            "ATIVO",
+        asset = get_value(
+            data,
+            "asset",
+            "ticker",
+            default="ATIVO",
         )
 
-    else:
+    asset = str(
+        asset
+        or "ATIVO"
+    ).upper()
 
-        asset = safe_text(
-            asset,
-            "ATIVO",
-        )
+    # ======================================================
+    # FUNDAMENTOS
+    # ======================================================
+
+    fundamentals = get_value(
+        data,
+        "fundamentals",
+        default={},
+    )
+
+    fundamentals = safe_dict(
+        fundamentals
+    )
 
     # ======================================================
     # DADOS TÉCNICOS
     # ======================================================
 
-    price = safe_float(
-        data.get(
-            "price"
-        )
-    )
+    technical_data = {
 
-    ma21 = safe_float(
-        data.get(
-            "ma21"
-        )
-    )
+        "price":
+            get_value(
+                data,
+                "price",
+            ),
 
-    ma200 = safe_float(
-        data.get(
-            "ma200"
-        )
-    )
+        "ma21":
+            get_value(
+                data,
+                "ma21",
+            ),
 
-    rsi = safe_float(
-        data.get(
-            "rsi"
-        )
-    )
+        "ma200":
+            get_value(
+                data,
+                "ma200",
+            ),
 
-    volatility = safe_float(
-        data.get(
-            "volatility"
-        )
-    )
-
-    required_values = [
-
-        price,
-        ma21,
-        ma200,
-        rsi,
-
-    ]
-
-    if any(
-        value is None
-        for value in required_values
-    ):
-
-        raise ValueError(
-            "Dados técnicos insuficientes "
-            "para analisar o ativo."
-        )
+        "rsi":
+            get_value(
+                data,
+                "rsi",
+            ),
+    }
 
     # ======================================================
     # SCORE TÉCNICO
     # ======================================================
 
-    technical_data = {
-
-        "price": price,
-
-        "ma21": ma21,
-
-        "ma200": ma200,
-
-        "rsi": rsi,
-
-    }
-
-    score_details = calculate_score_details(
+    technical_details = calculate_score_details(
         technical_data
     )
 
-    technical_score = safe_float(
-        score_details.get(
-            "technical_score"
-        )
-    )
+    technical_score = technical_details[
+        "score"
+    ]
 
-    classification = safe_text(
-        score_details.get(
+    technical_classification = (
+        technical_details[
             "classification"
-        ),
-        "NEUTRO",
+        ]
     )
 
-    signal = safe_text(
-        score_details.get(
-            "signal"
-        ),
-        "NEUTRO",
-    )
+    technical_signal = technical_details[
+        "signal"
+    ]
 
-    qualified_signal = safe_text(
-        score_details.get(
-            "qualified_signal"
-        ),
-        signal,
-    )
+    # ======================================================
+    # SCORE FUNDAMENTALISTA
+    # ======================================================
 
-    signal_level = safe_text(
-        score_details.get(
-            "signal_level"
-        ),
-        "Moderado",
-    )
-
-    signal_icon = safe_text(
-        score_details.get(
-            "signal_icon"
-        ),
-        "🟡",
-    )
-
-    breakdown = safe_dict(
-        score_details.get(
-            "breakdown"
+    fundamental_details = (
+        calculate_fundamental_score_details(
+            fundamentals
         )
     )
 
-    # ======================================================
-    # TENDÊNCIA
-    # ======================================================
+    fundamental_score = fundamental_details[
+        "score"
+    ]
 
-    trend = get_trend(
-        price,
-        ma21,
-        ma200,
+    fundamental_classification = (
+        fundamental_details[
+            "classification"
+        ]
     )
 
-    # ======================================================
-    # RSI
-    # ======================================================
+    fundamental_signal = fundamental_details[
+        "signal"
+    ]
 
-    rsi_status = get_rsi_status(
-        rsi
-    )
-
-    # ======================================================
-    # RISCO
-    # ======================================================
-
-    risk = get_risk_level(
-        volatility,
-        signal,
-    )
-
-    # ======================================================
-    # FUNDAMENTALISTA
-    # ======================================================
-
-    fundamental_score = get_fundamental_score(
-        data
+    fundamental_coverage = (
+        fundamental_details.get(
+            "coverage",
+            0,
+        )
     )
 
     # ======================================================
     # SCORE INTEGRADO
     # ======================================================
 
-    integrated_score = calculate_integrated_score(
+    integrated_details = calculate_integrated_score(
+
         technical_score,
         fundamental_score,
+
+        technical_weight=
+            technical_weight,
+
+        fundamental_weight=
+            fundamental_weight,
     )
+
+    integrated_score = integrated_details[
+        "score"
+    ]
 
     integrated_classification = (
-        classify_integrated_score(
-            integrated_score
-        )
+        integrated_details[
+            "classification"
+        ]
+    )
+
+    integrated_signal = (
+        integrated_details[
+            "signal"
+        ]
     )
 
     # ======================================================
-    # HISTÓRICO
+    # TENDÊNCIA
     # ======================================================
 
-    historical_analysis = get_historical_analysis(
-        data
+    trend_data = analyze_trend(
+        technical_data
     )
 
-    score_history = historical_analysis.get(
-        "history"
+    trend = trend_data[
+        "trend"
+    ]
+
+    trend_level = trend_data[
+        "level"
+    ]
+
+    # ======================================================
+    # RSI
+    # ======================================================
+
+    rsi_data = analyze_rsi(
+        technical_data
     )
 
-    historical_summary = safe_dict(
-        historical_analysis.get(
-            "summary"
-        )
+    rsi_status = rsi_data[
+        "status"
+    ]
+
+    # ======================================================
+    # RISCO
+    # ======================================================
+
+    risk_data = analyze_risk(
+
+        data=data,
+
+        technical_score=
+            technical_score,
+
+        fundamental_score=
+            fundamental_score,
+
+        integrated_score=
+            integrated_score,
     )
 
-    evolution = safe_text(
-        historical_summary.get(
-            "evolution"
-        ),
-        "SEM DADOS",
-    )
-
-    score_variation = safe_float(
-        historical_summary.get(
-            "variation"
-        )
-    )
-
-    consistency = safe_text(
-        historical_summary.get(
-            "consistency"
-        ),
-        "SEM DADOS",
-    )
-
-    signal_change = historical_summary.get(
-        "signal_change"
-    )
-
-    if not isinstance(
-        signal_change,
-        dict,
-    ):
-
-        signal_change = {
-
-            "changed": False,
-
-            "previous": None,
-
-            "current": signal,
-        }
+    risk_level = risk_data[
+        "level"
+    ]
 
     # ======================================================
     # RECOMENDAÇÃO
     # ======================================================
 
-    recommendation = get_recommendation(
-        signal,
-        trend,
-        risk,
+    recommendation_data = generate_recommendation(
+
+        integrated_score=
+            integrated_score,
+
+        technical_score=
+            technical_score,
+
+        fundamental_score=
+            fundamental_score,
+
+        trend=
+            trend,
+
+        risk_level=
+            risk_level,
+    )
+
+    recommendation = recommendation_data[
+        "recommendation"
+    ]
+
+    signal_level = recommendation_data[
+        "signal_level"
+    ]
+
+    # ======================================================
+    # QUALIFICAÇÃO DO SINAL
+    # ======================================================
+
+    qualified_signal = qualify_signal(
+
+        recommendation=
+            recommendation,
+
+        integrated_score=
+            integrated_score,
+
+        risk_level=
+            risk_level,
+    )
+
+    signal_icon = get_signal_icon(
+        recommendation
     )
 
     # ======================================================
-    # JUSTIFICATIVAS
+    # RAZÕES
     # ======================================================
 
-    reasons = build_reasons(
-        price,
-        ma21,
-        ma200,
-        rsi,
-        trend,
-        risk,
-        score_details,
+    reasons = get_analysis_reasons(
+
+        technical_details=
+            technical_details,
+
+        fundamental_details=
+            fundamental_details,
+
+        trend_data=
+            trend_data,
+
+        rsi_data=
+            rsi_data,
+
+        risk_data=
+            risk_data,
+
+        recommendation_data=
+            recommendation_data,
     )
 
     # ======================================================
     # RESUMO EXECUTIVO
     # ======================================================
 
-    executive_summary = build_executive_summary(
-        asset=asset,
-        technical_score=technical_score,
-        fundamental_score=fundamental_score,
-        integrated_score=integrated_score,
-        trend=trend,
-        recommendation=recommendation,
-        risk=risk,
-        historical_summary=historical_summary,
+    executive_summary = (
+        generate_executive_summary(
+
+            asset=
+                asset,
+
+            technical_score=
+                technical_score,
+
+            fundamental_score=
+                fundamental_score,
+
+            integrated_score=
+                integrated_score,
+
+            technical_classification=
+                technical_classification,
+
+            fundamental_classification=
+                fundamental_classification,
+
+            trend=
+                trend,
+
+            risk_level=
+                risk_level,
+
+            recommendation=
+                recommendation,
+
+            fundamental_coverage=
+                fundamental_coverage,
+        )
     )
 
     # ======================================================
@@ -1185,106 +1385,140 @@ def analyze_asset(
             asset,
 
         # --------------------------------------------------
-        # SCORES
+        # SCORE TÉCNICO
         # --------------------------------------------------
-
-        "score":
-            technical_score,
 
         "technical_score":
             technical_score,
 
+        "technical_classification":
+            technical_classification,
+
+        "technical_signal":
+            technical_signal,
+
+        "technical_breakdown":
+            technical_details.get(
+                "breakdown",
+                {}
+            ),
+
+        # --------------------------------------------------
+        # SCORE FUNDAMENTALISTA
+        # --------------------------------------------------
+
         "fundamental_score":
             fundamental_score,
+
+        "fundamental_classification":
+            fundamental_classification,
+
+        "fundamental_signal":
+            fundamental_signal,
+
+        "fundamental_coverage":
+            fundamental_coverage,
+
+        "fundamental_available_indicators":
+            fundamental_details.get(
+                "available_indicators",
+                0,
+            ),
+
+        "fundamental_total_indicators":
+            fundamental_details.get(
+                "total_indicators",
+                0,
+            ),
+
+        "fundamental_breakdown":
+            fundamental_details.get(
+                "breakdown",
+                {}
+            ),
+
+        # --------------------------------------------------
+        # SCORE INTEGRADO
+        # --------------------------------------------------
+
+        "score":
+            integrated_score,
 
         "integrated_score":
             integrated_score,
 
+        "classification":
+            integrated_classification,
+
         "integrated_classification":
             integrated_classification,
 
-        # --------------------------------------------------
-        # CLASSIFICAÇÃO
-        # --------------------------------------------------
-
-        "classification":
-            classification,
-
-        # --------------------------------------------------
-        # SINAIS
-        # --------------------------------------------------
-
         "signal":
-            signal,
+            integrated_signal,
 
-        "qualified_signal":
-            qualified_signal,
+        "integrated_signal":
+            integrated_signal,
 
-        "signal_level":
-            signal_level,
-
-        "signal_icon":
-            signal_icon,
+        "score_details":
+            integrated_details,
 
         # --------------------------------------------------
-        # ANÁLISE TÉCNICA
+        # TENDÊNCIA
         # --------------------------------------------------
 
         "trend":
             trend,
 
-        "tendencia":
-            trend,
+        "trend_level":
+            trend_level,
+
+        "trend_reason":
+            trend_data.get(
+                "reason"
+            ),
+
+        # --------------------------------------------------
+        # RSI
+        # --------------------------------------------------
 
         "rsi_status":
             rsi_status,
 
-        "risk":
-            risk,
+        "rsi_data":
+            rsi_data,
 
-        "risco":
-            risk,
+        # --------------------------------------------------
+        # RISCO
+        # --------------------------------------------------
+
+        "risk":
+            risk_level,
+
+        "risk_data":
+            risk_data,
+
+        # --------------------------------------------------
+        # RECOMENDAÇÃO
+        # --------------------------------------------------
 
         "recommendation":
             recommendation,
 
-        "recomendacao":
-            recommendation,
+        "signal_level":
+            signal_level,
+
+        "qualified_signal":
+            qualified_signal,
+
+        "signal_icon":
+            signal_icon,
 
         # --------------------------------------------------
-        # FUNDAMENTAÇÃO
+        # EXPLICABILIDADE
         # --------------------------------------------------
 
         "reasons":
             reasons,
-
-        "justificativas":
-            reasons,
-
-        "breakdown":
-            breakdown,
-
-        # --------------------------------------------------
-        # HISTÓRICO
-        # --------------------------------------------------
-
-        "score_history":
-            score_history,
-
-        "historical_summary":
-            historical_summary,
-
-        "score_evolution":
-            evolution,
-
-        "score_variation":
-            score_variation,
-
-        "score_consistency":
-            consistency,
-
-        "signal_change":
-            signal_change,
 
         # --------------------------------------------------
         # RESUMO
