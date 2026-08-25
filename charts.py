@@ -2,998 +2,910 @@
 InvestIA PRO
 Módulo de Gráficos
 
-Versão: v0.7
-Fase: 3.0.5 - Evolução Histórica de Preço e Score
+Versão: v0.7.1
+Fase: 3.0.6
 
-Responsabilidades:
-- Gráfico de evolução do preço
-- Médias móveis MA21 e MA200
-- Gráfico histórico do Score Técnico
-- Zonas de Score
-- Identificação de sinais
-- Gráfico integrado de análise
+Gráficos disponíveis:
+- Evolução do preço
+- Preço + MA21 + MA200
+- Volume negociado
+- Comparação dos Scores
+
+Compatível com:
+- market.py
+- indicators.py
+- analysis.py
+- score.py
+- app.py
+
+Princípio:
+Uma falha em um gráfico não deve interromper
+a análise do ativo.
 """
 
 import pandas as pd
 import plotly.graph_objects as go
-
-from plotly.subplots import make_subplots
 
 
 # ==========================================================
 # FUNÇÕES AUXILIARES
 # ==========================================================
 
-def validate_dataframe(
-    data,
-):
+def safe_float(value, default=None):
     """
-    Valida se o objeto é um DataFrame
-    válido e possui dados.
+    Converte valores para float com segurança.
     """
 
-    if not isinstance(
+    if value is None:
+        return default
+
+    try:
+        value = float(value)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return default
+
+    if pd.isna(value):
+        return default
+
+    return value
+
+
+def get_history(data):
+    """
+    Localiza o histórico de preços em diferentes
+    estruturas utilizadas pelo projeto.
+
+    Aceita:
+    - DataFrame
+    - Dicionário contendo history
+    - Dicionário contendo data
+    - Dicionário contendo histórico em outras chaves
+    """
+
+    # ------------------------------------------------------
+    # DATAFRAME DIRETO
+    # ------------------------------------------------------
+
+    if isinstance(
         data,
         pd.DataFrame,
     ):
 
-        return False
+        if not data.empty:
+            return data.copy()
 
-    if data.empty:
+        return pd.DataFrame()
 
-        return False
+    # ------------------------------------------------------
+    # DICIONÁRIO
+    # ------------------------------------------------------
 
-    return True
+    if isinstance(
+        data,
+        dict,
+    ):
+
+        possible_keys = [
+            "history",
+            "historical_data",
+            "data",
+            "prices",
+            "price_history",
+        ]
+
+        for key in possible_keys:
+
+            value = data.get(key)
+
+            if isinstance(
+                value,
+                pd.DataFrame,
+            ):
+
+                if not value.empty:
+                    return value.copy()
+
+    return pd.DataFrame()
 
 
-def get_column(
+def find_column(
     dataframe,
     possible_names,
 ):
     """
-    Procura uma coluna utilizando
-    diferentes nomes possíveis.
+    Localiza uma coluna sem diferenciar
+    maiúsculas e minúsculas.
     """
 
-    if not validate_dataframe(
-        dataframe
+    if not isinstance(
+        dataframe,
+        pd.DataFrame,
     ):
 
         return None
 
-    for column in possible_names:
+    if dataframe.empty:
+        return None
 
-        if column in dataframe.columns:
+    normalized_columns = {
+        str(column).lower(): column
+        for column in dataframe.columns
+    }
 
-            return column
+    for name in possible_names:
+
+        normalized_name = str(name).lower()
+
+        if normalized_name in normalized_columns:
+
+            return normalized_columns[
+                normalized_name
+            ]
 
     return None
 
 
-def safe_numeric_series(
-    dataframe,
-    column,
-):
+def get_x_axis(dataframe):
     """
-    Retorna uma série numérica limpa.
+    Obtém o eixo X do gráfico.
+
+    Prioridade:
+    1. Índice datetime
+    2. Coluna Date
+    3. Coluna Datetime
+    4. Índice padrão
     """
 
-    if (
-        not validate_dataframe(
-            dataframe
-        )
-        or column is None
-        or column not in dataframe.columns
+    if not isinstance(
+        dataframe,
+        pd.DataFrame,
     ):
 
         return None
 
-    series = pd.to_numeric(
-        dataframe[column],
-        errors="coerce",
+    if dataframe.empty:
+        return None
+
+    if isinstance(
+        dataframe.index,
+        pd.DatetimeIndex,
+    ):
+
+        return dataframe.index
+
+    date_column = find_column(
+        dataframe,
+        [
+            "Date",
+            "Datetime",
+            "date",
+            "datetime",
+        ],
     )
 
-    return series
+    if date_column is not None:
+
+        return dataframe[
+            date_column
+        ]
+
+    return dataframe.index
+
+
+def empty_figure(
+    title="Dados não disponíveis",
+):
+    """
+    Retorna uma figura vazia com mensagem.
+    """
+
+    figure = go.Figure()
+
+    figure.add_annotation(
+        text=title,
+        x=0.5,
+        y=0.5,
+        xref="paper",
+        yref="paper",
+        showarrow=False,
+        font={
+            "size": 16,
+        },
+    )
+
+    figure.update_layout(
+        height=350,
+        margin=dict(
+            l=20,
+            r=20,
+            t=50,
+            b=20,
+        ),
+    )
+
+    return figure
+
+
+def prepare_history(data):
+    """
+    Prepara o histórico para os gráficos.
+    """
+
+    history = get_history(data)
+
+    if history.empty:
+        return history
+
+    history = history.copy()
+
+    # Remove colunas totalmente vazias
+    history = history.dropna(
+        axis=1,
+        how="all",
+    )
+
+    return history
 
 
 # ==========================================================
-# GRÁFICO PRINCIPAL DE PREÇO
+# GRÁFICO DE PREÇO
 # ==========================================================
 
 def create_price_chart(
-    history,
+    data,
+    asset=None,
 ):
     """
-    Cria o gráfico principal de evolução
-    do preço.
+    Cria gráfico simples da evolução do preço.
 
-    Compatível com o histórico retornado
-    pelo market.py.
+    Parâmetros:
+    ----------
+    data : dict ou DataFrame
+        Dados contendo o histórico.
+
+    asset : str
+        Código do ativo.
+
+    Retorno:
+    --------
+    plotly.graph_objects.Figure
     """
 
-    if not validate_dataframe(
-        history
-    ):
+    try:
 
-        return None
-
-    price_column = get_column(
-        history,
-        [
-            "Close",
-            "close",
-            "price",
-            "Preço",
-        ],
-    )
-
-    if price_column is None:
-
-        return None
-
-    price_series = safe_numeric_series(
-        history,
-        price_column,
-    )
-
-    if (
-        price_series is None
-        or price_series.dropna().empty
-    ):
-
-        return None
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=history.index,
-            y=price_series,
-            mode="lines",
-            name="Preço",
-            line={
-                "width": 2,
-            },
-        )
-    )
-
-    fig.update_layout(
-        title="Evolução do Preço",
-        xaxis_title="Data",
-        yaxis_title="Preço",
-        hovermode="x unified",
-        template="plotly_white",
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 50,
-            "b": 20,
-        },
-        height=450,
-    )
-
-    return fig
-
-
-# ==========================================================
-# GRÁFICO DE PREÇO COM MÉDIAS
-# ==========================================================
-
-def create_price_indicators_chart(
-    historical_indicators,
-):
-    """
-    Cria gráfico com:
-
-    - Preço
-    - MA21
-    - MA200
-    """
-
-    if not validate_dataframe(
-        historical_indicators
-    ):
-
-        return None
-
-    price_column = get_column(
-        historical_indicators,
-        [
-            "price",
-            "Close",
-            "close",
-        ],
-    )
-
-    ma21_column = get_column(
-        historical_indicators,
-        [
-            "ma21",
-            "MA21",
-        ],
-    )
-
-    ma200_column = get_column(
-        historical_indicators,
-        [
-            "ma200",
-            "MA200",
-        ],
-    )
-
-    if price_column is None:
-
-        return None
-
-    price_series = safe_numeric_series(
-        historical_indicators,
-        price_column,
-    )
-
-    if (
-        price_series is None
-        or price_series.dropna().empty
-    ):
-
-        return None
-
-    fig = go.Figure()
-
-    # ======================================================
-    # PREÇO
-    # ======================================================
-
-    fig.add_trace(
-        go.Scatter(
-            x=historical_indicators.index,
-            y=price_series,
-            mode="lines",
-            name="Preço",
-            line={
-                "width": 2,
-            },
-        )
-    )
-
-    # ======================================================
-    # MA21
-    # ======================================================
-
-    if ma21_column is not None:
-
-        ma21_series = safe_numeric_series(
-            historical_indicators,
-            ma21_column,
+        history = prepare_history(
+            data
         )
 
-        if (
-            ma21_series is not None
-            and not ma21_series.dropna().empty
-        ):
+        if history.empty:
 
-            fig.add_trace(
-                go.Scatter(
-                    x=historical_indicators.index,
-                    y=ma21_series,
-                    mode="lines",
-                    name="MA21",
-                    line={
-                        "width": 1.5,
-                    },
-                )
+            return empty_figure(
+                "Histórico de preços não disponível."
             )
 
-    # ======================================================
-    # MA200
-    # ======================================================
-
-    if ma200_column is not None:
-
-        ma200_series = safe_numeric_series(
-            historical_indicators,
-            ma200_column,
-        )
-
-        if (
-            ma200_series is not None
-            and not ma200_series.dropna().empty
-        ):
-
-            fig.add_trace(
-                go.Scatter(
-                    x=historical_indicators.index,
-                    y=ma200_series,
-                    mode="lines",
-                    name="MA200",
-                    line={
-                        "width": 1.5,
-                    },
-                )
-            )
-
-    fig.update_layout(
-        title="Preço e Médias Móveis",
-        xaxis_title="Data",
-        yaxis_title="Preço",
-        hovermode="x unified",
-        template="plotly_white",
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 50,
-            "b": 20,
-        },
-        height=500,
-    )
-
-    return fig
-
-
-# ==========================================================
-# GRÁFICO HISTÓRICO DO SCORE
-# ==========================================================
-
-def create_score_history_chart(
-    score_history,
-):
-    """
-    Cria o gráfico de evolução
-    do Score Técnico.
-
-    Espera um DataFrame com:
-
-    - technical_score
-    - signal
-    """
-
-    if not validate_dataframe(
-        score_history
-    ):
-
-        return None
-
-    score_column = get_column(
-        score_history,
-        [
-            "technical_score",
-            "score",
-        ],
-    )
-
-    if score_column is None:
-
-        return None
-
-    score_series = safe_numeric_series(
-        score_history,
-        score_column,
-    )
-
-    if (
-        score_series is None
-        or score_series.dropna().empty
-    ):
-
-        return None
-
-    fig = go.Figure()
-
-    # ======================================================
-    # ZONAS DE SCORE
-    # ======================================================
-
-    fig.add_hrect(
-        y0=80,
-        y1=100,
-        line_width=0,
-        fillcolor="green",
-        opacity=0.08,
-        annotation_text="Forte",
-        annotation_position="top left",
-    )
-
-    fig.add_hrect(
-        y0=65,
-        y1=80,
-        line_width=0,
-        fillcolor="lightgreen",
-        opacity=0.08,
-        annotation_text="Bom",
-        annotation_position="top left",
-    )
-
-    fig.add_hrect(
-        y0=50,
-        y1=65,
-        line_width=0,
-        fillcolor="gold",
-        opacity=0.08,
-        annotation_text="Neutro",
-        annotation_position="top left",
-    )
-
-    fig.add_hrect(
-        y0=35,
-        y1=50,
-        line_width=0,
-        fillcolor="orange",
-        opacity=0.08,
-        annotation_text="Fraco",
-        annotation_position="top left",
-    )
-
-    fig.add_hrect(
-        y0=0,
-        y1=35,
-        line_width=0,
-        fillcolor="red",
-        opacity=0.08,
-        annotation_text="Muito fraco",
-        annotation_position="top left",
-    )
-
-    # ======================================================
-    # LINHA DO SCORE
-    # ======================================================
-
-    fig.add_trace(
-        go.Scatter(
-            x=score_history.index,
-            y=score_series,
-            mode="lines+markers",
-            name="Score Técnico",
-            line={
-                "width": 2,
-            },
-            marker={
-                "size": 4,
-            },
-        )
-    )
-
-    # ======================================================
-    # LINHAS DE REFERÊNCIA
-    # ======================================================
-
-    fig.add_hline(
-        y=80,
-        line_dash="dash",
-        annotation_text="FORTE",
-    )
-
-    fig.add_hline(
-        y=65,
-        line_dash="dash",
-        annotation_text="BOM",
-    )
-
-    fig.add_hline(
-        y=50,
-        line_dash="dash",
-        annotation_text="NEUTRO",
-    )
-
-    fig.add_hline(
-        y=35,
-        line_dash="dash",
-        annotation_text="FRACO",
-    )
-
-    fig.update_layout(
-        title="Evolução do Score Técnico",
-        xaxis_title="Data",
-        yaxis_title="Score",
-        yaxis={
-            "range": [
-                0,
-                100,
-            ],
-        },
-        hovermode="x unified",
-        template="plotly_white",
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 50,
-            "b": 20,
-        },
-        height=450,
-    )
-
-    return fig
-
-
-# ==========================================================
-# MARCADORES DE SINAL
-# ==========================================================
-
-def add_signal_markers(
-    fig,
-    score_history,
-):
-    """
-    Adiciona marcadores de sinal
-    no gráfico.
-
-    Positivo
-    Neutro
-    Negativo
-    """
-
-    if fig is None:
-
-        return fig
-
-    if not validate_dataframe(
-        score_history
-    ):
-
-        return fig
-
-    if (
-        "signal" not in score_history.columns
-        or "technical_score"
-        not in score_history.columns
-    ):
-
-        return fig
-
-    signal_map = {
-
-        "POSITIVO": {
-            "symbol": "triangle-up",
-            "name": "Sinal Positivo",
-        },
-
-        "NEGATIVO": {
-            "symbol": "triangle-down",
-            "name": "Sinal Negativo",
-        },
-
-        "NEUTRO": {
-            "symbol": "circle",
-            "name": "Sinal Neutro",
-        },
-
-    }
-
-    for signal, settings in signal_map.items():
-
-        filtered = score_history[
-            score_history["signal"]
-            .astype(str)
-            .str.upper()
-            == signal
-        ]
-
-        if filtered.empty:
-
-            continue
-
-        fig.add_trace(
-            go.Scatter(
-                x=filtered.index,
-                y=filtered[
-                    "technical_score"
-                ],
-                mode="markers",
-                name=settings[
-                    "name"
-                ],
-                marker={
-                    "symbol":
-                        settings["symbol"],
-
-                    "size":
-                        8,
-                },
-            )
-        )
-
-    return fig
-
-
-# ==========================================================
-# GRÁFICO COMPLETO DO SCORE
-# ==========================================================
-
-def create_score_evolution_chart(
-    score_history,
-):
-    """
-    Cria o gráfico completo
-    da evolução do Score Técnico
-    com marcadores de sinal.
-    """
-
-    fig = create_score_history_chart(
-        score_history
-    )
-
-    if fig is None:
-
-        return None
-
-    fig = add_signal_markers(
-        fig,
-        score_history,
-    )
-
-    fig.update_layout(
-        title=(
-            "Evolução do Score Técnico "
-            "e Sinais"
-        ),
-    )
-
-    return fig
-
-
-# ==========================================================
-# GRÁFICO INTEGRADO
-# ==========================================================
-
-def create_integrated_analysis_chart(
-    historical_indicators,
-    score_history,
-):
-    """
-    Cria um gráfico integrado
-    com dois painéis:
-
-    Painel 1:
-    - Preço
-    - MA21
-    - MA200
-
-    Painel 2:
-    - Score Técnico
-    """
-
-    if (
-        not validate_dataframe(
-            historical_indicators
-        )
-        and not validate_dataframe(
-            score_history
-        )
-    ):
-
-        return None
-
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=(
-
-            "Preço e Médias Móveis",
-
-            "Evolução do Score Técnico",
-
-        ),
-        row_heights=[
-            0.6,
-            0.4,
-        ],
-    )
-
-    # ======================================================
-    # PAINEL DE PREÇO
-    # ======================================================
-
-    if validate_dataframe(
-        historical_indicators
-    ):
-
-        price_column = get_column(
-            historical_indicators,
+        close_column = find_column(
+            history,
             [
-                "price",
                 "Close",
+                "Adj Close",
                 "close",
+                "adj_close",
             ],
         )
 
-        if price_column is not None:
+        if close_column is None:
 
-            price_series = safe_numeric_series(
-                historical_indicators,
-                price_column,
+            return empty_figure(
+                "Coluna de preço não encontrada."
             )
 
-            if (
-                price_series is not None
-                and not price_series.dropna().empty
-            ):
+        x_axis = get_x_axis(
+            history
+        )
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=historical_indicators.index,
-                        y=price_series,
-                        mode="lines",
-                        name="Preço",
-                    ),
-                    row=1,
-                    col=1,
-                )
+        figure = go.Figure()
 
-        ma21_column = get_column(
-            historical_indicators,
+        figure.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=history[
+                    close_column
+                ],
+                mode="lines",
+                name="Preço",
+            )
+        )
+
+        title = (
+            f"Evolução do Preço - {asset}"
+            if asset
+            else "Evolução do Preço"
+        )
+
+        figure.update_layout(
+            title=title,
+            xaxis_title="Data",
+            yaxis_title="Preço",
+            hovermode="x unified",
+            height=420,
+            margin=dict(
+                l=20,
+                r=20,
+                t=60,
+                b=20,
+            ),
+        )
+
+        return figure
+
+    except Exception:
+
+        return empty_figure(
+            "Não foi possível gerar o gráfico de preço."
+        )
+
+
+# ==========================================================
+# GRÁFICO DE PREÇO + MÉDIAS MÓVEIS
+# ==========================================================
+
+def create_technical_chart(
+    data,
+    asset=None,
+):
+    """
+    Cria gráfico técnico contendo:
+
+    - Preço
+    - Média móvel de 21 períodos
+    - Média móvel de 200 períodos
+
+    As médias são calculadas diretamente no gráfico
+    quando não estiverem disponíveis no DataFrame.
+    """
+
+    try:
+
+        history = prepare_history(
+            data
+        )
+
+        if history.empty:
+
+            return empty_figure(
+                "Histórico técnico não disponível."
+            )
+
+        close_column = find_column(
+            history,
             [
-                "ma21",
+                "Close",
+                "Adj Close",
+                "close",
+                "adj_close",
+            ],
+        )
+
+        if close_column is None:
+
+            return empty_figure(
+                "Coluna de preço não encontrada."
+            )
+
+        history = history.copy()
+
+        price_series = pd.to_numeric(
+            history[
+                close_column
+            ],
+            errors="coerce",
+        )
+
+        if price_series.dropna().empty:
+
+            return empty_figure(
+                "Não há preços válidos para análise."
+            )
+
+        x_axis = get_x_axis(
+            history
+        )
+
+        # --------------------------------------------------
+        # MA21
+        # --------------------------------------------------
+
+        ma21_column = find_column(
+            history,
+            [
                 "MA21",
+                "ma21",
+                "MA_21",
+                "ma_21",
             ],
         )
 
         if ma21_column is not None:
 
-            ma21_series = safe_numeric_series(
-                historical_indicators,
-                ma21_column,
+            ma21 = pd.to_numeric(
+                history[
+                    ma21_column
+                ],
+                errors="coerce",
             )
 
-            if (
-                ma21_series is not None
-                and not ma21_series.dropna().empty
-            ):
+        else:
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=historical_indicators.index,
-                        y=ma21_series,
-                        mode="lines",
-                        name="MA21",
-                    ),
-                    row=1,
-                    col=1,
-                )
+            ma21 = price_series.rolling(
+                window=21,
+                min_periods=1,
+            ).mean()
 
-        ma200_column = get_column(
-            historical_indicators,
+        # --------------------------------------------------
+        # MA200
+        # --------------------------------------------------
+
+        ma200_column = find_column(
+            history,
             [
-                "ma200",
                 "MA200",
+                "ma200",
+                "MA_200",
+                "ma_200",
             ],
         )
 
         if ma200_column is not None:
 
-            ma200_series = safe_numeric_series(
-                historical_indicators,
-                ma200_column,
+            ma200 = pd.to_numeric(
+                history[
+                    ma200_column
+                ],
+                errors="coerce",
             )
 
-            if (
-                ma200_series is not None
-                and not ma200_series.dropna().empty
-            ):
+        else:
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=historical_indicators.index,
-                        y=ma200_series,
-                        mode="lines",
-                        name="MA200",
-                    ),
-                    row=1,
-                    col=1,
-                )
+            ma200 = price_series.rolling(
+                window=200,
+                min_periods=1,
+            ).mean()
 
-    # ======================================================
-    # PAINEL DO SCORE
-    # ======================================================
+        # --------------------------------------------------
+        # FIGURA
+        # --------------------------------------------------
 
-    if validate_dataframe(
-        score_history
-    ):
+        figure = go.Figure()
 
-        score_column = get_column(
-            score_history,
-            [
-                "technical_score",
-                "score",
-            ],
-        )
-
-        if score_column is not None:
-
-            score_series = safe_numeric_series(
-                score_history,
-                score_column,
+        figure.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=price_series,
+                mode="lines",
+                name="Preço",
             )
-
-            if (
-                score_series is not None
-                and not score_series.dropna().empty
-            ):
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=score_history.index,
-                        y=score_series,
-                        mode="lines+markers",
-                        name="Score Técnico",
-                    ),
-                    row=2,
-                    col=1,
-                )
-
-        # Linhas de referência do Score
-
-        fig.add_hline(
-            y=80,
-            line_dash="dash",
-            row=2,
-            col=1,
         )
 
-        fig.add_hline(
-            y=65,
-            line_dash="dash",
-            row=2,
-            col=1,
+        figure.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=ma21,
+                mode="lines",
+                name="MA21",
+            )
         )
 
-        fig.add_hline(
-            y=50,
-            line_dash="dash",
-            row=2,
-            col=1,
+        figure.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=ma200,
+                mode="lines",
+                name="MA200",
+            )
         )
 
-        fig.add_hline(
-            y=35,
-            line_dash="dash",
-            row=2,
-            col=1,
+        title = (
+            f"Análise Técnica - {asset}"
+            if asset
+            else "Análise Técnica"
         )
 
-    # ======================================================
-    # LAYOUT
-    # ======================================================
+        figure.update_layout(
+            title=title,
+            xaxis_title="Data",
+            yaxis_title="Preço",
+            hovermode="x unified",
+            height=500,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+            ),
+            margin=dict(
+                l=20,
+                r=20,
+                t=80,
+                b=20,
+            ),
+        )
 
-    fig.update_yaxes(
-        title_text="Preço",
-        row=1,
-        col=1,
-    )
+        return figure
 
-    fig.update_yaxes(
-        title_text="Score",
-        range=[
-            0,
-            100,
-        ],
-        row=2,
-        col=1,
-    )
+    except Exception:
 
-    fig.update_xaxes(
-        title_text="Data",
-        row=2,
-        col=1,
-    )
-
-    fig.update_layout(
-        title="Análise Histórica Integrada",
-        hovermode="x unified",
-        template="plotly_white",
-        height=750,
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 80,
-            "b": 20,
-        },
-        legend={
-            "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "right",
-            "x": 1,
-        },
-    )
-
-    return fig
+        return empty_figure(
+            "Não foi possível gerar o gráfico técnico."
+        )
 
 
 # ==========================================================
-# GRÁFICO DE COMPARAÇÃO DOS SCORES
+# GRÁFICO DE VOLUME
 # ==========================================================
 
-def create_scores_comparison_chart(
-    technical_score,
-    fundamental_score,
-    integrated_score,
+def create_volume_chart(
+    data,
+    asset=None,
 ):
     """
-    Cria gráfico de barras para
-    comparar os três Scores atuais.
-
-    - Score Técnico
-    - Score Fundamentalista
-    - Score Integrado
+    Cria gráfico do volume negociado.
     """
 
-    scores = []
+    try:
 
-    names = []
-
-    if technical_score is not None:
-
-        names.append(
-            "Técnico"
+        history = prepare_history(
+            data
         )
 
-        scores.append(
-            float(
-                technical_score
+        if history.empty:
+
+            return empty_figure(
+                "Dados de volume não disponíveis."
             )
-        )
 
-    if fundamental_score is not None:
-
-        names.append(
-            "Fundamentalista"
-        )
-
-        scores.append(
-            float(
-                fundamental_score
-            )
-        )
-
-    if integrated_score is not None:
-
-        names.append(
-            "Integrado"
-        )
-
-        scores.append(
-            float(
-                integrated_score
-            )
-        )
-
-    if not scores:
-
-        return None
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Bar(
-            x=names,
-            y=scores,
-            text=[
-                f"{score:.0f}"
-                for score in scores
+        volume_column = find_column(
+            history,
+            [
+                "Volume",
+                "volume",
             ],
-            textposition="auto",
-            name="Score",
         )
-    )
 
-    fig.update_layout(
-        title="Comparação dos Scores",
-        yaxis={
-            "range": [
-                0,
+        if volume_column is None:
+
+            return empty_figure(
+                "Coluna de volume não encontrada."
+            )
+
+        volume = pd.to_numeric(
+            history[
+                volume_column
+            ],
+            errors="coerce",
+        )
+
+        if volume.dropna().empty:
+
+            return empty_figure(
+                "Não há dados de volume válidos."
+            )
+
+        x_axis = get_x_axis(
+            history
+        )
+
+        figure = go.Figure()
+
+        figure.add_trace(
+            go.Bar(
+                x=x_axis,
+                y=volume,
+                name="Volume",
+            )
+        )
+
+        title = (
+            f"Volume Negociado - {asset}"
+            if asset
+            else "Volume Negociado"
+        )
+
+        figure.update_layout(
+            title=title,
+            xaxis_title="Data",
+            yaxis_title="Volume",
+            height=350,
+            margin=dict(
+                l=20,
+                r=20,
+                t=60,
+                b=20,
+            ),
+        )
+
+        return figure
+
+    except Exception:
+
+        return empty_figure(
+            "Não foi possível gerar o gráfico de volume."
+        )
+
+
+# ==========================================================
+# GRÁFICO DOS SCORES
+# ==========================================================
+
+def create_score_chart(
+    technical_score=None,
+    fundamental_score=None,
+    integrated_score=None,
+):
+    """
+    Cria gráfico comparativo dos três Scores.
+
+    Scores:
+    - Técnico
+    - Fundamentalista
+    - Integrado
+    """
+
+    try:
+
+        technical_score = safe_float(
+            technical_score,
+            0,
+        )
+
+        fundamental_score = safe_float(
+            fundamental_score,
+            0,
+        )
+
+        integrated_score = safe_float(
+            integrated_score,
+            0,
+        )
+
+        technical_score = max(
+            0,
+            min(
                 100,
-            ],
-        },
-        xaxis_title="Tipo de Score",
-        yaxis_title="Pontuação",
-        template="plotly_white",
-        height=400,
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 50,
-            "b": 20,
-        },
+                technical_score,
+            ),
+        )
+
+        fundamental_score = max(
+            0,
+            min(
+                100,
+                fundamental_score,
+            ),
+        )
+
+        integrated_score = max(
+            0,
+            min(
+                100,
+                integrated_score,
+            ),
+        )
+
+        labels = [
+            "Técnico",
+            "Fundamentalista",
+            "Integrado",
+        ]
+
+        values = [
+            technical_score,
+            fundamental_score,
+            integrated_score,
+        ]
+
+        figure = go.Figure()
+
+        figure.add_trace(
+            go.Bar(
+                x=labels,
+                y=values,
+                text=[
+                    f"{value:.0f}"
+                    for value in values
+                ],
+                textposition="auto",
+                name="Score",
+            )
+        )
+
+        figure.update_layout(
+            title="Comparativo dos Scores",
+            yaxis=dict(
+                title="Pontuação",
+                range=[
+                    0,
+                    100,
+                ],
+            ),
+            height=400,
+            showlegend=False,
+            margin=dict(
+                l=20,
+                r=20,
+                t=60,
+                b=20,
+            ),
+        )
+
+        return figure
+
+    except Exception:
+
+        return empty_figure(
+            "Não foi possível gerar o gráfico dos Scores."
+        )
+
+
+# ==========================================================
+# GRÁFICO COMPARATIVO COMPLETO
+# ==========================================================
+
+def create_dashboard_charts(
+    prepared_data,
+    asset=None,
+    technical_score=None,
+    fundamental_score=None,
+    integrated_score=None,
+):
+    """
+    Cria todos os gráficos principais do dashboard.
+
+    Retorna um dicionário contendo:
+
+    {
+        "price_chart": Figure,
+        "technical_chart": Figure,
+        "volume_chart": Figure,
+        "score_chart": Figure,
+    }
+    """
+
+    charts = {}
+
+    try:
+
+        charts[
+            "price_chart"
+        ] = create_price_chart(
+            prepared_data,
+            asset,
+        )
+
+    except Exception:
+
+        charts[
+            "price_chart"
+        ] = empty_figure(
+            "Erro no gráfico de preço."
+        )
+
+    try:
+
+        charts[
+            "technical_chart"
+        ] = create_technical_chart(
+            prepared_data,
+            asset,
+        )
+
+    except Exception:
+
+        charts[
+            "technical_chart"
+        ] = empty_figure(
+            "Erro no gráfico técnico."
+        )
+
+    try:
+
+        charts[
+            "volume_chart"
+        ] = create_volume_chart(
+            prepared_data,
+            asset,
+        )
+
+    except Exception:
+
+        charts[
+            "volume_chart"
+        ] = empty_figure(
+            "Erro no gráfico de volume."
+        )
+
+    try:
+
+        charts[
+            "score_chart"
+        ] = create_score_chart(
+            technical_score,
+            fundamental_score,
+            integrated_score,
+        )
+
+    except Exception:
+
+        charts[
+            "score_chart"
+        ] = empty_figure(
+            "Erro no gráfico dos Scores."
+        )
+
+    return charts
+
+
+# ==========================================================
+# COMPATIBILIDADE COM VERSÕES ANTERIORES
+# ==========================================================
+
+def plot_price_chart(
+    data,
+    asset=None,
+):
+    """
+    Alias para create_price_chart().
+    """
+
+    return create_price_chart(
+        data,
+        asset,
     )
 
-    return fig
+
+def plot_technical_chart(
+    data,
+    asset=None,
+):
+    """
+    Alias para create_technical_chart().
+    """
+
+    return create_technical_chart(
+        data,
+        asset,
+    )
+
+
+def plot_volume_chart(
+    data,
+    asset=None,
+):
+    """
+    Alias para create_volume_chart().
+    """
+
+    return create_volume_chart(
+        data,
+        asset,
+    )
+
+
+def plot_score_chart(
+    technical_score=None,
+    fundamental_score=None,
+    integrated_score=None,
+):
+    """
+    Alias para create_score_chart().
+    """
+
+    return create_score_chart(
+        technical_score,
+        fundamental_score,
+        integrated_score,
+    )
