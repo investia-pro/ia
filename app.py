@@ -2,20 +2,21 @@
 InvestIA PRO
 Aplicação Principal
 
-Versão: v0.7
-Fase: 3.0.6
+Versão: v0.7.1
+Fase: 3.0.6 - Correção de Renderização
 
 Dashboard Integrado:
 - Score Técnico
 - Score Fundamentalista
 - Score Integrado
 
-IMPORTANTE:
-Os módulos do projeto são importados somente
-quando o usuário solicita uma análise.
-
-Isso evita que uma falha em outro módulo
-deixe a aplicação inteira em tela branca.
+Correções desta versão:
+- Remoção dos cards HTML que podiam ser exibidos como texto
+- Uso de componentes nativos do Streamlit
+- Maior tolerância a estruturas diferentes de dados
+- Exibição segura dos fundamentos
+- Exibição segura dos breakdowns
+- Diagnóstico técnico expandido
 """
 
 import streamlit as st
@@ -36,71 +37,16 @@ st.set_page_config(
 
 
 # ==========================================================
-# CSS
+# CSS MÍNIMO
 # ==========================================================
 
 st.markdown(
     """
     <style>
-
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
-
-    .investia-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        margin-bottom: 0.2rem;
-    }
-
-    .investia-subtitle {
-        font-size: 1rem;
-        color: #64748b;
-        margin-bottom: 1.5rem;
-    }
-
-    .section-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-top: 1.5rem;
-        margin-bottom: 0.8rem;
-    }
-
-    .score-card {
-        padding: 1.2rem;
-        border-radius: 12px;
-        background-color: white;
-        border: 1px solid #e2e8f0;
-        min-height: 150px;
-    }
-
-    .score-label {
-        color: #64748b;
-        font-size: 0.9rem;
-        font-weight: 600;
-    }
-
-    .score-value {
-        font-size: 2.2rem;
-        font-weight: 800;
-        margin-top: 0.3rem;
-        color: #0f172a;
-    }
-
-    .score-description {
-        color: #475569;
-        font-size: 0.9rem;
-        margin-top: 0.3rem;
-    }
-
-    .executive-card {
-        background-color: white;
-        padding: 1.2rem;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-    }
-
     </style>
     """,
     unsafe_allow_html=True,
@@ -129,6 +75,22 @@ def safe_float(value, default=None):
         return default
 
     if pd.isna(value):
+        return default
+
+    return value
+
+
+def safe_text(value, default="N/D"):
+    """
+    Converte valores para texto com segurança.
+    """
+
+    if value is None:
+        return default
+
+    value = str(value).strip()
+
+    if not value:
         return default
 
     return value
@@ -198,6 +160,43 @@ def format_percent(value):
     )
 
 
+def format_fundamental_value(key, value):
+    """
+    Formata valores fundamentalistas para exibição.
+    """
+
+    if value is None:
+        return "N/D"
+
+    numeric_value = safe_float(value)
+
+    if numeric_value is None:
+        return safe_text(value)
+
+    key_lower = str(key).lower()
+
+    percent_terms = [
+        "margin",
+        "roe",
+        "roa",
+        "yield",
+        "growth",
+        "payout",
+        "debt_to_equity",
+    ]
+
+    if any(
+        term in key_lower
+        for term in percent_terms
+    ):
+        return format_percent(numeric_value)
+
+    if abs(numeric_value) >= 1000:
+        return format_currency(numeric_value)
+
+    return format_number(numeric_value)
+
+
 def normalize_asset_input(asset):
     """
     Normaliza o código do ativo.
@@ -231,24 +230,6 @@ def normalize_asset_input(asset):
         return f"{asset}.SA"
 
     return asset
-
-
-def get_dict_value(
-    data,
-    key,
-    default=None,
-):
-    """
-    Obtém valor de dicionário com segurança.
-    """
-
-    if not isinstance(data, dict):
-        return default
-
-    return data.get(
-        key,
-        default,
-    )
 
 
 def find_price(
@@ -341,7 +322,8 @@ def display_score_card(
     signal,
 ):
     """
-    Exibe um card de Score.
+    Exibe um card de Score usando apenas
+    componentes nativos do Streamlit.
     """
 
     score = safe_float(
@@ -349,40 +331,44 @@ def display_score_card(
         0,
     )
 
-    classification = (
+    classification = safe_text(
         classification
-        or "N/D"
     )
 
-    signal = (
+    signal = safe_text(
         signal
-        or "N/D"
     )
 
     st.markdown(
-        f"""
-        <div class="score-card">
-
-            <div class="score-label">
-                {label}
-            </div>
-
-            <div class="score-value">
-                {score:.0f}/100
-            </div>
-
-            <div class="score-description">
-                Classificação: {classification}
-            </div>
-
-            <div class="score-description">
-                Sinal: {signal}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"### {label}"
     )
+
+    st.metric(
+        label="Pontuação",
+        value=f"{score:.0f}/100",
+    )
+
+    info_col1, info_col2 = st.columns(2)
+
+    with info_col1:
+
+        st.caption(
+            "Classificação"
+        )
+
+        st.write(
+            classification
+        )
+
+    with info_col2:
+
+        st.caption(
+            "Sinal"
+        )
+
+        st.write(
+            signal
+        )
 
 
 def display_breakdown(
@@ -390,7 +376,84 @@ def display_breakdown(
 ):
     """
     Exibe detalhamento de um Score.
+    Aceita diferentes formatos de retorno.
     """
+
+    if not breakdown:
+
+        st.info(
+            "Detalhamento não disponível."
+        )
+
+        return
+
+    # ------------------------------------------------------
+    # FORMATO LISTA
+    # ------------------------------------------------------
+
+    if isinstance(
+        breakdown,
+        list,
+    ):
+
+        rows = []
+
+        for item in breakdown:
+
+            if isinstance(
+                item,
+                dict,
+            ):
+
+                rows.append(
+                    {
+                        "Indicador": item.get(
+                            "indicator",
+                            item.get(
+                                "name",
+                                "N/D",
+                            ),
+                        ),
+                        "Pontos": item.get(
+                            "points",
+                            item.get(
+                                "score",
+                                0,
+                            ),
+                        ),
+                        "Sinal": item.get(
+                            "signal",
+                            "N/D",
+                        ),
+                        "Análise": item.get(
+                            "reason",
+                            item.get(
+                                "description",
+                                "N/D",
+                            ),
+                        ),
+                    }
+                )
+
+        if rows:
+
+            st.dataframe(
+                pd.DataFrame(rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        else:
+
+            st.info(
+                "Não há dados disponíveis para detalhar o Score."
+            )
+
+        return
+
+    # ------------------------------------------------------
+    # FORMATO DICIONÁRIO
+    # ------------------------------------------------------
 
     if not isinstance(
         breakdown,
@@ -405,39 +468,80 @@ def display_breakdown(
 
     rows = []
 
+    ignored_keys = [
+        "base",
+        "score",
+        "raw_score",
+        "final_score",
+        "total",
+        "classification",
+        "signal",
+    ]
+
     for key, item in breakdown.items():
 
-        if not isinstance(
+        if key in ignored_keys:
+            continue
+
+        # --------------------------------------------------
+        # ITEM É DICIONÁRIO
+        # --------------------------------------------------
+
+        if isinstance(
             item,
             dict,
         ):
-            continue
 
-        if key in (
-            "base",
-            "score",
-            "raw_score",
-            "final_score",
-        ):
-            continue
+            rows.append(
+                {
+                    "Indicador": item.get(
+                        "indicator",
+                        item.get(
+                            "name",
+                            str(key).upper(),
+                        ),
+                    ),
+                    "Pontos": item.get(
+                        "points",
+                        item.get(
+                            "score",
+                            item.get(
+                                "value",
+                                0,
+                            ),
+                        ),
+                    ),
+                    "Sinal": item.get(
+                        "signal",
+                        "N/D",
+                    ),
+                    "Análise": item.get(
+                        "reason",
+                        item.get(
+                            "description",
+                            item.get(
+                                "analysis",
+                                "N/D",
+                            ),
+                        ),
+                    ),
+                }
+            )
 
-        rows.append(
-            {
-                "Indicador": key.upper(),
-                "Pontos": item.get(
-                    "points",
-                    0,
-                ),
-                "Sinal": item.get(
-                    "signal",
-                    "N/D",
-                ),
-                "Análise": item.get(
-                    "reason",
-                    "N/D",
-                ),
-            }
-        )
+        # --------------------------------------------------
+        # ITEM É VALOR SIMPLES
+        # --------------------------------------------------
+
+        else:
+
+            rows.append(
+                {
+                    "Indicador": str(key).upper(),
+                    "Pontos": item,
+                    "Sinal": "N/D",
+                    "Análise": "Indicador utilizado no cálculo.",
+                }
+            )
 
     if not rows:
 
@@ -460,7 +564,9 @@ def display_breakdown(
 
 with st.sidebar:
 
-    st.title("📈 InvestIA PRO")
+    st.title(
+        "📈 InvestIA PRO"
+    )
 
     st.caption(
         "Fase 3.0.6"
@@ -499,7 +605,7 @@ with st.sidebar:
     )
 
     st.write(
-        f"Peso Fundamentalista: "
+        "Peso Fundamentalista: "
         f"**{fundamental_weight_percent}%**"
     )
 
@@ -516,17 +622,12 @@ with st.sidebar:
 # CABEÇALHO
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="investia-title">
-        📈 InvestIA PRO
-    </div>
+st.title(
+    "📈 InvestIA PRO"
+)
 
-    <div class="investia-subtitle">
-        Inteligência para análise de investimentos
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.caption(
+    "Inteligência para análise de investimentos"
 )
 
 
@@ -572,10 +673,12 @@ if not analyze_button:
         "**Analisar**."
     )
 
+    st.subheader(
+        "Recursos disponíveis"
+    )
+
     st.markdown(
         """
-        ### Recursos disponíveis
-
         - 📊 Score Técnico
         - 🏢 Score Fundamentalista
         - 🚀 Score Integrado
@@ -636,7 +739,7 @@ try:
         analyze_asset,
     )
 
-except Exception as error:
+except Exception:
 
     st.error(
         "❌ Erro ao carregar os módulos do InvestIA PRO."
@@ -677,7 +780,6 @@ try:
 
         st.stop()
 
-
 except Exception:
 
     st.error(
@@ -715,7 +817,6 @@ try:
         )
 
         st.stop()
-
 
 except Exception:
 
@@ -755,7 +856,6 @@ try:
 
         st.stop()
 
-
 except Exception:
 
     st.error(
@@ -784,21 +884,19 @@ if current_price is None:
         "❌ Não foi possível identificar o preço atual."
     )
 
-    st.write(
-        "Dados preparados:"
-    )
+    with st.expander(
+        "🔧 Diagnóstico do preço"
+    ):
 
-    st.write(
-        list(prepared_data.keys())
-    )
+        st.write(
+            "Dados preparados:",
+            list(prepared_data.keys()),
+        )
 
-    st.write(
-        "Indicadores:"
-    )
-
-    st.write(
-        list(indicators.keys())
-    )
+        st.write(
+            "Indicadores:",
+            list(indicators.keys()),
+        )
 
     st.stop()
 
@@ -816,7 +914,6 @@ if not isinstance(
     fundamentals,
     dict,
 ):
-
     fundamentals = {}
 
 
@@ -878,7 +975,6 @@ try:
 
         st.stop()
 
-
 except Exception:
 
     st.error(
@@ -898,7 +994,10 @@ except Exception:
 
 technical_score = analysis.get(
     "technical_score",
-    0,
+    analysis.get(
+        "technical",
+        0,
+    ),
 )
 
 technical_classification = analysis.get(
@@ -914,7 +1013,10 @@ technical_signal = analysis.get(
 
 fundamental_score = analysis.get(
     "fundamental_score",
-    0,
+    analysis.get(
+        "fundamental",
+        0,
+    ),
 )
 
 fundamental_classification = analysis.get(
@@ -1034,7 +1136,7 @@ with metric_col2:
     st.metric(
         "MA21",
         format_currency(ma21)
-        if ma21 is not None
+        if safe_float(ma21) is not None
         else "N/D",
     )
 
@@ -1047,7 +1149,7 @@ with metric_col3:
     st.metric(
         "MA200",
         format_currency(ma200)
-        if ma200 is not None
+        if safe_float(ma200) is not None
         else "N/D",
     )
 
@@ -1067,13 +1169,10 @@ with metric_col4:
 # SCORES
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        🎯 Scores InvestIA
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "🎯 Scores InvestIA"
 )
 
 score_col1, score_col2, score_col3 = (
@@ -1112,13 +1211,10 @@ with score_col3:
 # DECISÃO EXECUTIVA
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        🧭 Decisão Executiva
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "🧭 Decisão Executiva"
 )
 
 decision_col1, decision_col2, decision_col3 = (
@@ -1136,14 +1232,14 @@ with decision_col2:
 
     st.metric(
         "Tendência",
-        trend,
+        safe_text(trend),
     )
 
 with decision_col3:
 
     st.metric(
         "Risco",
-        risk,
+        safe_text(risk),
     )
 
 st.caption(
@@ -1155,22 +1251,17 @@ st.caption(
 # RESUMO EXECUTIVO
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        📝 Resumo Executivo
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "📝 Resumo Executivo"
 )
 
-st.markdown(
-    f"""
-    <div class="executive-card">
-        {executive_summary}
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.info(
+    safe_text(
+        executive_summary,
+        "Resumo não disponível.",
+    )
 )
 
 
@@ -1178,13 +1269,10 @@ st.markdown(
 # FATORES
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        🔎 Principais Fatores
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "🔎 Principais Fatores"
 )
 
 if isinstance(
@@ -1194,8 +1282,25 @@ if isinstance(
 
     for reason in reasons:
 
+        if isinstance(
+            reason,
+            dict,
+        ):
+
+            reason_text = reason.get(
+                "reason",
+                reason.get(
+                    "description",
+                    str(reason),
+                ),
+            )
+
+        else:
+
+            reason_text = str(reason)
+
         st.write(
-            f"• {reason}"
+            f"• {reason_text}"
         )
 
 else:
@@ -1209,13 +1314,10 @@ else:
 # FUNDAMENTOS
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        🏢 Dados Fundamentalistas
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "🏢 Dados Fundamentalistas"
 )
 
 fundamental_rows = []
@@ -1227,8 +1329,11 @@ for key, value in fundamentals.items():
 
     fundamental_rows.append(
         {
-            "Indicador": key,
-            "Valor": value,
+            "Indicador": str(key).upper(),
+            "Valor": format_fundamental_value(
+                key,
+                value,
+            ),
         }
     )
 
@@ -1253,13 +1358,10 @@ else:
 # EXPLICABILIDADE
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="section-title">
-        🔬 Explicabilidade dos Scores
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.divider()
+
+st.subheader(
+    "🔬 Explicabilidade dos Scores"
 )
 
 tab1, tab2 = st.tabs(
@@ -1283,7 +1385,7 @@ with tab2:
 
 
 # ==========================================================
-# DEBUG
+# DIAGNÓSTICO
 # ==========================================================
 
 with st.expander(
@@ -1293,6 +1395,11 @@ with st.expander(
     st.write(
         "Ativo:",
         asset,
+    )
+
+    st.write(
+        "Preço identificado:",
+        current_price,
     )
 
     st.write(
@@ -1308,6 +1415,21 @@ with st.expander(
     st.write(
         "Resultado da análise:",
         list(analysis.keys()),
+    )
+
+    st.write(
+        "Score Técnico:",
+        technical_score,
+    )
+
+    st.write(
+        "Score Fundamentalista:",
+        fundamental_score,
+    )
+
+    st.write(
+        "Score Integrado:",
+        integrated_score,
     )
 
 
