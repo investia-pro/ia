@@ -1,68 +1,27 @@
 """
-InvestIA PRO
-Configurações globais
-
-Versão: 0.5.3 Stable
+InvestIA PRO - Módulo de Configurações Globais
 """
 
-# ======================================
-# Aplicação
-# ======================================
+DEFAULT_ASSETS = ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBAS3.SA", "BBDC4.SA", "ABEV3.SA", "WEGE3.SA", "PRIO3.SA", "RENT3.SA", "SUZB3.SA"]
 
-APP_NAME = "InvestIA PRO"
-VERSION = "0.5.3 Stable"
-
-PAGE_TITLE = "InvestIA PRO"
+APP_TITLE = "InvestIA PRO — Análise Inteligente de Ativos"
 PAGE_ICON = "📈"
 
-LAYOUT = "wide"
+SCORE_WEIGHTS = {
+    "trend": 40,
+    "rsi": 35,
+    "volatility": 25
+}
 
-# ======================================
-# Mercado
-# ======================================
-
-DEFAULT_PERIOD = "1y"
-
-CACHE_TTL = 300
-
-MARKET_SUFFIX = ".SA"
-
-# ======================================
-# Indicadores
-# ======================================
-
-RSI_PERIOD = 14
-
-SHORT_MA = 21
-
-LONG_MA = 200
-
-VOLATILITY_WINDOW = 21
-
-# ======================================
-# Classificação
-# ======================================
-
-BUY_SCORE = 3
-
-SELL_SCORE = -3
-
-# ======================================
-# RSI
-# ======================================
-
-RSI_OVERSOLD = 30
-
-RSI_OVERBOUGHT = 70
-
-# ======================================
-# Interface
-# ======================================
-
-MAX_HISTORY = 500
-
-SHOW_VOLUME = True
-
-SHOW_GRID = True
-
-THEME = "plotly_white"
+SECTOR_MAPPING = {
+    "PETR4.SA": "Petróleo & Gás",
+    "VALE3.SA": "Mineração",
+    "ITUB4.SA": "Financeiro",
+    "BBAS3.SA": "Financeiro",
+    "BBDC4.SA": "Financeiro",
+    "ABEV3.SA": "Bens de Consumo",
+    "WEGE3.SA": "Bens de Capital",
+    "PRIO3.SA": "Petróleo & Gás",
+    "RENT3.SA": "Serviços",
+    "SUZB3.SA": "Papel & Celulose"
+}
