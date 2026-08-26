@@ -1,1960 +1,1567 @@
-"""
-InvestIA PRO
-Aplicação Principal
-
-Versão: v0.7.3
-Fase: 3.0.7
-
-Dashboard Integrado:
-- Score Técnico
-- Score Fundamentalista
-- Score Integrado
-- Gráficos de mercado
-- Gráficos técnicos
-- Gráficos fundamentalistas
-- Comparação dos Scores
-- Diagnóstico técnico seguro
-
-Compatível com:
-- market.py Fase 3.0.7
-- indicators.py Fase 3.0.7
-- score.py Fase 3.0.7
-- analysis.py Fase 3.0.7
-- charts.py Fase 3.0.7
-
-IMPORTANTE:
-Os módulos do projeto são importados somente
-quando o usuário solicita uma análise.
-
-Isso evita que uma falha em outro módulo
-deixe a aplicação inteira em tela branca.
-"""
-
-import streamlit as st
-import pandas as pd
-import traceback
-
-
-# ==========================================================
-# CONFIGURAÇÃO DA PÁGINA
-# ==========================================================
-
-st.set_page_config(
-    page_title="InvestIA PRO",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-
-# ==========================================================
-# CSS
-# ==========================================================
-
-st.markdown(
-    """
-    <style>
-
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-        max-width: 1600px;
-    }
-
-    .investia-title {
-        font-size: 2.4rem;
-        font-weight: 800;
-        margin-bottom: 0.2rem;
-        color: #0f172a;
-    }
-
-    .investia-subtitle {
-        font-size: 1rem;
-        color: #64748b;
-        margin-bottom: 1.5rem;
-    }
-
-    .section-title {
-        font-size: 1.3rem;
-        font-weight: 750;
-        margin-top: 1.5rem;
-        margin-bottom: 0.8rem;
-        color: #0f172a;
-    }
-
-    .score-card {
-        padding: 1.2rem;
-        border-radius: 14px;
-        background-color: white;
-        border: 1px solid #e2e8f0;
-        min-height: 160px;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
-    }
-
-    .score-label {
-        color: #64748b;
-        font-size: 0.95rem;
-        font-weight: 700;
-    }
-
-    .score-value {
-        font-size: 2.4rem;
-        font-weight: 800;
-        margin-top: 0.3rem;
-        color: #0f172a;
-    }
-
-    .score-description {
-        color: #475569;
-        font-size: 0.9rem;
-        margin-top: 0.35rem;
-    }
-
-    .executive-card {
-        background-color: white;
-        padding: 1.2rem;
-        border-radius: 14px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-        color: #334155;
-        line-height: 1.6;
-    }
-
-    .analysis-status {
-        padding: 0.9rem 1rem;
-        border-radius: 10px;
-        background-color: #f8fafc;
-        border: 1px solid #e2e8f0;
-        color: #475569;
-        margin-bottom: 1rem;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+Converter chat para PDF
+Converter chat para PDF
+Abrir este chat no Acrobat
+Conversa com o Gemini
+estou criando uma ferramenta para analisar o mercado de ações.
 
 
-# ==========================================================
-# FUNÇÕES AUXILIARES
-# ==========================================================
-
-def safe_float(value, default=None):
-    """
-    Converte um valor para float com segurança.
-    """
-
-    if value is None:
-        return default
 
-    try:
-        value = float(value)
+abaixo como está o status do projeto.
 
-    except (
-        TypeError,
-        ValueError,
-    ):
-        return default
 
-    if pd.isna(value):
-        return default
 
-    return value
+você consegue me gerar os arquivos em TXT para fazer a substituição no projeto atual :
 
+Olá! Claro, posso te ajudar a gerar os arquivos TXT necessários para a atualização do seu projeto.
 
-def format_currency(value):
-    """
-    Formata valor em Real brasileiro.
-    """
+No entanto, o seu texto acabou cortando após o trecho "abaixo como está o status do projeto." e não incluiu o status atual nem os códigos/estrutura que você gostaria de substituir.
 
-    value = safe_float(
-        value,
-        0,
-    )
+Por favor, envie:
 
-    formatted = f"{value:,.2f}"
+O status atual / estrutura do projeto (quais arquivos existem hoje, linguagens usadas, bibliotecas, etc.).
 
-    formatted = (
-        formatted
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
-
-    return f"R$ {formatted}"
-
-
-def format_number(
-    value,
-    decimals=2,
-):
-    """
-    Formata número no padrão brasileiro.
-    """
-
-    value = safe_float(value)
+O que você deseja alterar ou adicionar na sua ferramenta de análise do mercado de ações.
 
-    if value is None:
-        return "N/D"
-
-    formatted = f"{value:,.{decimals}f}"
+Quais arquivos especificamente você deseja que eu gere em formato TXT (por exemplo, main.py.txt, requirements.txt, README.txt, módulos de coleta de dados, visualização, etc.).
 
-    return (
-        formatted
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
+Assim que você enviar essas informações, gerarei os arquivos .txt completos para você baixar e fazer a substituição!
 
+Abaixo está o panorama completo.
 
-def format_percent(value):
-    """
-    Formata percentual.
-    """
 
-    value = safe_float(value)
 
-    if value is None:
-        return "N/D"
+1. Objetivo final do InvestIA PRO
 
-    if abs(value) <= 1:
-        value = value * 100
+A ideia do projeto é transformar o InvestIA em uma plataforma de análise de investimentos que permita ao usuário:
 
-    return (
-        f"{value:.2f}%"
-        .replace(".", ",")
-    )
 
 
-def normalize_asset_input(asset):
-    """
-    Normaliza o código do ativo.
 
-    Exemplos:
 
-    PETR4 -> PETR4.SA
-    VALE3 -> VALE3.SA
-    AAPL  -> AAPL
-    BTC-USD -> BTC-USD
-    ^BVSP -> ^BVSP
-    """
+pesquisar qualquer ativo;
 
-    if asset is None:
-        return None
 
-    asset = str(asset).strip().upper()
 
-    if not asset:
-        return None
+consultar preço e histórico;
 
-    # Índices
-    if asset.startswith("^"):
-        return asset
 
-    # Criptomoedas
-    if "-" in asset:
-        return asset
 
-    # Ativo já possui sufixo de mercado
-    if "." in asset:
-        return asset
+analisar tendência;
 
-    # Ações brasileiras
-    if (
-        len(asset) in (5, 6)
-        and asset[-1].isdigit()
-    ):
-        return f"{asset}.SA"
 
-    return asset
 
+analisar indicadores técnicos;
 
-def find_price(
-    prepared_data,
-    indicators,
-):
-    """
-    Procura o preço atual em diferentes
-    estruturas utilizadas pelo projeto.
-    """
 
-    possible_keys = [
-        "price",
-        "current_price",
-        "close",
-        "last_price",
-    ]
-
-    # ------------------------------------------------------
-    # INDICADORES
-    # ------------------------------------------------------
-
-    if isinstance(indicators, dict):
 
-        for key in possible_keys:
-
-            value = safe_float(
-                indicators.get(key)
-            )
-
-            if value is not None:
-                return value
-
-    # ------------------------------------------------------
-    # DADOS PREPARADOS
-    # ------------------------------------------------------
-
-    if isinstance(prepared_data, dict):
-
-        for key in possible_keys:
-
-            value = safe_float(
-                prepared_data.get(key)
-            )
-
-            if value is not None:
-                return value
+calcular um Score InvestIA;
 
-    # ------------------------------------------------------
-    # HISTÓRICO
-    # ------------------------------------------------------
-
-    if isinstance(prepared_data, dict):
-
-        history = prepared_data.get(
-            "history"
-        )
-
-        if (
-            history is not None
-            and hasattr(history, "empty")
-            and not history.empty
-        ):
 
-            possible_columns = [
-                "Close",
-                "Adj Close",
-                "close",
-                "adj_close",
-            ]
 
-            for column in possible_columns:
-
-                if column in history.columns:
+receber classificação e sinal;
 
-                    value = safe_float(
-                        history[column].iloc[-1]
-                    )
-
-                    if value is not None:
-                        return value
-
-    return None
-
-
-def display_score_card(
-    label,
-    score,
-    classification,
-    signal,
-):
-    """
-    Exibe um card de Score.
-    """
-
-    score = safe_float(
-        score,
-        0,
-    )
-
-    # Garante Score entre 0 e 100
-    score = max(
-        0,
-        min(
-            100,
-            score,
-        ),
-    )
-
-    classification = (
-        classification
-        or "N/D"
-    )
-
-    signal = (
-        signal
-        or "N/D"
-    )
-
-    st.markdown(
-        f"""
-        <div class="score-card">
-
-            <div class="score-label">
-                {label}
-            </div>
-
-            <div class="score-value">
-                {score:.0f}/100
-            </div>
-
-            <div class="score-description">
-                Classificação: <b>{classification}</b>
-            </div>
-
-            <div class="score-description">
-                Sinal: <b>{signal}</b>
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def display_breakdown(
-    breakdown,
-):
-    """
-    Exibe detalhamento de um Score.
-    """
-
-    if not isinstance(
-        breakdown,
-        dict,
-    ):
-
-        st.info(
-            "Detalhamento não disponível."
-        )
-
-        return
-
-    rows = []
-
-    for key, item in breakdown.items():
-
-        # Alguns breakdowns possuem valores simples
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        # Campos-resumo não devem aparecer
-        if key.lower() in (
-            "base",
-            "score",
-            "raw_score",
-            "final_score",
-            "total",
-        ):
-            continue
-
-        points = item.get(
-            "points",
-            item.get(
-                "score",
-                item.get(
-                    "value",
-                    0,
-                ),
-            ),
-        )
-
-        signal = item.get(
-            "signal",
-            item.get(
-                "status",
-                "N/D",
-            ),
-        )
-
-        reason = item.get(
-            "reason",
-            item.get(
-                "description",
-                item.get(
-                    "analysis",
-                    "N/D",
-                ),
-            ),
-        )
-
-        rows.append(
-            {
-                "Indicador": str(
-                    key
-                ).replace(
-                    "_",
-                    " "
-                ).upper(),
-
-                "Pontos": points,
-
-                "Sinal": signal,
-
-                "Análise": reason,
-            }
-        )
-
-    if not rows:
-
-        st.info(
-            "Não há dados disponíveis para detalhar este Score."
-        )
-
-        return
-
-    dataframe = pd.DataFrame(
-        rows
-    )
-
-    st.dataframe(
-        dataframe,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-def render_chart(
-    figure,
-    message="Gráfico não disponível.",
-    height=None,
-):
-    """
-    Renderiza um gráfico Plotly com segurança.
-    """
-
-    if figure is None:
-
-        st.info(message)
-
-        return
-
-    try:
-
-        st.plotly_chart(
-            figure,
-            use_container_width=True,
-            theme="streamlit",
-        )
-
-    except Exception as error:
-
-        st.warning(
-            message
-        )
-
-        with st.expander(
-            "Ver erro do gráfico"
-        ):
-
-            st.code(
-                traceback.format_exc()
-            )
-
-
-def clean_fundamental_value(
-    key,
-    value,
-):
-    """
-    Formata valores fundamentalistas para exibição.
-    """
-
-    numeric_value = safe_float(value)
-
-    if numeric_value is None:
-        return str(value)
-
-    percentage_keys = [
-        "yield",
-        "margin",
-        "growth",
-        "return",
-        "roe",
-        "roa",
-        "beta",
-    ]
-
-    key_lower = str(key).lower()
-
-    if any(
-        term in key_lower
-        for term in percentage_keys
-    ):
-
-        if (
-            "beta"
-            not in key_lower
-        ):
-
-            return format_percent(
-                numeric_value
-            )
-
-    currency_keys = [
-        "marketcap",
-        "market_cap",
-        "enterprisevalue",
-        "revenue",
-        "income",
-        "cash",
-        "debt",
-        "ebitda",
-    ]
-
-    if any(
-        term in key_lower
-        for term in currency_keys
-    ):
-
-        if abs(numeric_value) >= 1_000_000_000:
-            return (
-                f"R$ "
-                f"{numeric_value / 1_000_000_000:.2f} Bi"
-                .replace(".", ",")
-            )
-
-        if abs(numeric_value) >= 1_000_000:
-            return (
-                f"R$ "
-                f"{numeric_value / 1_000_000:.2f} Mi"
-                .replace(".", ",")
-            )
-
-    return format_number(
-        numeric_value
-    )
-
-
-# ==========================================================
-# SIDEBAR
-# ==========================================================
-
-with st.sidebar:
-
-    st.title(
-        "📈 InvestIA PRO"
-    )
-
-    st.caption(
-        "Fase 3.0.7"
-    )
-
-    st.divider()
-
-    st.subheader(
-        "⚙️ Configurações"
-    )
-
-    period = st.selectbox(
-        "Período de análise",
-        options=[
-            "6mo",
-            "1y",
-            "2y",
-            "5y",
-        ],
-        index=1,
-    )
-
-    st.divider()
-
-    st.subheader(
-        "🎯 Score Integrado"
-    )
-
-    technical_weight_percent = st.slider(
-        "Peso Técnico (%)",
-        min_value=0,
-        max_value=100,
-        value=50,
-        step=5,
-    )
-
-    fundamental_weight_percent = (
-        100
-        - technical_weight_percent
-    )
-
-    st.write(
-        f"Peso Fundamentalista: "
-        f"**{fundamental_weight_percent}%**"
-    )
-
-    technical_weight = (
-        technical_weight_percent / 100
-    )
-
-    fundamental_weight = (
-        fundamental_weight_percent / 100
-    )
-
-    st.divider()
-
-    st.caption(
-        "Os pesos definem a composição "
-        "do Score Integrado."
-    )
-
-
-# ==========================================================
-# CABEÇALHO
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="investia-title">
-        📈 InvestIA PRO
-    </div>
-
-    <div class="investia-subtitle">
-        Inteligência para análise de investimentos
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
-# ENTRADA
-# ==========================================================
-
-input_col, button_col = st.columns(
-    [4, 1]
-)
-
-with input_col:
-
-    asset_input = st.text_input(
-        "Código do ativo",
-        value="PETR4",
-        placeholder=(
-            "Ex.: PETR4, VALE3, ITUB4, AAPL ou BTC-USD"
-        ),
-    )
-
-with button_col:
-
-    st.write("")
-    st.write("")
-
-    analyze_button = st.button(
-        "🔎 Analisar",
-        use_container_width=True,
-        type="primary",
-    )
-
-
-# ==========================================================
-# TELA INICIAL
-# ==========================================================
-
-if not analyze_button:
-
-    st.divider()
-
-    st.info(
-        "Digite o código de um ativo e clique em "
-        "**Analisar** para iniciar."
-    )
-
-    feature_col1, feature_col2, feature_col3 = (
-        st.columns(3)
-    )
-
-    with feature_col1:
-
-        st.markdown(
-            """
-            ### 📊 Análise Técnica
-
-            - Preço
-            - MA21
-            - MA200
-            - RSI
-            - Volume
-            - Tendência
-            """
-        )
-
-    with feature_col2:
-
-        st.markdown(
-            """
-            ### 🏢 Análise Fundamentalista
-
-            - P/L
-            - P/VP
-            - ROE
-            - Margens
-            - Crescimento
-            - Endividamento
-            """
-        )
-
-    with feature_col3:
-
-        st.markdown(
-            """
-            ### 🚀 Inteligência Integrada
-
-            - Score Técnico
-            - Score Fundamentalista
-            - Score Integrado
-            - Recomendação
-            - Gestão de Risco
-            - Explicabilidade
-            """
-        )
-
-    st.stop()
-
-
-# ==========================================================
-# NORMALIZAÇÃO
-# ==========================================================
-
-asset = normalize_asset_input(
-    asset_input
-)
-
-if not asset:
-
-    st.error(
-        "Informe um ativo válido."
-    )
-
-    st.stop()
-
-
-# ==========================================================
-# STATUS
-# ==========================================================
-
-st.divider()
-
-st.markdown(
-    f"""
-    <div class="analysis-status">
-        🔎 Ativo em análise: <b>{asset}</b>
-        &nbsp; | &nbsp;
-        Período: <b>{period}</b>
-        &nbsp; | &nbsp;
-        Técnico: <b>{technical_weight_percent}%</b>
-        &nbsp; | &nbsp;
-        Fundamentalista: <b>{fundamental_weight_percent}%</b>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
-# IMPORTAÇÃO SEGURA DOS MÓDULOS
-# ==========================================================
-
-try:
-
-    from market import (
-        get_market_data,
-        prepare_market_data,
-    )
-
-    from indicators import (
-        calculate_indicators,
-    )
-
-    from analysis import (
-        analyze_asset,
-    )
-
-    from charts import (
-        create_dashboard_charts,
-    )
 
 
-except Exception:
+comparar ativos;
 
-    st.error(
-        "❌ Erro ao carregar os módulos do InvestIA PRO."
-    )
 
-    st.warning(
-        "Verifique os arquivos: market.py, "
-        "indicators.py, analysis.py e charts.py."
-    )
 
-    st.code(
-        traceback.format_exc()
-    )
+identificar oportunidades;
 
-    st.stop()
 
 
-# ==========================================================
-# BUSCA DE DADOS
-# ==========================================================
+montar e acompanhar uma carteira;
 
-try:
 
-    with st.spinner(
-        f"Buscando dados de mercado de {asset}..."
-    ):
 
-        market_data = get_market_data(
-            asset,
-            period=period,
-        )
+receber alertas;
 
-    if market_data is None:
 
-        st.error(
-            f"Não foi possível obter dados para {asset}."
-        )
 
-        st.stop()
+testar estratégias historicamente;
 
 
-except Exception:
 
-    st.error(
-        "❌ Erro ao buscar dados de mercado."
-    )
+futuramente utilizar modelos de IA para melhorar a análise.
 
-    st.code(
-        traceback.format_exc()
-    )
+A evolução planejada ficou assim:
 
-    st.stop()
+FaseMóduloObjetivo1.0FundaçãoEstrutura inicial do sistema2.0Motor de análiseDados + indicadores + análise3.0Scanner de MercadoEncontrar oportunidades automaticamente4.0Indicadores avançadosAprofundar análise técnica5.0Score + IAInteligência de decisão6.0RankingClassificar melhores ativos7.0CarteiraGestão de carteira8.0AlertasMonitoramento automático9.0BacktestTestar estratégias10.0InvestIA PRO 1.0Produto final integrado
 
+Esse é o roadmap que tínhamos definido.
 
-# ==========================================================
-# PREPARAÇÃO DOS DADOS
-# ==========================================================
+2. Onde já chegamos
 
-try:
+Fase 1 — Fundação
 
-    with st.spinner(
-        "Preparando dados..."
-    ):
+Essa parte já foi construída.
 
-        prepared_data = prepare_market_data(
-            market_data
-        )
+A aplicação passou a utilizar:
 
-    if not isinstance(
-        prepared_data,
-        dict,
-    ):
 
-        st.error(
-            "prepare_market_data() não retornou um dicionário."
-        )
 
-        st.write(
-            "Tipo retornado:",
-            type(prepared_data)
-        )
 
-        st.stop()
 
+Python
 
-except Exception:
 
-    st.error(
-        "❌ Erro ao preparar os dados."
-    )
 
-    st.code(
-        traceback.format_exc()
-    )
+Streamlit
 
-    st.stop()
 
 
-# ==========================================================
-# VALIDAÇÃO DO HISTÓRICO
-# ==========================================================
+Pandas
 
-history = prepared_data.get(
-    "history"
-)
 
-if history is None:
 
-    st.error(
-        "❌ Os dados preparados não possuem histórico de preços."
-    )
+Plotly
 
-    st.write(
-        "Chaves disponíveis:",
-        list(prepared_data.keys())
-    )
 
-    st.stop()
 
+yfinance
 
-if hasattr(
-    history,
-    "empty"
-) and history.empty:
 
-    st.error(
-        "❌ O histórico de preços está vazio."
-    )
 
-    st.stop()
+GitHub
 
 
-# ==========================================================
-# INDICADORES
-# ==========================================================
 
-try:
+Streamlit Cloud
 
-    with st.spinner(
-        "Calculando indicadores técnicos..."
-    ):
+Estrutura principal criada:
 
-        indicators = calculate_indicators(
-            prepared_data
-        )
 
-    if not isinstance(
-        indicators,
-        dict,
-    ):
 
-        st.error(
-            "calculate_indicators() não retornou um dicionário."
-        )
+investia/
 
-        st.write(
-            "Tipo retornado:",
-            type(indicators)
-        )
+│
 
-        st.stop()
+├── app.py
 
+├── market.py
 
-except Exception:
+├── indicators.py
 
-    st.error(
-        "❌ Erro ao calcular os indicadores."
-    )
+├── analysis.py
 
-    st.code(
-        traceback.format_exc()
-    )
+├── charts.py
 
-    st.stop()
+├── config.py
 
+├── utils.py
 
-# ==========================================================
-# PREÇO ATUAL
-# ==========================================================
+└── score.py
 
-current_price = find_price(
-    prepared_data,
-    indicators,
-)
 
-if current_price is None:
 
-    st.error(
-        "❌ Não foi possível identificar o preço atual."
-    )
+O objetivo foi separar o projeto em módulos para não concentrar toda a lógica dentro do app.py.
 
-    st.write(
-        "Dados preparados:",
-        list(prepared_data.keys())
-    )
+3. Fase 2 — Motor de análise
 
-    st.write(
-        "Indicadores:",
-        list(indicators.keys())
-    )
+Essa foi a fase em que mais avançamos.
 
-    st.stop()
+A aplicação já consegue trabalhar com:
 
 
-# ==========================================================
-# FUNDAMENTOS
-# ==========================================================
 
-fundamentals = prepared_data.get(
-    "fundamentals",
-    {}
-)
+Mercado
 
-if not isinstance(
-    fundamentals,
-    dict,
-):
-    fundamentals = {}
+O módulo market.py é responsável pela obtenção dos dados.
 
+Inicialmente utilizamos:
 
-# ==========================================================
-# DADOS PARA ANÁLISE
-# ==========================================================
+yfinance
 
-analysis_data = {
+com suporte para ativos brasileiros, fazendo a conversão, por exemplo:
 
-    "asset": asset,
 
-    "price": current_price,
 
-    "current_price": current_price,
+PETR4 → PETR4.SA
 
-    "ma21": indicators.get(
-        "ma21"
-    ),
+VALE3 → VALE3.SA
 
-    "ma200": indicators.get(
-        "ma200"
-    ),
+ITUB4 → ITUB4.SA
 
-    "rsi": indicators.get(
-        "rsi"
-    ),
 
-    "volatility": indicators.get(
-        "volatility"
-    ),
 
-    "relative_volume": indicators.get(
-        "relative_volume"
-    ),
+A intenção continua sendo manter o yfinance durante o desenvolvimento e, posteriormente, permitir a substituição por uma fonte de dados mais profissional.
 
-    "distance_ma21": indicators.get(
-        "distance_ma21"
-    ),
+4. Indicadores
 
-    "distance_ma200": indicators.get(
-        "distance_ma200"
-    ),
+O indicators.py passou a calcular informações como:
 
-    "range_position": indicators.get(
-        "range_position"
-    ),
 
-    "fundamentals": fundamentals,
+
+
+
+preço;
+
+
+
+média móvel de 21 períodos;
+
+
+
+média móvel de 200 períodos;
+
+
+
+RSI;
+
+
+
+volatilidade;
+
+
+
+tendência.
+
+Tivemos inclusive um teste real com PETR4, que retornou aproximadamente:
+
+
+
+Preço: 40,87
+
+MA21: 41,41
+
+MA200: 37,78
+
+RSI: 49,83
+
+Volatilidade: 1,69%
+
+
+
+Isso confirmou que o motor básico de indicadores estava funcionando.
+
+5. Score InvestIA
+
+Criamos o conceito do Score InvestIA.
+
+O objetivo é deixar de simplesmente mostrar indicadores isolados e começar a transformar esses indicadores em uma avaliação objetiva.
+
+Por exemplo:
+
+
+
+Score: 72/100
+
+
+
+Tendência: Positiva
+
+Momentum: Neutro
+
+RSI: Favorável
+
+Volatilidade: Moderada
+
+Sinal: COMPRA
+
+
+
+O score.py foi criado justamente para separar essa lógica do restante da aplicação.
+
+6. Fase 2.6 — Dashboard Executivo
+
+Foi aqui que chegamos imediatamente antes da Fase 3.
+
+O app.py passou por uma grande evolução.
+
+A interface passou a apresentar:
+
+
+
+Entrada
+
+Pesquisar ativo
+
+[ PETR4 ]
+
+
+
+[ ANALISAR ]
+
+
+
+Informações principais
+
+Cards organizados em colunas contendo:
+
+
+
+
+
+preço;
+
+
+
+variação;
+
+
+
+score;
+
+
+
+classificação;
+
+
+
+sinal;
+
+
+
+tendência;
+
+
+
+risco;
+
+
+
+RSI.
+
+Também trabalhamos para:
+
+
+
+
+
+exibir valores em R$;
+
+
+
+utilizar verde/vermelho para variações;
+
+
+
+melhorar a organização dos cards;
+
+
+
+criar resumo executivo;
+
+
+
+tratar erros;
+
+
+
+permitir atualização dos dados.
+
+7. Análise executiva
+
+O sistema passou a extrair do módulo analysis.py informações como:
+
+
+
+score
+
+classification
+
+signal
+
+qualified_signal
+
+signal_level
+
+signal_icon
+
+trend
+
+recommendation
+
+risk
+
+rsi_status
+
+reasons
+
+breakdown
+
+executive_summary
+
+
+
+Isso é importante porque transforma o InvestIA de um simples painel de indicadores em um sistema que começa a interpretar os dados.
+
+8. Problemas que encontramos
+
+Aqui está um ponto importante.
+
+Durante a Fase 2.6 tivemos alguns erros.
+
+
+
+Erro 1 — Importação do Score
+
+Tivemos:
+
+
+
+ImportError
+
+from score import calculate_investia_score
+
+
+
+Foi necessário corrigir a integração entre score.py e analysis.py.
+
+Erro 2 — history
+
+Depois apareceu:
+
+
+
+KeyError: history
+
+
+
+
+
+originado no indicators.py.
+
+O problema estava relacionado à estrutura dos dados retornados pelo market.py.
+
+O app.py passou então a validar:
+
+
+
+
+
+prepared_data.get("history")
+
+
+
+
+
+e verificar se o histórico estava vazio antes de continuar.
+
+Erro 3 — yfinance Rate Limit
+
+Também encontramos:
+
+
+
+YFRateLimitError:
+
+Too Many Requests
+
+
+
+Esse é um problema importante porque o yfinance possui limitações de acesso.
+
+Por isso, não devemos tratar o yfinance como a solução definitiva do InvestIA PRO.
+
+Ele continua sendo adequado para desenvolvimento/prototipação, mas a arquitetura precisa permitir futuramente trocar o provedor.
+
+Erro 4 — asset
+
+Também tivemos:
+
+
+
+KeyError: asset
+
+
+
+
+
+e posteriormente:
+
+
+
+KeyError: price
+
+
+
+
+
+Esses erros mostraram que precisávamos padronizar melhor a estrutura dos dados entre:
+
+
+
+market.py
+
+↓
+
+indicators.py
+
+↓
+
+analysis.py
+
+↓
+
+score.py
+
+↓
+
+app.py
+
+
+
+Esse é um dos pontos que precisamos manter sob controle daqui para frente.
+
+9. Onde paramos exatamente
+
+O ponto mais importante:
+
+
+
+Estávamos na Fase 3.0 — Scanner de Mercado.
+
+A Fase 3.0 foi definida como a próxima grande etapa depois do Dashboard Executivo.
+
+O objetivo dela é mudar a lógica de:
+
+
+
+"Digite PETR4 e veja a análise."
+
+para:
+
+
+
+"Mostre quais ativos do mercado apresentam as melhores oportunidades."
+
+Essa é uma mudança importante.
+
+10. O que faremos na Fase 3.0
+
+Scanner de Mercado
+
+O InvestIA deverá analisar uma lista de ativos automaticamente.
+
+Por exemplo:
+
+
+
+PETR4
+
+VALE3
+
+ITUB4
+
+BBAS3
+
+BBDC4
+
+ABEV3
+
+WEGE3
+
+PRIO3
+
+RENT3
+
+SUZB3
+
+...
+
+
+
+E calcular para cada um:
+
+
+
+Preço
+
+MA21
+
+MA200
+
+RSI
+
+Volatilidade
+
+Tendência
+
+Score
+
+Sinal
+
+Risco
+
+
+
+Depois ordenar:
+
+
+
+1º PETR4 Score 86
+
+2º VALE3 Score 82
+
+3º ITUB4 Score 79
+
+4º WEGE3 Score 76
+
+5º BBAS3 Score 73
+
+
+
+11. Arquivos da Fase 3.0
+
+Na última sequência de desenvolvimento, começamos a trabalhar na Fase 3.0.7.
+
+Os arquivos que estavam sendo estruturados eram:
+
+
+
+analysis.py
+
+charts.py
+
+app.py
+
+
+
+Além dos módulos já existentes.
+
+A arquitetura deverá ficar aproximadamente:
+
+
+
+┌──────────────┐
+
+│ app.py │
+
+└──────┬───────┘
+
+│
+
+┌─────────────┼─────────────┐
+
+↓ ↓ ↓
+
+market.py indicators.py analysis.py
+
+│ │ │
+
+└─────────────┼─────────────┘
+
+↓
+
+score.py
+
+│
+
+↓
+
+charts.py
+
+
+
+12. Depois do Scanner: Fase 4
+
+Depois que conseguirmos analisar vários ativos simultaneamente, vamos aumentar a profundidade da análise técnica.
+
+
+
+Fase 4 — Indicadores avançados
+
+Possíveis componentes:
+
+
+
+
+
+MACD;
+
+
+
+Bollinger Bands;
+
+
+
+ATR;
+
+
+
+ADX;
+
+
+
+médias móveis adicionais;
+
+
+
+volume;
+
+
+
+volume financeiro;
+
+
+
+cruzamentos;
+
+
+
+suporte;
+
+
+
+resistência;
+
+
+
+momentum;
+
+
+
+força relativa;
+
+
+
+confirmação de tendência.
+
+A ideia é evitar que o Score dependa somente de:
+
+
+
+MA21
+
+MA200
+
+RSI
+
+
+
+e construir uma análise muito mais robusta.
+
+13. Fase 5 — Score Inteligente + IA
+
+Aqui começa a parte realmente diferenciadora do InvestIA.
+
+O sistema passará de:
+
+
+
+Indicadores → Score
+
+
+
+
+
+para algo mais sofisticado:
+
+
+
+Dados
+
+↓
+
+Indicadores
+
+↓
+
+Contexto de mercado
+
+↓
+
+Análise técnica
+
+↓
+
+Score
+
+↓
+
+Modelo de decisão
+
+↓
+
+Recomendação
+
+
+
+O objetivo será responder coisas como:
+
+
+
+Por que esse ativo está bem classificado?
+
+e não apenas:
+
+
+
+Score = 82.
+
+Por exemplo:
+
+
+
+PETR4 — Score 86
+
+
+
+FORÇAS
+
+✓ Tendência de alta
+
+✓ Preço acima da MA200
+
+✓ Momentum positivo
+
+✓ Volume favorável
+
+
+
+PONTOS DE ATENÇÃO
+
+⚠ RSI próximo da região de sobrecompra
+
+⚠ Volatilidade elevada
+
+
+
+CONCLUSÃO
+
+Cenário favorável, porém com risco moderado.
+
+
+
+14. Fase 6 — Ranking
+
+Depois teremos o Ranking InvestIA.
+
+Em vez de pesquisar individualmente, o usuário poderá abrir:
+
+
+
+Ranking de oportunidades
+
+┌────┬────────┬───────┬──────────┬─────────┐
+
+│ # │ Ativo │ Score │ Tendência│ Sinal │
+
+├────┼────────┼───────┼──────────┼─────────┤
+
+│ 1 │ PETR4 │ 86 │ Alta │ COMPRA │
+
+│ 2 │ VALE3 │ 82 │ Alta │ COMPRA │
+
+│ 3 │ ITUB4 │ 79 │ Alta │ COMPRA │
+
+└────┴────────┴───────┴──────────┴─────────┘
+
+
+
+E poderemos criar filtros:
+
+
+
+☑ Ações
+
+☑ FIIs
+
+☑ ETFs
+
+☑ Brasil
+
+☑ EUA
+
+
+
+15. Fase 7 — Carteira
+
+Aqui o InvestIA deixa de ser somente um scanner.
+
+O usuário poderá cadastrar uma carteira.
+
+Exemplo:
+
+
+
+PETR4 20%
+
+ITUB4 20%
+
+VALE3 15%
+
+BBAS3 15%
+
+FIIs 30%
+
+
+
+E o sistema poderá apresentar:
+
+
+
+
+
+rentabilidade;
+
+
+
+risco;
+
+
+
+concentração;
+
+
+
+diversificação;
+
+
+
+evolução patrimonial;
+
+
+
+distribuição por ativo;
+
+
+
+distribuição por setor;
+
+
+
+score da carteira.
+
+16. Fase 8 — Alertas
+
+Depois entra o monitoramento.
+
+Exemplo:
+
+
+
+🔔 PETR4
+
+
+
+Score passou de 80.
+
+
+
+RSI = 52
+
+Tendência = Alta
+
+Preço > MA21
+
+Preço > MA200
+
+
+
+Possível oportunidade identificada.
+
+
+
+Outros exemplos:
+
+
+
+🔔 Score caiu
+
+🔔 Tendência mudou
+
+🔔 Cruzamento de médias
+
+🔔 RSI sobrecomprado
+
+🔔 RSI sobrevendido
+
+🔔 Rompimento
+
+🔔 Aumento de volatilidade
+
+
+
+17. Fase 9 — Backtest
+
+Essa será uma das partes mais importantes.
+
+Antes de confiar em uma estratégia, queremos perguntar:
+
+
+
+"Se o InvestIA tivesse utilizado essa estratégia nos últimos 5 anos, qual teria sido o resultado?"
+
+Por exemplo:
+
+
+
+Estratégia:
+
+Score > 80
+
++
+
+Tendência de alta
+
++
+
+RSI entre 40 e 65
+
+
+
+O sistema poderá calcular:
+
+
+
+Retorno acumulado
+
+CAGR
+
+Drawdown máximo
+
+Sharpe
+
+Número de operações
+
+Win rate
+
+Profit factor
+
+
+
+Isso permitirá comparar versões do Score.
+
+18. Fase 10 — InvestIA PRO 1.0
+
+Finalmente teremos a integração:
+
+
+
+INVESTIA PRO
+
+│
+
+┌───────────────┼───────────────┐
+
+↓ ↓ ↓
+
+Dashboard Scanner Ranking
+
+│ │ │
+
+└───────────────┼───────────────┘
+
+↓
+
+Score InvestIA
+
+│
+
+┌────────┴────────┐
+
+↓ ↓
+
+Carteira Alertas
+
+│ │
+
+└────────┬────────┘
+
+↓
+
+Backtest
+
+│
+
+↓
+
+IA
+
+
+
+19. O ponto crítico agora
+
+Eu não recomendo simplesmente continuar adicionando código antes de estabilizarmos a base da Fase 3.0.
+
+O principal problema que apareceu no desenvolvimento foi a comunicação entre os módulos.
+
+Precisamos ter uma estrutura de dados padronizada.
+
+Algo conceitualmente assim:
+
+
+
+
+
+market_data
+
+↓
+
+{
+
+"asset": "PETR4",
+
+"price": 40.87,
+
+"history": ...,
+
+"indicators": {
+
+"ma21": ...,
+
+"ma200": ...,
+
+"rsi": ...,
+
+"volatility": ...
+
+},
+
+"analysis": {
+
+"trend": ...,
+
+"risk": ...,
+
+"signal": ...
+
+},
+
+"score": {
+
+"total": ...,
+
+"classification": ...
+
+}
+
 }
 
 
-# ==========================================================
-# ANÁLISE
-# ==========================================================
 
-try:
-
-    with st.spinner(
-        "Executando motor de análise InvestIA..."
-    ):
-
-        analysis = analyze_asset(
-            analysis_data,
-            asset=asset,
-            technical_weight=technical_weight,
-            fundamental_weight=fundamental_weight,
-        )
-
-    if not isinstance(
-        analysis,
-        dict,
-    ):
-
-        st.error(
-            "analyze_asset() não retornou um dicionário."
-        )
-
-        st.write(
-            "Tipo retornado:",
-            type(analysis)
-        )
-
-        st.stop()
+Isso reduzirá bastante a ocorrência de erros como:
 
 
-except Exception:
 
-    st.error(
-        "❌ Erro no motor de análise."
-    )
+KeyError: history
 
-    st.code(
-        traceback.format_exc()
-    )
+KeyError: asset
 
-    st.stop()
+KeyError: price
 
 
-# ==========================================================
-# GARANTE FUNDAMENTOS NO RESULTADO
-# ==========================================================
 
-if not isinstance(
-    analysis.get(
-        "fundamentals"
-    ),
-    dict,
-):
-    analysis["fundamentals"] = fundamentals
+20. Situação atual resumida
+
+🟢 Concluído
 
 
-# ==========================================================
-# EXTRAÇÃO DOS RESULTADOS
-# ==========================================================
 
-technical_score = analysis.get(
-    "technical_score",
-    0,
+Estrutura inicial do projeto
+
+
+
+Streamlit
+
+
+
+Conexão com mercado
+
+
+
+yfinance
+
+
+
+Tratamento básico de ativos brasileiros
+
+
+
+Histórico
+
+
+
+Preço
+
+
+
+Indicadores básicos
+
+
+
+RSI
+
+
+
+MA21
+
+
+
+MA200
+
+
+
+Volatilidade
+
+
+
+Análise de tendência
+
+
+
+Score InvestIA inicial
+
+
+
+Dashboard Executivo
+
+
+
+Cards
+
+
+
+Sinais
+
+
+
+Classificação
+
+
+
+Recomendação
+
+
+
+Resumo executivo
+
+
+
+Tratamento de erros básico
+
+🟡 Em desenvolvimento
+
+Fase 3.0 — Scanner de Mercado
+
+Especialmente a sequência 3.0.7, na qual estávamos trabalhando em:
+
+
+
+analysis.py
+
+charts.py
+
+app.py
+
+
+
+🔴 Ainda não desenvolvido
+
+
+
+Scanner completo
+
+
+
+Indicadores avançados
+
+
+
+IA mais sofisticada
+
+
+
+Ranking
+
+
+
+Carteira
+
+
+
+Alertas
+
+
+
+Backtest
+
+
+
+Versão PRO integrada
+
+21. O caminho que eu recomendo daqui
+
+Para evitar que o projeto continue ficando cada vez mais demorado e cheio de correções, eu faria a continuação em blocos fechados, sempre entregando os arquivos completos para substituição:
+
+3.0.7 → finalizar Scanner
+
+↓
+
+3.1 → estabilização e testes
+
+↓
+
+4.0 → indicadores avançados
+
+↓
+
+5.0 → Score Inteligente
+
+↓
+
+6.0 → Ranking
+
+↓
+
+7.0 → Carteira
+
+↓
+
+8.0 → Alertas
+
+↓
+
+9.0 → Backtest
+
+↓
+
+10.0 → InvestIA PRO 1.0
+
+E cada fase só é considerada concluída quando o aplicativo estiver funcionando, em vez de simplesmente acumular arquivos novos.
+
+Em resumo: o projeto não está no começo. A base já está construída; estamos na transição do Dashboard Executivo para o Scanner de Mercado. O próximo objetivo concreto é terminar a Fase 3.0.7 e estabilizar essa versão antes de partir para os indicadores avançados.
+
+Os seus arquivos TXT para substituição completa e atualização da Fase 3.0.7 do InvestIA PRO foram gerados com sucesso!
+
+📥 Arquivos Gerados para Download:
+app.py.txt
+
+Ícone do app TXT
+app.py
+ TXT 
+Aberto
+analysis.py.txt
+
+Ícone do app TXT
+analysis.py
+ TXT 
+Aberto
+score.py.txt
+
+Ícone do app TXT
+score.py
+ TXT 
+Aberto
+market.py.txt
+
+Ícone do app TXT
+market.py
+ TXT 
+Aberto
+indicators.py.txt
+
+Ícone do app TXT
+indicators.py
+ TXT 
+Aberto
+charts.py.txt
+
+Ícone do app TXT
+charts.py
+ TXT 
+Aberto
+utils.py.txt
+
+Ícone do app TXT
+utils.py
+ TXT 
+Aberto
+config.py.txt
+
+Ícone do app TXT
+config.py
+ TXT 
+Aberto
+🔧 Correções e Evoluções Aplicadas Nesses Arquivos
+Eliminação dos Erros de Comunicação (KeyError):
+
+O market.py passa a entregar sempre um dicionário perfeitamente padronizado (asset, price, history, change_percent, is_valid, error). Se a busca falhar ou estourar Rate Limit, ele retorna is_valid: False com uma mensagem amigável sem quebrar a execução.
+
+Scanner de Mercado Integrado (Fase 3.0.7):
+
+O app.py ganhou um menu lateral completo de navegação contendo a aba Scanner de Mercado, que roda análises em lote sobre uma lista de tickers, ordena pelo Score InvestIA e plota o gráfico comparativo automaticamente.
+
+Arquitetura Modular Limpa:
+
+config.py: Centraliza os parâmetros gerais, lista de ativos padrão e pesos do Score.
+
+utils.py: Concentra formatação de moedas (R$), porcentagens e tratamento de sufixos de ativos brasileiros (.SA).
+
+indicators.py: Garante que o cálculo do RSI e Volatilidade trate séries curtas sem gerar exceções.
+
+score.py: Separa pontuação por componentes (Tendência, RSI, Volatilidade) e mapeia sinais com ícones visuais.
+
+analysis.py: Consolida dados para criar pareceres e justificativas qualitativas.
+
+charts.py: Cuida apenas da renderização interativa em Plotly.
+
+🚀 Instruções de Substituição no Projeto:
+Faça o download dos arquivos .txt acima.
+
+Renomeie cada arquivo removendo a extensão .txt (exemplo: app.py.txt ➔ app.py).
+
+Substitua os arquivos equivalentes na sua pasta local do projeto.
+
+Execute o projeto com:
+
+Bash
+streamlit run app.py
+
+
+
+O Gemini é uma IA e pode cometer erros.
+
+Analisando
+"""
+InvestIA PRO — Aplicação Principal Streamlit (Fase 3.0.7)
+"""
+import streamlit as st
+import pandas as pd
+import time
+
+from config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
+from market import fetch_asset_data
+from analysis import analyze_asset
+from charts import create_price_chart, create_scanner_summary_chart
+from utils import format_currency, format_percent
+
+st.set_page_config(
+    page_title=APP_TITLE,
+    page_icon=PAGE_ICON,
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-technical_classification = analysis.get(
-    "technical_classification",
-    analysis.get(
-        "classification",
-        "N/D",
-    ),
-)
+st.title("📈 InvestIA PRO — Análise de Mercado & Scanner")
+st.caption("Fase 3.0.7 — Integração de Dashboard Executivo e Scanner Multi-Ativos")
 
-technical_signal = analysis.get(
-    "technical_signal",
-    analysis.get(
-        "signal",
-        "N/D",
-    ),
-)
+# Sidebar - Navegação
+menu = st.sidebar.radio("Navegação", ["Dashboard Executivo", "Scanner de Mercado", "Sobre o Projeto"])
 
+if menu == "Dashboard Executivo":
+    st.subheader("🔍 Análise Individual de Ativo")
+    
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        ticker_input = st.text_input("Digite o Ticker do Ativo (ex: PETR4, VALE3, ITUB4):", value="PETR4")
+    with col_btn:
+        st.write("")
+        st.write("")
+        btn_analyze = st.button("ANALISAR", type="primary", use_container_width=True)
 
-fundamental_score = analysis.get(
-    "fundamental_score",
-    0,
-)
+    if btn_analyze or ticker_input:
+        with st.spinner(f"Coletando dados e analisando {ticker_input}..."):
+            mkt_data = fetch_asset_data(ticker_input)
+            
+            if not mkt_data["is_valid"]:
+                st.error(f"Erro: {mkt_data['error']}")
+            else:
+                res = analyze_asset(mkt_data)
+                
+                # Metric Cards
+                c1, c2, c3, c4, c5 = st.columns(5)
+                c1.metric("Preço Atual", format_currency(res["price"]), delta=format_percent(res["change_percent"]))
+                c2.metric("Score InvestIA", f"{res['score']} / 100", delta=res["signal"])
+                c3.metric("Classificação", res["classification"])
+                c4.metric("Tendência", res["trend"])
+                c5.metric("Nível de Risco", res["risk"])
 
-fundamental_classification = analysis.get(
-    "fundamental_classification",
-    "N/D",
-)
+                st.markdown("---")
 
-fundamental_signal = analysis.get(
-    "fundamental_signal",
-    "N/D",
-)
+                # Resumo Executivo & Recomendações
+                col_left, col_right = st.columns([1, 1])
 
+                with col_left:
+                    st.markdown("### 📋 Resumo Executivo")
+                    st.info(res["executive_summary"])
+                    st.markdown(f"**Recomendação:** {res['recommendation']}")
 
-integrated_score = analysis.get(
-    "integrated_score",
-    analysis.get(
-        "score",
-        0,
-    ),
-)
+                    st.markdown("#### Justificativas do Sinal:")
+                    for r in res["reasons"]:
+                        st.write(f"• {r}")
 
-integrated_classification = analysis.get(
-    "integrated_classification",
-    analysis.get(
-        "classification",
-        "N/D",
-    ),
-)
+                with col_right:
+                    st.markdown("### 📊 Decomposição do Score")
+                    b = res["breakdown"]
+                    st.write(f"• **Tendência:** {b['trend_score']} / 40 pts")
+                    st.write(f"• **RSI:** {b['rsi_score']} / 35 pts")
+                    st.write(f"• **Volatilidade/Risco:** {b['volatility_score']} / 25 pts")
+                    
+                    st.markdown("#### Detalhes Técnicos:")
+                    st.write(f"• **RSI (14):** {res['rsi']} ({res['rsi_status']})")
+                    st.write(f"• **MA 21:** {format_currency(res['ma21'])}")
+                    st.write(f"• **MA 200:** {format_currency(res['ma200'])}")
+                    st.write(f"• **Volatilidade Anual:** {res['volatility']:.2f}%")
 
-integrated_signal = analysis.get(
-    "integrated_signal",
-    analysis.get(
-        "signal",
-        "N/D",
-    ),
-)
+                st.markdown("---")
 
+                # Gráfico
+                st.plotly_chart(create_price_chart(res), use_container_width=True)
 
-trend = analysis.get(
-    "trend",
-    indicators.get(
-        "trend",
-        "N/D",
-    ),
-)
+elif menu == "Scanner de Mercado":
+    st.subheader("🎯 Scanner de Oportunidades Automático")
+    st.write("Análise em lote de ativos selecionados para identificação rápida das melhores pontuações.")
 
-risk = analysis.get(
-    "risk",
-    "N/D",
-)
-
-recommendation = analysis.get(
-    "recommendation",
-    "AGUARDAR",
-)
-
-executive_summary = analysis.get(
-    "executive_summary",
-    "Resumo executivo não disponível.",
-)
-
-qualified_signal = analysis.get(
-    "qualified_signal",
-    integrated_signal,
-)
-
-signal_icon = analysis.get(
-    "signal_icon",
-    "⚪",
-)
-
-reasons = analysis.get(
-    "reasons",
-    [],
-)
-
-technical_breakdown = analysis.get(
-    "technical_breakdown",
-    analysis.get(
-        "breakdown",
-        {},
-    ),
-)
-
-fundamental_breakdown = analysis.get(
-    "fundamental_breakdown",
-    {},
-)
-
-
-# ==========================================================
-# GRÁFICOS
-# ==========================================================
-
-try:
-
-    charts = create_dashboard_charts(
-        prepared_data=prepared_data,
-        indicators=indicators,
-        analysis=analysis,
-        asset=asset,
+    selected_assets = st.multiselect(
+        "Selecione a lista de ativos para escanear:",
+        options=["PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "PRIO3", "RENT3", "SUZB3"],
+        default=["PETR4", "VALE3", "ITUB4", "BBAS3", "WEGE3"]
     )
 
-
-except Exception:
-
-    charts = {}
-
-    st.warning(
-        "⚠️ A análise foi concluída, mas ocorreu um "
-        "erro ao gerar parte dos gráficos."
-    )
-
-    with st.expander(
-        "Ver diagnóstico dos gráficos"
-    ):
-
-        st.code(
-            traceback.format_exc()
-        )
-
-
-# ==========================================================
-# INDICADORES PRINCIPAIS
-# ==========================================================
-
-st.divider()
-
-st.markdown(
-    """
-    <div class="section-title">
-        📌 Indicadores Principais
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-metric_col1, metric_col2, metric_col3, metric_col4 = (
-    st.columns(4)
-)
-
-
-with metric_col1:
-
-    st.metric(
-        "Preço Atual",
-        format_currency(
-            current_price
-        ),
-    )
-
-
-with metric_col2:
-
-    ma21 = indicators.get(
-        "ma21"
-    )
-
-    st.metric(
-        "MA21",
-        (
-            format_currency(ma21)
-            if safe_float(ma21) is not None
-            else "N/D"
-        ),
-    )
-
-
-with metric_col3:
-
-    ma200 = indicators.get(
-        "ma200"
-    )
-
-    st.metric(
-        "MA200",
-        (
-            format_currency(ma200)
-            if safe_float(ma200) is not None
-            else "N/D"
-        ),
-    )
-
-
-with metric_col4:
-
-    st.metric(
-        "RSI",
-        format_number(
-            indicators.get(
-                "rsi"
-            )
-        ),
-    )
-
-
-# ==========================================================
-# SCORES
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        🎯 Scores InvestIA
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-score_col1, score_col2, score_col3 = (
-    st.columns(3)
-)
-
-
-with score_col1:
-
-    display_score_card(
-        "📊 Score Técnico",
-        technical_score,
-        technical_classification,
-        technical_signal,
-    )
-
-
-with score_col2:
-
-    display_score_card(
-        "🏢 Score Fundamentalista",
-        fundamental_score,
-        fundamental_classification,
-        fundamental_signal,
-    )
-
-
-with score_col3:
-
-    display_score_card(
-        "🚀 Score Integrado",
-        integrated_score,
-        integrated_classification,
-        integrated_signal,
-    )
-
-
-# ==========================================================
-# DECISÃO EXECUTIVA
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        🧭 Decisão Executiva
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-decision_col1, decision_col2, decision_col3 = (
-    st.columns(3)
-)
-
-
-with decision_col1:
-
-    st.metric(
-        "Recomendação",
-        f"{signal_icon} {recommendation}",
-    )
-
-
-with decision_col2:
-
-    st.metric(
-        "Tendência",
-        trend,
-    )
-
-
-with decision_col3:
-
-    st.metric(
-        "Risco",
-        risk,
-    )
-
-
-st.caption(
-    f"Qualificação do sinal: {qualified_signal}"
-)
-
-
-# ==========================================================
-# RESUMO EXECUTIVO
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        📝 Resumo Executivo
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    f"""
-    <div class="executive-card">
-        {executive_summary}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
-# DASHBOARD GRÁFICO
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        📈 Dashboard de Mercado
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-chart_tab1, chart_tab2, chart_tab3 = st.tabs(
-    [
-        "📈 Mercado",
-        "🎯 Scores e Técnico",
-        "🏢 Fundamentalista",
-    ]
-)
-
-
-# ==========================================================
-# ABA MERCADO
-# ==========================================================
-
-with chart_tab1:
-
-    price_chart = charts.get(
-        "price"
-    )
-
-    render_chart(
-        price_chart,
-        "Gráfico de preços não disponível.",
-    )
-
-    market_col1, market_col2 = st.columns(2)
-
-    with market_col1:
-
-        volume_chart = charts.get(
-            "volume"
-        )
-
-        render_chart(
-            volume_chart,
-            "Gráfico de volume não disponível.",
-        )
-
-    with market_col2:
-
-        rsi_chart = charts.get(
-            "rsi"
-        )
-
-        render_chart(
-            rsi_chart,
-            "Gráfico de RSI não disponível.",
-        )
-
-    performance_chart = charts.get(
-        "performance"
-    )
-
-    render_chart(
-        performance_chart,
-        "Gráfico de desempenho não disponível.",
-    )
-
-
-# ==========================================================
-# ABA SCORES E TÉCNICO
-# ==========================================================
-
-with chart_tab2:
-
-    technical_col1, technical_col2 = st.columns(2)
-
-    with technical_col1:
-
-        score_chart = charts.get(
-            "scores"
-        )
-
-        render_chart(
-            score_chart,
-            "Comparação dos Scores não disponível.",
-        )
-
-    with technical_col2:
-
-        technical_chart = charts.get(
-            "technical"
-        )
-
-        render_chart(
-            technical_chart,
-            "Panorama técnico não disponível.",
-        )
-
-
-# ==========================================================
-# ABA FUNDAMENTALISTA
-# ==========================================================
-
-with chart_tab3:
-
-    fundamental_chart = charts.get(
-        "fundamentals"
-    )
-
-    render_chart(
-        fundamental_chart,
-        "Gráfico fundamentalista não disponível.",
-    )
-
-    st.markdown(
-        """
-        <div class="section-title">
-            📋 Dados Fundamentalistas
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    fundamental_rows = []
-
-    if isinstance(
-        fundamentals,
-        dict,
-    ):
-
-        for key, value in fundamentals.items():
-
-            if value is None:
-                continue
-
-            if isinstance(
-                value,
-                (
-                    dict,
-                    list,
-                    tuple,
-                ),
-            ):
-                continue
-
-            fundamental_rows.append(
-                {
-                    "Indicador": str(
-                        key
-                    ),
-
-                    "Valor": clean_fundamental_value(
-                        key,
-                        value,
-                    ),
-                }
-            )
-
-    if fundamental_rows:
-
-        fundamental_dataframe = pd.DataFrame(
-            fundamental_rows
-        )
-
-        st.dataframe(
-            fundamental_dataframe,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    else:
-
-        st.info(
-            "Dados fundamentalistas não disponíveis "
-            "para este ativo."
-        )
-
-
-# ==========================================================
-# PRINCIPAIS FATORES
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        🔎 Principais Fatores da Análise
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-if isinstance(
-    reasons,
-    list,
-) and reasons:
-
-    for reason in reasons:
-
-        if reason is None:
-            continue
-
-        st.write(
-            f"• {reason}"
-        )
-
-
-else:
-
-    st.info(
-        "Nenhum fator adicional foi retornado pelo "
-        "motor de análise."
-    )
-
-
-# ==========================================================
-# EXPLICABILIDADE DOS SCORES
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        🔬 Explicabilidade dos Scores
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-explain_tab1, explain_tab2 = st.tabs(
-    [
-        "📊 Score Técnico",
-        "🏢 Score Fundamentalista",
-    ]
-)
-
-
-with explain_tab1:
-
-    display_breakdown(
-        technical_breakdown
-    )
-
-
-with explain_tab2:
-
-    display_breakdown(
-        fundamental_breakdown
-    )
-
-
-# ==========================================================
-# DETALHES ADICIONAIS
-# ==========================================================
-
-with st.expander(
-    "📊 Ver dados técnicos completos"
-):
-
-    technical_rows = []
-
-    for key, value in indicators.items():
-
-        if isinstance(
-            value,
-            (
-                dict,
-                list,
-                tuple,
-                pd.DataFrame,
-                pd.Series,
-            ),
-        ):
-            continue
-
-        technical_rows.append(
-            {
-                "Indicador": str(key),
-                "Valor": value,
-            }
-        )
-
-    if technical_rows:
-
-        st.dataframe(
-            pd.DataFrame(
-                technical_rows
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    else:
-
-        st.info(
-            "Não há indicadores adicionais disponíveis."
-        )
-
-
-# ==========================================================
-# DIAGNÓSTICO TÉCNICO
-# ==========================================================
-
-with st.expander(
-    "🔧 Diagnóstico técnico"
-):
-
-    st.write(
-        "### Informações da execução"
-    )
-
-    st.write(
-        "Ativo:",
-        asset,
-    )
-
-    st.write(
-        "Período:",
-        period,
-    )
-
-    st.write(
-        "Peso técnico:",
-        f"{technical_weight_percent}%"
-    )
-
-    st.write(
-        "Peso fundamentalista:",
-        f"{fundamental_weight_percent}%"
-    )
-
-    st.divider()
-
-    st.write(
-        "### Estruturas carregadas"
-    )
-
-    st.write(
-        "Dados preparados:",
-        list(prepared_data.keys())
-    )
-
-    st.write(
-        "Indicadores:",
-        list(indicators.keys())
-    )
-
-    st.write(
-        "Resultado da análise:",
-        list(analysis.keys())
-    )
-
-    st.write(
-        "Gráficos disponíveis:",
-        list(charts.keys())
-    )
-
-    st.divider()
-
-    st.write(
-        "### Status dos dados"
-    )
-
-    st.write(
-        "Preço identificado:",
-        current_price is not None,
-    )
-
-    st.write(
-        "Histórico disponível:",
-        (
-            history is not None
-            and not history.empty
-        ),
-    )
-
-    st.write(
-        "Fundamentos disponíveis:",
-        len(fundamentals),
-    )
-
-    st.write(
-        "Score Técnico:",
-        technical_score,
-    )
-
-    st.write(
-        "Score Fundamentalista:",
-        fundamental_score,
-    )
-
-    st.write(
-        "Score Integrado:",
-        integrated_score,
-    )
-
-
-# ==========================================================
-# RODAPÉ
-# ==========================================================
-
-st.divider()
-
-st.caption(
-    "InvestIA PRO • Fase 3.0.7 • "
-    "Análise educacional e informativa. "
-    "Não constitui recomendação individual de investimento."
-)
+    if st.button("INICIAR SCANNER", type="primary"):
+        results_list = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        for i, symbol in enumerate(selected_assets):
+            status_text.text(f"Escaneando {symbol} ({i+1}/{len(selected_assets)})...")
+            m_data = fetch_asset_data(symbol)
+            if m_data["is_valid"]:
+                analysis = analyze_asset(m_data)
+                results_list.append({
+                    "Ativo": analysis["asset"],
+                    "Preço (R$)": analysis["price"],
+                    "Var. (%)": analysis["change_percent"],
+                    "Score": analysis["score"],
+                    "Sinal": f"{analysis['signal_icon']} {analysis['signal']}",
+                    "Classificação": analysis["classification"],
+                    "Tendência": analysis["trend"],
+                    "Risco": analysis["risk"],
+                    "RSI": analysis["rsi"]
+                })
+            progress_bar.progress((i + 1) / len(selected_assets))
+            time.sleep(0.1) # Evita sobrecarga imediata de requisições
+
+        status_text.text("Scan concluído com sucesso!")
+        
+        if results_list:
+            df_res = pd.DataFrame(results_list)
+            df_res = df_res.sort_values(by="Score", ascending=False).reset_index(drop=True)
+
+            st.markdown("### 🏆 Ranking de Oportunidades")
+            st.dataframe(df_res, use_container_width=True)
+
+            # Gráfico do Scanner
+            st.plotly_chart(create_scanner_summary_chart(df_res), use_container_width=True)
+        else:
+            st.warning("Nenhum ativo pôde ser escaneado com sucesso.")
+
+elif menu == "Sobre o Projeto":
+    st.subheader("🚀 Sobre o InvestIA PRO")
+    st.markdown("""
+    O **InvestIA PRO** é um sistema modular em desenvolvimento para análise quantitativa e qualitativa do mercado financeiro.
+    
+    **Arquitetura Atual (Fase 3.0.7):**
+    - `config.py`: Parâmetros e pesos do Score.
+    - `market.py`: Interface robusta com provedores de dados.
+    - `indicators.py`: Cálculo de médias móveis, RSI e volatilidade.
+    - `score.py`: Algoritmo de decisão e pontuação.
+    - `analysis.py`: Consolidação qualitativa e resumos executivos.
+    - `charts.py`: Visualizações interativas via Plotly.
+    - `app.py`: Dashboard e Scanner de Mercado via Streamlit.
+    """)
+app.py.txt
+Exibindo app.py.txt.
