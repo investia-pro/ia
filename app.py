@@ -3,20 +3,23 @@ InvestIA PRO
 Aplicação Principal
 
 Versão: v0.7.1
-Fase: 3.0.6 - Correção de Renderização
+Fase: 3.0.6
 
 Dashboard Integrado:
 - Score Técnico
 - Score Fundamentalista
 - Score Integrado
+- Indicadores Técnicos
+- Gráficos de Mercado
+- Decisão Executiva
+- Explicabilidade
 
-Correções desta versão:
-- Remoção dos cards HTML que podiam ser exibidos como texto
-- Uso de componentes nativos do Streamlit
-- Maior tolerância a estruturas diferentes de dados
-- Exibição segura dos fundamentos
-- Exibição segura dos breakdowns
-- Diagnóstico técnico expandido
+IMPORTANTE:
+Os módulos são importados somente após o usuário
+solicitar uma análise.
+
+Isso evita que falhas em módulos secundários
+deixem a aplicação inteira em tela branca.
 """
 
 import streamlit as st
@@ -37,16 +40,73 @@ st.set_page_config(
 
 
 # ==========================================================
-# CSS MÍNIMO
+# CSS
 # ==========================================================
 
 st.markdown(
     """
     <style>
+
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
+        max-width: 1400px;
     }
+
+    .investia-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-bottom: 0.2rem;
+    }
+
+    .investia-subtitle {
+        font-size: 1rem;
+        color: #64748b;
+        margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-top: 1.5rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .score-card {
+        padding: 1.2rem;
+        border-radius: 12px;
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        min-height: 155px;
+    }
+
+    .score-label {
+        color: #64748b;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .score-value {
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-top: 0.3rem;
+        color: #0f172a;
+    }
+
+    .score-description {
+        color: #475569;
+        font-size: 0.9rem;
+        margin-top: 0.3rem;
+    }
+
+    .executive-card {
+        background-color: white;
+        padding: 1.2rem;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        line-height: 1.6;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -58,20 +118,14 @@ st.markdown(
 # ==========================================================
 
 def safe_float(value, default=None):
-    """
-    Converte um valor para float com segurança.
-    """
+    """Converte um valor para float com segurança."""
 
     if value is None:
         return default
 
     try:
         value = float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ):
+    except (TypeError, ValueError):
         return default
 
     if pd.isna(value):
@@ -80,31 +134,10 @@ def safe_float(value, default=None):
     return value
 
 
-def safe_text(value, default="N/D"):
-    """
-    Converte valores para texto com segurança.
-    """
-
-    if value is None:
-        return default
-
-    value = str(value).strip()
-
-    if not value:
-        return default
-
-    return value
-
-
 def format_currency(value):
-    """
-    Formata valor em Real brasileiro.
-    """
+    """Formata valor em Real brasileiro."""
 
-    value = safe_float(
-        value,
-        0,
-    )
+    value = safe_float(value, 0)
 
     formatted = f"{value:,.2f}"
 
@@ -118,13 +151,8 @@ def format_currency(value):
     return f"R$ {formatted}"
 
 
-def format_number(
-    value,
-    decimals=2,
-):
-    """
-    Formata número no padrão brasileiro.
-    """
+def format_number(value, decimals=2):
+    """Formata número no padrão brasileiro."""
 
     value = safe_float(value)
 
@@ -142,9 +170,7 @@ def format_number(
 
 
 def format_percent(value):
-    """
-    Formata percentual.
-    """
+    """Formata percentual."""
 
     value = safe_float(value)
 
@@ -152,55 +178,13 @@ def format_percent(value):
         return "N/D"
 
     if abs(value) <= 1:
-        value = value * 100
+        value *= 100
 
-    return (
-        f"{value:.2f}%"
-        .replace(".", ",")
-    )
-
-
-def format_fundamental_value(key, value):
-    """
-    Formata valores fundamentalistas para exibição.
-    """
-
-    if value is None:
-        return "N/D"
-
-    numeric_value = safe_float(value)
-
-    if numeric_value is None:
-        return safe_text(value)
-
-    key_lower = str(key).lower()
-
-    percent_terms = [
-        "margin",
-        "roe",
-        "roa",
-        "yield",
-        "growth",
-        "payout",
-        "debt_to_equity",
-    ]
-
-    if any(
-        term in key_lower
-        for term in percent_terms
-    ):
-        return format_percent(numeric_value)
-
-    if abs(numeric_value) >= 1000:
-        return format_currency(numeric_value)
-
-    return format_number(numeric_value)
+    return f"{value:.2f}%".replace(".", ",")
 
 
 def normalize_asset_input(asset):
-    """
-    Normaliza o código do ativo.
-    """
+    """Normaliza o código informado pelo usuário."""
 
     if asset is None:
         return None
@@ -218,28 +202,19 @@ def normalize_asset_input(asset):
     if "-" in asset:
         return asset
 
-    # Ativo já possui mercado
+    # Ativo já possui sufixo de mercado
     if "." in asset:
         return asset
 
     # Ações brasileiras
-    if (
-        len(asset) in (5, 6)
-        and asset[-1].isdigit()
-    ):
+    if len(asset) in (5, 6) and asset[-1].isdigit():
         return f"{asset}.SA"
 
     return asset
 
 
-def find_price(
-    prepared_data,
-    indicators,
-):
-    """
-    Procura o preço atual em diferentes
-    estruturas utilizadas pelo projeto.
-    """
+def find_price(prepared_data, indicators):
+    """Localiza o preço atual em diferentes estruturas."""
 
     possible_keys = [
         "price",
@@ -248,45 +223,25 @@ def find_price(
         "last_price",
     ]
 
-    # ------------------------------------------------------
-    # INDICADORES
-    # ------------------------------------------------------
-
     if isinstance(indicators, dict):
 
         for key in possible_keys:
 
-            value = safe_float(
-                indicators.get(key)
-            )
+            value = safe_float(indicators.get(key))
 
             if value is not None:
                 return value
-
-    # ------------------------------------------------------
-    # DADOS PREPARADOS
-    # ------------------------------------------------------
 
     if isinstance(prepared_data, dict):
 
         for key in possible_keys:
 
-            value = safe_float(
-                prepared_data.get(key)
-            )
+            value = safe_float(prepared_data.get(key))
 
             if value is not None:
                 return value
 
-    # ------------------------------------------------------
-    # HISTÓRICO
-    # ------------------------------------------------------
-
-    if isinstance(prepared_data, dict):
-
-        history = prepared_data.get(
-            "history"
-        )
+        history = prepared_data.get("history")
 
         if (
             history is not None
@@ -294,14 +249,12 @@ def find_price(
             and not history.empty
         ):
 
-            possible_columns = [
+            for column in [
                 "Close",
                 "Adj Close",
                 "close",
                 "adj_close",
-            ]
-
-            for column in possible_columns:
+            ]:
 
                 if column in history.columns:
 
@@ -321,234 +274,76 @@ def display_score_card(
     classification,
     signal,
 ):
-    """
-    Exibe um card de Score usando apenas
-    componentes nativos do Streamlit.
-    """
+    """Exibe um card de Score."""
 
-    score = safe_float(
-        score,
-        0,
-    )
+    score = safe_float(score, 0)
 
-    classification = safe_text(
-        classification
-    )
-
-    signal = safe_text(
-        signal
-    )
+    classification = classification or "N/D"
+    signal = signal or "N/D"
 
     st.markdown(
-        f"### {label}"
+        f"""
+        <div class="score-card">
+
+            <div class="score-label">
+                {label}
+            </div>
+
+            <div class="score-value">
+                {score:.0f}/100
+            </div>
+
+            <div class="score-description">
+                Classificação: {classification}
+            </div>
+
+            <div class="score-description">
+                Sinal: {signal}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.metric(
-        label="Pontuação",
-        value=f"{score:.0f}/100",
-    )
 
-    info_col1, info_col2 = st.columns(2)
+def display_breakdown(breakdown):
+    """Exibe o detalhamento de um Score."""
 
-    with info_col1:
+    if not isinstance(breakdown, dict):
 
-        st.caption(
-            "Classificação"
-        )
-
-        st.write(
-            classification
-        )
-
-    with info_col2:
-
-        st.caption(
-            "Sinal"
-        )
-
-        st.write(
-            signal
-        )
-
-
-def display_breakdown(
-    breakdown,
-):
-    """
-    Exibe detalhamento de um Score.
-    Aceita diferentes formatos de retorno.
-    """
-
-    if not breakdown:
-
-        st.info(
-            "Detalhamento não disponível."
-        )
-
-        return
-
-    # ------------------------------------------------------
-    # FORMATO LISTA
-    # ------------------------------------------------------
-
-    if isinstance(
-        breakdown,
-        list,
-    ):
-
-        rows = []
-
-        for item in breakdown:
-
-            if isinstance(
-                item,
-                dict,
-            ):
-
-                rows.append(
-                    {
-                        "Indicador": item.get(
-                            "indicator",
-                            item.get(
-                                "name",
-                                "N/D",
-                            ),
-                        ),
-                        "Pontos": item.get(
-                            "points",
-                            item.get(
-                                "score",
-                                0,
-                            ),
-                        ),
-                        "Sinal": item.get(
-                            "signal",
-                            "N/D",
-                        ),
-                        "Análise": item.get(
-                            "reason",
-                            item.get(
-                                "description",
-                                "N/D",
-                            ),
-                        ),
-                    }
-                )
-
-        if rows:
-
-            st.dataframe(
-                pd.DataFrame(rows),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        else:
-
-            st.info(
-                "Não há dados disponíveis para detalhar o Score."
-            )
-
-        return
-
-    # ------------------------------------------------------
-    # FORMATO DICIONÁRIO
-    # ------------------------------------------------------
-
-    if not isinstance(
-        breakdown,
-        dict,
-    ):
-
-        st.info(
-            "Detalhamento não disponível."
-        )
-
+        st.info("Detalhamento não disponível.")
         return
 
     rows = []
 
-    ignored_keys = [
-        "base",
-        "score",
-        "raw_score",
-        "final_score",
-        "total",
-        "classification",
-        "signal",
-    ]
-
     for key, item in breakdown.items():
 
-        if key in ignored_keys:
+        if not isinstance(item, dict):
             continue
 
-        # --------------------------------------------------
-        # ITEM É DICIONÁRIO
-        # --------------------------------------------------
-
-        if isinstance(
-            item,
-            dict,
+        if key in (
+            "base",
+            "score",
+            "raw_score",
+            "final_score",
         ):
+            continue
 
-            rows.append(
-                {
-                    "Indicador": item.get(
-                        "indicator",
-                        item.get(
-                            "name",
-                            str(key).upper(),
-                        ),
-                    ),
-                    "Pontos": item.get(
-                        "points",
-                        item.get(
-                            "score",
-                            item.get(
-                                "value",
-                                0,
-                            ),
-                        ),
-                    ),
-                    "Sinal": item.get(
-                        "signal",
-                        "N/D",
-                    ),
-                    "Análise": item.get(
-                        "reason",
-                        item.get(
-                            "description",
-                            item.get(
-                                "analysis",
-                                "N/D",
-                            ),
-                        ),
-                    ),
-                }
-            )
-
-        # --------------------------------------------------
-        # ITEM É VALOR SIMPLES
-        # --------------------------------------------------
-
-        else:
-
-            rows.append(
-                {
-                    "Indicador": str(key).upper(),
-                    "Pontos": item,
-                    "Sinal": "N/D",
-                    "Análise": "Indicador utilizado no cálculo.",
-                }
-            )
+        rows.append(
+            {
+                "Indicador": str(key).upper(),
+                "Pontos": item.get("points", 0),
+                "Sinal": item.get("signal", "N/D"),
+                "Análise": item.get("reason", "N/D"),
+            }
+        )
 
     if not rows:
 
         st.info(
             "Não há dados disponíveis para detalhar o Score."
         )
-
         return
 
     st.dataframe(
@@ -558,19 +353,40 @@ def display_breakdown(
     )
 
 
+def render_chart(chart):
+    """
+    Renderiza um gráfico com segurança.
+
+    Uma falha individual não interrompe o dashboard.
+    """
+
+    if chart is None:
+        st.info("Gráfico não disponível.")
+        return
+
+    try:
+
+        st.plotly_chart(
+            chart,
+            use_container_width=True,
+        )
+
+    except Exception as error:
+
+        st.warning(
+            f"Não foi possível exibir este gráfico: {error}"
+        )
+
+
 # ==========================================================
 # SIDEBAR
 # ==========================================================
 
 with st.sidebar:
 
-    st.title(
-        "📈 InvestIA PRO"
-    )
+    st.title("📈 InvestIA PRO")
 
-    st.caption(
-        "Fase 3.0.6"
-    )
+    st.caption("Fase 3.0.6")
 
     st.divider()
 
@@ -587,9 +403,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader(
-        "Score Integrado"
-    )
+    st.subheader("Score Integrado")
 
     technical_weight_percent = st.slider(
         "Peso Técnico (%)",
@@ -600,12 +414,11 @@ with st.sidebar:
     )
 
     fundamental_weight_percent = (
-        100
-        - technical_weight_percent
+        100 - technical_weight_percent
     )
 
     st.write(
-        "Peso Fundamentalista: "
+        f"Peso Fundamentalista: "
         f"**{fundamental_weight_percent}%**"
     )
 
@@ -622,12 +435,17 @@ with st.sidebar:
 # CABEÇALHO
 # ==========================================================
 
-st.title(
-    "📈 InvestIA PRO"
-)
+st.markdown(
+    """
+    <div class="investia-title">
+        📈 InvestIA PRO
+    </div>
 
-st.caption(
-    "Inteligência para análise de investimentos"
+    <div class="investia-subtitle">
+        Inteligência para análise de investimentos
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -635,9 +453,7 @@ st.caption(
 # ENTRADA
 # ==========================================================
 
-input_col, button_col = st.columns(
-    [4, 1]
-)
+input_col, button_col = st.columns([4, 1])
 
 with input_col:
 
@@ -673,16 +489,15 @@ if not analyze_button:
         "**Analisar**."
     )
 
-    st.subheader(
-        "Recursos disponíveis"
-    )
-
     st.markdown(
         """
+        ### Recursos disponíveis
+
         - 📊 Score Técnico
         - 🏢 Score Fundamentalista
         - 🚀 Score Integrado
         - 📈 Indicadores técnicos
+        - 📉 Gráficos de mercado
         - 🧭 Tendência e recomendação
         - ⚠️ Gestão de risco
         - 🔬 Explicabilidade dos Scores
@@ -696,16 +511,11 @@ if not analyze_button:
 # NORMALIZAÇÃO
 # ==========================================================
 
-asset = normalize_asset_input(
-    asset_input
-)
+asset = normalize_asset_input(asset_input)
 
 if not asset:
 
-    st.error(
-        "Informe um ativo válido."
-    )
-
+    st.error("Informe um ativo válido.")
     st.stop()
 
 
@@ -715,9 +525,7 @@ if not asset:
 
 st.divider()
 
-st.subheader(
-    f"📊 Analisando: {asset}"
-)
+st.subheader(f"📊 Analisando: {asset}")
 
 
 # ==========================================================
@@ -739,19 +547,33 @@ try:
         analyze_asset,
     )
 
+    # charts.py é opcional para não derrubar
+    # a análise caso tenha algum problema.
+    try:
+
+        from charts import (
+            create_dashboard_charts,
+        )
+
+        charts_module_available = True
+
+    except Exception:
+
+        create_dashboard_charts = None
+        charts_module_available = False
+
 except Exception:
 
     st.error(
-        "❌ Erro ao carregar os módulos do InvestIA PRO."
+        "❌ Erro ao carregar os módulos principais "
+        "do InvestIA PRO."
     )
 
-    st.code(
-        traceback.format_exc()
-    )
+    st.code(traceback.format_exc())
 
     st.warning(
-        "O erro está em um dos arquivos: "
-        "market.py, indicators.py ou analysis.py."
+        "Verifique os arquivos: market.py, "
+        "indicators.py e analysis.py."
     )
 
     st.stop()
@@ -782,13 +604,9 @@ try:
 
 except Exception:
 
-    st.error(
-        "❌ Erro ao buscar dados de mercado."
-    )
+    st.error("❌ Erro ao buscar dados de mercado.")
 
-    st.code(
-        traceback.format_exc()
-    )
+    st.code(traceback.format_exc())
 
     st.stop()
 
@@ -799,34 +617,24 @@ except Exception:
 
 try:
 
-    prepared_data = prepare_market_data(
-        market_data
-    )
+    prepared_data = prepare_market_data(market_data)
 
-    if not isinstance(
-        prepared_data,
-        dict,
-    ):
+    if not isinstance(prepared_data, dict):
 
         st.error(
-            "prepare_market_data() não retornou um dicionário."
+            "prepare_market_data() não retornou "
+            "um dicionário."
         )
 
-        st.write(
-            type(prepared_data)
-        )
+        st.write(type(prepared_data))
 
         st.stop()
 
 except Exception:
 
-    st.error(
-        "❌ Erro ao preparar os dados."
-    )
+    st.error("❌ Erro ao preparar os dados.")
 
-    st.code(
-        traceback.format_exc()
-    )
+    st.code(traceback.format_exc())
 
     st.stop()
 
@@ -837,34 +645,24 @@ except Exception:
 
 try:
 
-    indicators = calculate_indicators(
-        prepared_data
-    )
+    indicators = calculate_indicators(prepared_data)
 
-    if not isinstance(
-        indicators,
-        dict,
-    ):
+    if not isinstance(indicators, dict):
 
         st.error(
-            "calculate_indicators() não retornou um dicionário."
+            "calculate_indicators() não retornou "
+            "um dicionário."
         )
 
-        st.write(
-            type(indicators)
-        )
+        st.write(type(indicators))
 
         st.stop()
 
 except Exception:
 
-    st.error(
-        "❌ Erro ao calcular os indicadores."
-    )
+    st.error("❌ Erro ao calcular os indicadores.")
 
-    st.code(
-        traceback.format_exc()
-    )
+    st.code(traceback.format_exc())
 
     st.stop()
 
@@ -884,9 +682,7 @@ if current_price is None:
         "❌ Não foi possível identificar o preço atual."
     )
 
-    with st.expander(
-        "🔧 Diagnóstico do preço"
-    ):
+    with st.expander("🔧 Diagnóstico do preço"):
 
         st.write(
             "Dados preparados:",
@@ -907,18 +703,15 @@ if current_price is None:
 
 fundamentals = prepared_data.get(
     "fundamentals",
-    {}
+    {},
 )
 
-if not isinstance(
-    fundamentals,
-    dict,
-):
+if not isinstance(fundamentals, dict):
     fundamentals = {}
 
 
 # ==========================================================
-# DADOS DA ANÁLISE
+# DADOS PARA ANÁLISE
 # ==========================================================
 
 analysis_data = {
@@ -927,28 +720,20 @@ analysis_data = {
 
     "price": current_price,
 
-    "ma21": indicators.get(
-        "ma21"
-    ),
+    "ma21": indicators.get("ma21"),
 
-    "ma200": indicators.get(
-        "ma200"
-    ),
+    "ma200": indicators.get("ma200"),
 
-    "rsi": indicators.get(
-        "rsi"
-    ),
+    "rsi": indicators.get("rsi"),
 
-    "volatility": indicators.get(
-        "volatility"
-    ),
+    "volatility": indicators.get("volatility"),
 
     "fundamentals": fundamentals,
 }
 
 
 # ==========================================================
-# ANÁLISE
+# MOTOR DE ANÁLISE
 # ==========================================================
 
 try:
@@ -960,30 +745,21 @@ try:
         fundamental_weight=fundamental_weight,
     )
 
-    if not isinstance(
-        analysis,
-        dict,
-    ):
+    if not isinstance(analysis, dict):
 
         st.error(
             "analyze_asset() não retornou um dicionário."
         )
 
-        st.write(
-            type(analysis)
-        )
+        st.write(type(analysis))
 
         st.stop()
 
 except Exception:
 
-    st.error(
-        "❌ Erro no motor de análise."
-    )
+    st.error("❌ Erro no motor de análise.")
 
-    st.code(
-        traceback.format_exc()
-    )
+    st.code(traceback.format_exc())
 
     st.stop()
 
@@ -994,10 +770,7 @@ except Exception:
 
 technical_score = analysis.get(
     "technical_score",
-    analysis.get(
-        "technical",
-        0,
-    ),
+    0,
 )
 
 technical_classification = analysis.get(
@@ -1013,10 +786,7 @@ technical_signal = analysis.get(
 
 fundamental_score = analysis.get(
     "fundamental_score",
-    analysis.get(
-        "fundamental",
-        0,
-    ),
+    0,
 )
 
 fundamental_classification = analysis.get(
@@ -1032,38 +802,23 @@ fundamental_signal = analysis.get(
 
 integrated_score = analysis.get(
     "integrated_score",
-    analysis.get(
-        "score",
-        0,
-    ),
+    analysis.get("score", 0),
 )
 
 integrated_classification = analysis.get(
     "integrated_classification",
-    analysis.get(
-        "classification",
-        "N/D",
-    ),
+    analysis.get("classification", "N/D"),
 )
 
 integrated_signal = analysis.get(
     "integrated_signal",
-    analysis.get(
-        "signal",
-        "N/D",
-    ),
+    analysis.get("signal", "N/D"),
 )
 
 
-trend = analysis.get(
-    "trend",
-    "N/D",
-)
+trend = analysis.get("trend", "N/D")
 
-risk = analysis.get(
-    "risk",
-    "N/D",
-)
+risk = analysis.get("risk", "N/D")
 
 recommendation = analysis.get(
     "recommendation",
@@ -1092,10 +847,7 @@ reasons = analysis.get(
 
 technical_breakdown = analysis.get(
     "technical_breakdown",
-    analysis.get(
-        "breakdown",
-        {},
-    ),
+    analysis.get("breakdown", {}),
 )
 
 fundamental_breakdown = analysis.get(
@@ -1105,14 +857,12 @@ fundamental_breakdown = analysis.get(
 
 
 # ==========================================================
-# PREÇO E INDICADORES
+# INDICADORES PRINCIPAIS
 # ==========================================================
 
 st.divider()
 
-st.subheader(
-    "📌 Indicadores Principais"
-)
+st.subheader("📌 Indicadores Principais")
 
 metric_col1, metric_col2, metric_col3, metric_col4 = (
     st.columns(4)
@@ -1122,35 +872,33 @@ with metric_col1:
 
     st.metric(
         "Preço Atual",
-        format_currency(
-            current_price
-        ),
+        format_currency(current_price),
     )
 
 with metric_col2:
 
-    ma21 = indicators.get(
-        "ma21"
-    )
+    ma21 = indicators.get("ma21")
 
     st.metric(
         "MA21",
-        format_currency(ma21)
-        if safe_float(ma21) is not None
-        else "N/D",
+        (
+            format_currency(ma21)
+            if ma21 is not None
+            else "N/D"
+        ),
     )
 
 with metric_col3:
 
-    ma200 = indicators.get(
-        "ma200"
-    )
+    ma200 = indicators.get("ma200")
 
     st.metric(
         "MA200",
-        format_currency(ma200)
-        if safe_float(ma200) is not None
-        else "N/D",
+        (
+            format_currency(ma200)
+            if ma200 is not None
+            else "N/D"
+        ),
     )
 
 with metric_col4:
@@ -1158,9 +906,7 @@ with metric_col4:
     st.metric(
         "RSI",
         format_number(
-            indicators.get(
-                "rsi"
-            )
+            indicators.get("rsi")
         ),
     )
 
@@ -1169,15 +915,16 @@ with metric_col4:
 # SCORES
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "🎯 Scores InvestIA"
+st.markdown(
+    """
+    <div class="section-title">
+        🎯 Scores InvestIA
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-score_col1, score_col2, score_col3 = (
-    st.columns(3)
-)
+score_col1, score_col2, score_col3 = st.columns(3)
 
 with score_col1:
 
@@ -1208,13 +955,107 @@ with score_col3:
 
 
 # ==========================================================
+# GRÁFICOS
+# ==========================================================
+
+st.markdown(
+    """
+    <div class="section-title">
+        📈 Análise Gráfica
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+if (
+    charts_module_available
+    and create_dashboard_charts is not None
+):
+
+    try:
+
+        charts = create_dashboard_charts(
+            prepared_data=prepared_data,
+            asset=asset,
+            technical_score=technical_score,
+            fundamental_score=fundamental_score,
+            integrated_score=integrated_score,
+        )
+
+        if not isinstance(charts, dict):
+
+            st.warning(
+                "O módulo de gráficos não retornou "
+                "uma estrutura válida."
+            )
+
+        else:
+
+            chart_tab1, chart_tab2, chart_tab3 = st.tabs(
+                [
+                    "📈 Análise Técnica",
+                    "📊 Volume",
+                    "🎯 Scores",
+                ]
+            )
+
+            with chart_tab1:
+
+                render_chart(
+                    charts.get("technical_chart")
+                )
+
+                with st.expander(
+                    "Ver gráfico simples de preço"
+                ):
+
+                    render_chart(
+                        charts.get("price_chart")
+                    )
+
+            with chart_tab2:
+
+                render_chart(
+                    charts.get("volume_chart")
+                )
+
+            with chart_tab3:
+
+                render_chart(
+                    charts.get("score_chart")
+                )
+
+    except Exception:
+
+        st.warning(
+            "⚠️ Não foi possível gerar os gráficos."
+        )
+
+        with st.expander(
+            "🔧 Detalhes do erro dos gráficos"
+        ):
+
+            st.code(traceback.format_exc())
+
+else:
+
+    st.info(
+        "Módulo de gráficos indisponível. "
+        "A análise principal continua funcionando."
+    )
+
+
+# ==========================================================
 # DECISÃO EXECUTIVA
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "🧭 Decisão Executiva"
+st.markdown(
+    """
+    <div class="section-title">
+        🧭 Decisão Executiva
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 decision_col1, decision_col2, decision_col3 = (
@@ -1232,14 +1073,14 @@ with decision_col2:
 
     st.metric(
         "Tendência",
-        safe_text(trend),
+        trend,
     )
 
 with decision_col3:
 
     st.metric(
         "Risco",
-        safe_text(risk),
+        risk,
     )
 
 st.caption(
@@ -1251,57 +1092,43 @@ st.caption(
 # RESUMO EXECUTIVO
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "📝 Resumo Executivo"
+st.markdown(
+    """
+    <div class="section-title">
+        📝 Resumo Executivo
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-st.info(
-    safe_text(
-        executive_summary,
-        "Resumo não disponível.",
-    )
+st.markdown(
+    f"""
+    <div class="executive-card">
+        {executive_summary}
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
 # ==========================================================
-# FATORES
+# PRINCIPAIS FATORES
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "🔎 Principais Fatores"
+st.markdown(
+    """
+    <div class="section-title">
+        🔎 Principais Fatores
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
-if isinstance(
-    reasons,
-    list,
-) and reasons:
+if isinstance(reasons, list) and reasons:
 
     for reason in reasons:
 
-        if isinstance(
-            reason,
-            dict,
-        ):
-
-            reason_text = reason.get(
-                "reason",
-                reason.get(
-                    "description",
-                    str(reason),
-                ),
-            )
-
-        else:
-
-            reason_text = str(reason)
-
-        st.write(
-            f"• {reason_text}"
-        )
+        st.write(f"• {reason}")
 
 else:
 
@@ -1311,13 +1138,16 @@ else:
 
 
 # ==========================================================
-# FUNDAMENTOS
+# DADOS FUNDAMENTALISTAS
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "🏢 Dados Fundamentalistas"
+st.markdown(
+    """
+    <div class="section-title">
+        🏢 Dados Fundamentalistas
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 fundamental_rows = []
@@ -1329,20 +1159,15 @@ for key, value in fundamentals.items():
 
     fundamental_rows.append(
         {
-            "Indicador": str(key).upper(),
-            "Valor": format_fundamental_value(
-                key,
-                value,
-            ),
+            "Indicador": str(key),
+            "Valor": value,
         }
     )
 
 if fundamental_rows:
 
     st.dataframe(
-        pd.DataFrame(
-            fundamental_rows
-        ),
+        pd.DataFrame(fundamental_rows),
         use_container_width=True,
         hide_index=True,
     )
@@ -1350,7 +1175,8 @@ if fundamental_rows:
 else:
 
     st.info(
-        "Dados fundamentalistas não disponíveis para este ativo."
+        "Dados fundamentalistas não disponíveis "
+        "para este ativo."
     )
 
 
@@ -1358,10 +1184,13 @@ else:
 # EXPLICABILIDADE
 # ==========================================================
 
-st.divider()
-
-st.subheader(
-    "🔬 Explicabilidade dos Scores"
+st.markdown(
+    """
+    <div class="section-title">
+        🔬 Explicabilidade dos Scores
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 tab1, tab2 = st.tabs(
@@ -1393,13 +1222,17 @@ with st.expander(
 ):
 
     st.write(
-        "Ativo:",
+        "Ativo analisado:",
         asset,
     )
 
     st.write(
-        "Preço identificado:",
-        current_price,
+        "Módulo de gráficos:",
+        (
+            "Disponível"
+            if charts_module_available
+            else "Indisponível"
+        ),
     )
 
     st.write(
@@ -1408,28 +1241,13 @@ with st.expander(
     )
 
     st.write(
-        "Indicadores:",
+        "Indicadores disponíveis:",
         list(indicators.keys()),
     )
 
     st.write(
         "Resultado da análise:",
         list(analysis.keys()),
-    )
-
-    st.write(
-        "Score Técnico:",
-        technical_score,
-    )
-
-    st.write(
-        "Score Fundamentalista:",
-        fundamental_score,
-    )
-
-    st.write(
-        "Score Integrado:",
-        integrated_score,
     )
 
 
@@ -1442,5 +1260,6 @@ st.divider()
 st.caption(
     "InvestIA PRO • Fase 3.0.6 • "
     "Análise educacional e informativa. "
-    "Não constitui recomendação individual de investimento."
+    "Não constitui recomendação individual "
+    "de investimento."
 )
