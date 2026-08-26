@@ -1,39 +1,40 @@
 """
 InvestIA PRO
-Módulo de Gráficos
+Charts Module
 
-Versão: v0.7.1
-Fase: 3.0.6
+Version: v0.7.3
+Phase: 3.0.7
 
-Gráficos disponíveis:
-- Evolução do preço
-- Preço + MA21 + MA200
-- Volume negociado
-- Comparação dos Scores
+Responsibilities:
+- Price chart with moving averages
+- Volume chart
+- RSI chart
+- Score comparison chart
+- Technical overview
+- Fundamental overview
+- Safe rendering helpers for Streamlit
 
-Compatível com:
-- market.py
-- indicators.py
-- analysis.py
-- score.py
-- app.py
-
-Princípio:
-Uma falha em um gráfico não deve interromper
-a análise do ativo.
+Compatible with:
+- market.py Phase 3.0.7
+- indicators.py Phase 3.0.7
+- score.py Phase 3.0.7
+- analysis.py Phase 3.0.7
+- app.py Phase 3.0.7
 """
+
+import math
 
 import pandas as pd
 import plotly.graph_objects as go
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
+# AUXILIARY FUNCTIONS
 # ==========================================================
 
 def safe_float(value, default=None):
     """
-    Converte valores para float com segurança.
+    Converts a value to float safely.
     """
 
     if value is None:
@@ -41,172 +42,361 @@ def safe_float(value, default=None):
 
     try:
         value = float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ):
+    except (TypeError, ValueError):
         return default
 
-    if pd.isna(value):
+    if not math.isfinite(value):
         return default
 
     return value
 
 
+def safe_series(data, column):
+    """
+    Returns a column as a valid Pandas Series.
+    """
+
+    if not isinstance(data, pd.DataFrame):
+        return pd.Series(dtype="float64")
+
+    if column not in data.columns:
+        return pd.Series(dtype="float64")
+
+    series = pd.to_numeric(
+        data[column],
+        errors="coerce",
+    )
+
+    return series.dropna()
+
+
 def get_history(data):
     """
-    Localiza o histórico de preços em diferentes
-    estruturas utilizadas pelo projeto.
+    Extracts the price history from several supported structures.
 
-    Aceita:
-    - DataFrame
-    - Dicionário contendo history
-    - Dicionário contendo data
-    - Dicionário contendo histórico em outras chaves
+    Supported:
+
+    DataFrame
+
+    {
+        "history": DataFrame
+    }
+
+    {
+        "data": DataFrame
+    }
     """
 
-    # ------------------------------------------------------
-    # DATAFRAME DIRETO
-    # ------------------------------------------------------
+    if isinstance(data, pd.DataFrame):
+        return data.copy()
 
-    if isinstance(
-        data,
-        pd.DataFrame,
-    ):
+    if isinstance(data, dict):
 
-        if not data.empty:
-            return data.copy()
+        history = data.get("history")
 
-        return pd.DataFrame()
+        if isinstance(history, pd.DataFrame):
+            return history.copy()
 
-    # ------------------------------------------------------
-    # DICIONÁRIO
-    # ------------------------------------------------------
+        history = data.get("data")
 
-    if isinstance(
-        data,
-        dict,
-    ):
-
-        possible_keys = [
-            "history",
-            "historical_data",
-            "data",
-            "prices",
-            "price_history",
-        ]
-
-        for key in possible_keys:
-
-            value = data.get(key)
-
-            if isinstance(
-                value,
-                pd.DataFrame,
-            ):
-
-                if not value.empty:
-                    return value.copy()
+        if isinstance(history, pd.DataFrame):
+            return history.copy()
 
     return pd.DataFrame()
 
 
-def find_column(
-    dataframe,
-    possible_names,
-):
+def get_close_column(history):
     """
-    Localiza uma coluna sem diferenciar
-    maiúsculas e minúsculas.
+    Finds the most appropriate close-price column.
     """
 
-    if not isinstance(
-        dataframe,
-        pd.DataFrame,
-    ):
-
+    if not isinstance(history, pd.DataFrame):
         return None
 
-    if dataframe.empty:
-        return None
+    possible_columns = [
+        "Close",
+        "Adj Close",
+        "close",
+        "adj_close",
+    ]
 
-    normalized_columns = {
-        str(column).lower(): column
-        for column in dataframe.columns
-    }
+    for column in possible_columns:
 
-    for name in possible_names:
-
-        normalized_name = str(name).lower()
-
-        if normalized_name in normalized_columns:
-
-            return normalized_columns[
-                normalized_name
-            ]
+        if column in history.columns:
+            return column
 
     return None
 
 
-def get_x_axis(dataframe):
+def get_volume_column(history):
     """
-    Obtém o eixo X do gráfico.
+    Finds the volume column.
+    """
 
-    Prioridade:
-    1. Índice datetime
-    2. Coluna Date
-    3. Coluna Datetime
-    4. Índice padrão
+    if not isinstance(history, pd.DataFrame):
+        return None
+
+    possible_columns = [
+        "Volume",
+        "volume",
+    ]
+
+    for column in possible_columns:
+
+        if column in history.columns:
+            return column
+
+    return None
+
+
+def get_ma_column(history, period):
     """
+    Finds an existing moving-average column.
+    """
+
+    if not isinstance(history, pd.DataFrame):
+        return None
+
+    possible_columns = [
+
+        f"MA{period}",
+        f"ma{period}",
+
+        f"SMA{period}",
+        f"sma{period}",
+
+        f"ma_{period}",
+        f"sma_{period}",
+
+        f"MA_{period}",
+        f"SMA_{period}",
+    ]
+
+    for column in possible_columns:
+
+        if column in history.columns:
+            return column
+
+    return None
+
+
+def prepare_history(data):
+    """
+    Standardizes the historical DataFrame.
+
+    Adds calculated moving averages when necessary.
+    """
+
+    history = get_history(data)
+
+    if history.empty:
+        return pd.DataFrame()
+
+    history = history.copy()
 
     if not isinstance(
-        dataframe,
-        pd.DataFrame,
-    ):
-
-        return None
-
-    if dataframe.empty:
-        return None
-
-    if isinstance(
-        dataframe.index,
+        history.index,
         pd.DatetimeIndex,
     ):
 
-        return dataframe.index
+        try:
 
-    date_column = find_column(
-        dataframe,
-        [
-            "Date",
-            "Datetime",
-            "date",
-            "datetime",
-        ],
+            history.index = pd.to_datetime(
+                history.index,
+                errors="coerce",
+            )
+
+        except Exception:
+            pass
+
+    close_column = get_close_column(history)
+
+    if close_column is None:
+        return pd.DataFrame()
+
+    history["__close__"] = pd.to_numeric(
+        history[close_column],
+        errors="coerce",
     )
 
-    if date_column is not None:
+    history = history.dropna(
+        subset=["__close__"]
+    )
 
-        return dataframe[
-            date_column
-        ]
+    if history.empty:
+        return pd.DataFrame()
 
-    return dataframe.index
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
+
+    ma21_column = get_ma_column(
+        history,
+        21,
+    )
+
+    if ma21_column is not None:
+
+        history["__ma21__"] = pd.to_numeric(
+            history[ma21_column],
+            errors="coerce",
+        )
+
+    else:
+
+        history["__ma21__"] = (
+            history["__close__"]
+            .rolling(
+                window=21,
+                min_periods=1,
+            )
+            .mean()
+        )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    ma200_column = get_ma_column(
+        history,
+        200,
+    )
+
+    if ma200_column is not None:
+
+        history["__ma200__"] = pd.to_numeric(
+            history[ma200_column],
+            errors="coerce",
+        )
+
+    else:
+
+        history["__ma200__"] = (
+            history["__close__"]
+            .rolling(
+                window=200,
+                min_periods=1,
+            )
+            .mean()
+        )
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    rsi_column = None
+
+    for column in [
+        "RSI",
+        "rsi",
+        "RSI14",
+        "rsi14",
+        "RSI_14",
+        "rsi_14",
+    ]:
+
+        if column in history.columns:
+
+            rsi_column = column
+            break
+
+    if rsi_column is not None:
+
+        history["__rsi__"] = pd.to_numeric(
+            history[rsi_column],
+            errors="coerce",
+        )
+
+    else:
+
+        history["__rsi__"] = calculate_rsi(
+            history["__close__"]
+        )
+
+    return history
 
 
-def empty_figure(
-    title="Dados não disponíveis",
+# ==========================================================
+# RSI CALCULATION
+# ==========================================================
+
+def calculate_rsi(
+    series,
+    period=14,
 ):
     """
-    Retorna uma figura vazia com mensagem.
+    Calculates the Relative Strength Index.
+    """
+
+    if not isinstance(
+        series,
+        pd.Series,
+    ):
+
+        return pd.Series(
+            dtype="float64"
+        )
+
+    series = pd.to_numeric(
+        series,
+        errors="coerce",
+    )
+
+    delta = series.diff()
+
+    gain = delta.clip(
+        lower=0
+    )
+
+    loss = -delta.clip(
+        upper=0
+    )
+
+    average_gain = gain.rolling(
+        window=period,
+        min_periods=period,
+    ).mean()
+
+    average_loss = loss.rolling(
+        window=period,
+        min_periods=period,
+    ).mean()
+
+    rs = average_gain / average_loss.replace(
+        0,
+        pd.NA,
+    )
+
+    rsi = (
+        100
+        - (
+            100
+            / (
+                1
+                + rs
+            )
+        )
+    )
+
+    return rsi
+
+
+# ==========================================================
+# EMPTY FIGURE
+# ==========================================================
+
+def create_empty_figure(
+    message="Dados não disponíveis.",
+    height=400,
+):
+    """
+    Creates a standard empty chart.
     """
 
     figure = go.Figure()
 
     figure.add_annotation(
-        text=title,
+        text=message,
         x=0.5,
         y=0.5,
         xref="paper",
@@ -218,334 +408,160 @@ def empty_figure(
     )
 
     figure.update_layout(
-        height=350,
-        margin=dict(
-            l=20,
-            r=20,
-            t=50,
-            b=20,
-        ),
+        height=height,
+        template="plotly_white",
+        margin={
+            "l": 30,
+            "r": 30,
+            "t": 40,
+            "b": 30,
+        },
     )
 
     return figure
 
 
-def prepare_history(data):
-    """
-    Prepara o histórico para os gráficos.
-    """
-
-    history = get_history(data)
-
-    if history.empty:
-        return history
-
-    history = history.copy()
-
-    # Remove colunas totalmente vazias
-    history = history.dropna(
-        axis=1,
-        how="all",
-    )
-
-    return history
-
-
 # ==========================================================
-# GRÁFICO DE PREÇO
+# PRICE CHART
 # ==========================================================
 
 def create_price_chart(
     data,
     asset=None,
+    show_ma21=True,
+    show_ma200=True,
 ):
     """
-    Cria gráfico simples da evolução do preço.
-
-    Parâmetros:
-    ----------
-    data : dict ou DataFrame
-        Dados contendo o histórico.
-
-    asset : str
-        Código do ativo.
-
-    Retorno:
-    --------
-    plotly.graph_objects.Figure
+    Creates the main price chart.
     """
 
-    try:
+    history = prepare_history(
+        data
+    )
 
-        history = prepare_history(
-            data
+    if history.empty:
+
+        return create_empty_figure(
+            "Histórico de preços não disponível."
         )
 
-        if history.empty:
+    figure = go.Figure()
 
-            return empty_figure(
-                "Histórico de preços não disponível."
-            )
+    # ------------------------------------------------------
+    # PRICE
+    # ------------------------------------------------------
 
-        close_column = find_column(
-            history,
-            [
-                "Close",
-                "Adj Close",
-                "close",
-                "adj_close",
-            ],
-        )
-
-        if close_column is None:
-
-            return empty_figure(
-                "Coluna de preço não encontrada."
-            )
-
-        x_axis = get_x_axis(
-            history
-        )
-
-        figure = go.Figure()
-
-        figure.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=history[
-                    close_column
-                ],
-                mode="lines",
-                name="Preço",
-            )
-        )
-
-        title = (
-            f"Evolução do Preço - {asset}"
-            if asset
-            else "Evolução do Preço"
-        )
-
-        figure.update_layout(
-            title=title,
-            xaxis_title="Data",
-            yaxis_title="Preço",
-            hovermode="x unified",
-            height=420,
-            margin=dict(
-                l=20,
-                r=20,
-                t=60,
-                b=20,
+    figure.add_trace(
+        go.Scatter(
+            x=history.index,
+            y=history["__close__"],
+            mode="lines",
+            name="Preço",
+            line={
+                "width": 2,
+            },
+            hovertemplate=(
+                "<b>Data:</b> %{x|%d/%m/%Y}"
+                "<br>"
+                "<b>Preço:</b> R$ %{y:.2f}"
+                "<extra></extra>"
             ),
         )
+    )
 
-        return figure
+    # ------------------------------------------------------
+    # MA21
+    # ------------------------------------------------------
 
-    except Exception:
-
-        return empty_figure(
-            "Não foi possível gerar o gráfico de preço."
-        )
-
-
-# ==========================================================
-# GRÁFICO DE PREÇO + MÉDIAS MÓVEIS
-# ==========================================================
-
-def create_technical_chart(
-    data,
-    asset=None,
-):
-    """
-    Cria gráfico técnico contendo:
-
-    - Preço
-    - Média móvel de 21 períodos
-    - Média móvel de 200 períodos
-
-    As médias são calculadas diretamente no gráfico
-    quando não estiverem disponíveis no DataFrame.
-    """
-
-    try:
-
-        history = prepare_history(
-            data
-        )
-
-        if history.empty:
-
-            return empty_figure(
-                "Histórico técnico não disponível."
-            )
-
-        close_column = find_column(
-            history,
-            [
-                "Close",
-                "Adj Close",
-                "close",
-                "adj_close",
-            ],
-        )
-
-        if close_column is None:
-
-            return empty_figure(
-                "Coluna de preço não encontrada."
-            )
-
-        history = history.copy()
-
-        price_series = pd.to_numeric(
-            history[
-                close_column
-            ],
-            errors="coerce",
-        )
-
-        if price_series.dropna().empty:
-
-            return empty_figure(
-                "Não há preços válidos para análise."
-            )
-
-        x_axis = get_x_axis(
-            history
-        )
-
-        # --------------------------------------------------
-        # MA21
-        # --------------------------------------------------
-
-        ma21_column = find_column(
-            history,
-            [
-                "MA21",
-                "ma21",
-                "MA_21",
-                "ma_21",
-            ],
-        )
-
-        if ma21_column is not None:
-
-            ma21 = pd.to_numeric(
-                history[
-                    ma21_column
-                ],
-                errors="coerce",
-            )
-
-        else:
-
-            ma21 = price_series.rolling(
-                window=21,
-                min_periods=1,
-            ).mean()
-
-        # --------------------------------------------------
-        # MA200
-        # --------------------------------------------------
-
-        ma200_column = find_column(
-            history,
-            [
-                "MA200",
-                "ma200",
-                "MA_200",
-                "ma_200",
-            ],
-        )
-
-        if ma200_column is not None:
-
-            ma200 = pd.to_numeric(
-                history[
-                    ma200_column
-                ],
-                errors="coerce",
-            )
-
-        else:
-
-            ma200 = price_series.rolling(
-                window=200,
-                min_periods=1,
-            ).mean()
-
-        # --------------------------------------------------
-        # FIGURA
-        # --------------------------------------------------
-
-        figure = go.Figure()
+    if (
+        show_ma21
+        and "__ma21__" in history.columns
+    ):
 
         figure.add_trace(
             go.Scatter(
-                x=x_axis,
-                y=price_series,
-                mode="lines",
-                name="Preço",
-            )
-        )
-
-        figure.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=ma21,
+                x=history.index,
+                y=history["__ma21__"],
                 mode="lines",
                 name="MA21",
+                line={
+                    "width": 1.5,
+                    "dash": "dash",
+                },
+                hovertemplate=(
+                    "<b>MA21:</b> R$ %{y:.2f}"
+                    "<extra></extra>"
+                ),
             )
         )
+
+    # ------------------------------------------------------
+    # MA200
+    # ------------------------------------------------------
+
+    if (
+        show_ma200
+        and "__ma200__" in history.columns
+    ):
 
         figure.add_trace(
             go.Scatter(
-                x=x_axis,
-                y=ma200,
+                x=history.index,
+                y=history["__ma200__"],
                 mode="lines",
                 name="MA200",
+                line={
+                    "width": 1.5,
+                    "dash": "dot",
+                },
+                hovertemplate=(
+                    "<b>MA200:</b> R$ %{y:.2f}"
+                    "<extra></extra>"
+                ),
             )
         )
 
-        title = (
-            f"Análise Técnica - {asset}"
-            if asset
-            else "Análise Técnica"
-        )
+    title = "Evolução do Preço"
 
-        figure.update_layout(
-            title=title,
-            xaxis_title="Data",
-            yaxis_title="Preço",
-            hovermode="x unified",
-            height=500,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-            ),
-            margin=dict(
-                l=20,
-                r=20,
-                t=80,
-                b=20,
-            ),
-        )
+    if asset:
+        title = f"Evolução do Preço — {asset}"
 
-        return figure
+    figure.update_layout(
+        title=title,
+        template="plotly_white",
+        height=450,
+        hovermode="x unified",
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+    )
 
-    except Exception:
+    figure.update_xaxes(
+        title=None,
+        showgrid=True,
+    )
 
-        return empty_figure(
-            "Não foi possível gerar o gráfico técnico."
-        )
+    figure.update_yaxes(
+        title="Preço (R$)",
+        tickprefix="R$ ",
+        showgrid=True,
+    )
+
+    return figure
 
 
 # ==========================================================
-# GRÁFICO DE VOLUME
+# VOLUME CHART
 # ==========================================================
 
 def create_volume_chart(
@@ -553,359 +569,980 @@ def create_volume_chart(
     asset=None,
 ):
     """
-    Cria gráfico do volume negociado.
+    Creates the trading-volume chart.
     """
 
-    try:
+    history = get_history(
+        data
+    )
 
-        history = prepare_history(
-            data
+    if history.empty:
+
+        return create_empty_figure(
+            "Dados de volume não disponíveis.",
+            height=300,
         )
 
-        if history.empty:
+    volume_column = get_volume_column(
+        history
+    )
 
-            return empty_figure(
-                "Dados de volume não disponíveis."
-            )
+    if volume_column is None:
 
-        volume_column = find_column(
-            history,
-            [
-                "Volume",
-                "volume",
-            ],
+        return create_empty_figure(
+            "O ativo não possui dados de volume disponíveis.",
+            height=300,
         )
 
-        if volume_column is None:
+    volume = pd.to_numeric(
+        history[volume_column],
+        errors="coerce",
+    )
 
-            return empty_figure(
-                "Coluna de volume não encontrada."
-            )
+    valid_data = pd.DataFrame(
+        {
+            "volume": volume,
+        },
+        index=history.index,
+    ).dropna()
 
-        volume = pd.to_numeric(
-            history[
-                volume_column
-            ],
-            errors="coerce",
+    if valid_data.empty:
+
+        return create_empty_figure(
+            "Dados de volume inválidos.",
+            height=300,
         )
 
-        if volume.dropna().empty:
+    figure = go.Figure()
 
-            return empty_figure(
-                "Não há dados de volume válidos."
-            )
-
-        x_axis = get_x_axis(
-            history
-        )
-
-        figure = go.Figure()
-
-        figure.add_trace(
-            go.Bar(
-                x=x_axis,
-                y=volume,
-                name="Volume",
-            )
-        )
-
-        title = (
-            f"Volume Negociado - {asset}"
-            if asset
-            else "Volume Negociado"
-        )
-
-        figure.update_layout(
-            title=title,
-            xaxis_title="Data",
-            yaxis_title="Volume",
-            height=350,
-            margin=dict(
-                l=20,
-                r=20,
-                t=60,
-                b=20,
+    figure.add_trace(
+        go.Bar(
+            x=valid_data.index,
+            y=valid_data["volume"],
+            name="Volume",
+            hovertemplate=(
+                "<b>Data:</b> %{x|%d/%m/%Y}"
+                "<br>"
+                "<b>Volume:</b> %{y:,.0f}"
+                "<extra></extra>"
             ),
         )
+    )
 
-        return figure
+    title = "Volume Negociado"
 
-    except Exception:
+    if asset:
+        title = f"Volume Negociado — {asset}"
 
-        return empty_figure(
-            "Não foi possível gerar o gráfico de volume."
-        )
+    figure.update_layout(
+        title=title,
+        template="plotly_white",
+        height=300,
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+        showlegend=False,
+    )
+
+    figure.update_yaxes(
+        title="Volume"
+    )
+
+    return figure
 
 
 # ==========================================================
-# GRÁFICO DOS SCORES
+# RSI CHART
+# ==========================================================
+
+def create_rsi_chart(
+    data,
+    asset=None,
+):
+    """
+    Creates the RSI chart.
+    """
+
+    history = prepare_history(
+        data
+    )
+
+    if history.empty:
+
+        return create_empty_figure(
+            "Dados insuficientes para calcular o RSI.",
+            height=300,
+        )
+
+    if "__rsi__" not in history.columns:
+
+        return create_empty_figure(
+            "RSI não disponível.",
+            height=300,
+        )
+
+    rsi = pd.to_numeric(
+        history["__rsi__"],
+        errors="coerce",
+    )
+
+    valid_data = pd.DataFrame(
+        {
+            "rsi": rsi,
+        },
+        index=history.index,
+    ).dropna()
+
+    if valid_data.empty:
+
+        return create_empty_figure(
+            "Dados insuficientes para calcular o RSI.",
+            height=300,
+        )
+
+    figure = go.Figure()
+
+    # ------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------
+
+    figure.add_trace(
+        go.Scatter(
+            x=valid_data.index,
+            y=valid_data["rsi"],
+            mode="lines",
+            name="RSI",
+            line={
+                "width": 2,
+            },
+            hovertemplate=(
+                "<b>Data:</b> %{x|%d/%m/%Y}"
+                "<br>"
+                "<b>RSI:</b> %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    # ------------------------------------------------------
+    # OVERBOUGHT
+    # ------------------------------------------------------
+
+    figure.add_hline(
+        y=70,
+        line_dash="dash",
+        annotation_text="Sobrecompra",
+        annotation_position="top right",
+    )
+
+    # ------------------------------------------------------
+    # OVERSOLD
+    # ------------------------------------------------------
+
+    figure.add_hline(
+        y=30,
+        line_dash="dash",
+        annotation_text="Sobrevenda",
+        annotation_position="bottom right",
+    )
+
+    # ------------------------------------------------------
+    # NEUTRAL
+    # ------------------------------------------------------
+
+    figure.add_hline(
+        y=50,
+        line_dash="dot",
+    )
+
+    title = "RSI — Índice de Força Relativa"
+
+    if asset:
+        title = f"RSI — {asset}"
+
+    figure.update_layout(
+        title=title,
+        template="plotly_white",
+        height=320,
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+        showlegend=False,
+    )
+
+    figure.update_yaxes(
+        title="RSI",
+        range=[
+            0,
+            100,
+        ],
+    )
+
+    return figure
+
+
+# ==========================================================
+# SCORE COMPARISON
 # ==========================================================
 
 def create_score_chart(
-    technical_score=None,
-    fundamental_score=None,
-    integrated_score=None,
+    analysis,
 ):
     """
-    Cria gráfico comparativo dos três Scores.
-
-    Scores:
-    - Técnico
-    - Fundamentalista
-    - Integrado
+    Creates a comparison chart for the three InvestIA scores.
     """
 
-    try:
+    if not isinstance(
+        analysis,
+        dict,
+    ):
 
-        technical_score = safe_float(
-            technical_score,
-            0,
+        return create_empty_figure(
+            "Dados de Score não disponíveis.",
+            height=350,
         )
 
-        fundamental_score = safe_float(
-            fundamental_score,
-            0,
-        )
+    technical_score = safe_float(
+        analysis.get(
+            "technical_score"
+        ),
+        0,
+    )
 
-        integrated_score = safe_float(
-            integrated_score,
-            0,
-        )
+    fundamental_score = safe_float(
+        analysis.get(
+            "fundamental_score"
+        ),
+        0,
+    )
 
-        technical_score = max(
-            0,
-            min(
-                100,
-                technical_score,
+    integrated_score = safe_float(
+        analysis.get(
+            "integrated_score",
+            analysis.get(
+                "score"
+            ),
+        ),
+        0,
+    )
+
+    labels = [
+        "Técnico",
+        "Fundamentalista",
+        "Integrado",
+    ]
+
+    values = [
+        technical_score,
+        fundamental_score,
+        integrated_score,
+    ]
+
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Bar(
+            x=labels,
+            y=values,
+            text=[
+                f"{value:.0f}"
+                for value in values
+            ],
+            textposition="auto",
+            hovertemplate=(
+                "<b>%{x}</b>"
+                "<br>"
+                "Score: %{y:.2f}/100"
+                "<extra></extra>"
             ),
         )
+    )
 
-        fundamental_score = max(
+    figure.update_layout(
+        title="Comparação dos Scores InvestIA",
+        template="plotly_white",
+        height=380,
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+        showlegend=False,
+    )
+
+    figure.update_yaxes(
+        title="Score",
+        range=[
             0,
-            min(
-                100,
-                fundamental_score,
-            ),
-        )
+            100,
+        ],
+    )
 
-        integrated_score = max(
-            0,
-            min(
-                100,
-                integrated_score,
-            ),
-        )
-
-        labels = [
-            "Técnico",
-            "Fundamentalista",
-            "Integrado",
-        ]
-
-        values = [
-            technical_score,
-            fundamental_score,
-            integrated_score,
-        ]
-
-        figure = go.Figure()
-
-        figure.add_trace(
-            go.Bar(
-                x=labels,
-                y=values,
-                text=[
-                    f"{value:.0f}"
-                    for value in values
-                ],
-                textposition="auto",
-                name="Score",
-            )
-        )
-
-        figure.update_layout(
-            title="Comparativo dos Scores",
-            yaxis=dict(
-                title="Pontuação",
-                range=[
-                    0,
-                    100,
-                ],
-            ),
-            height=400,
-            showlegend=False,
-            margin=dict(
-                l=20,
-                r=20,
-                t=60,
-                b=20,
-            ),
-        )
-
-        return figure
-
-    except Exception:
-
-        return empty_figure(
-            "Não foi possível gerar o gráfico dos Scores."
-        )
+    return figure
 
 
 # ==========================================================
-# GRÁFICO COMPARATIVO COMPLETO
+# TECHNICAL OVERVIEW
+# ==========================================================
+
+def create_technical_overview_chart(
+    indicators,
+):
+    """
+    Creates a radar chart for the main technical indicators.
+    """
+
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+
+        return create_empty_figure(
+            "Indicadores técnicos não disponíveis.",
+            height=400,
+        )
+
+    # ------------------------------------------------------
+    # RSI SCORE
+    # ------------------------------------------------------
+
+    rsi = safe_float(
+        indicators.get(
+            "rsi"
+        )
+    )
+
+    if rsi is None:
+
+        rsi_score = 50
+
+    elif 45 <= rsi <= 65:
+
+        rsi_score = 85
+
+    elif 35 <= rsi <= 70:
+
+        rsi_score = 65
+
+    elif rsi < 30:
+
+        rsi_score = 55
+
+    else:
+
+        rsi_score = 40
+
+    # ------------------------------------------------------
+    # PRICE VS MA21
+    # ------------------------------------------------------
+
+    distance_ma21 = safe_float(
+        indicators.get(
+            "distance_ma21"
+        )
+    )
+
+    if distance_ma21 is None:
+
+        ma21_score = 50
+
+    else:
+
+        distance_percent = (
+            distance_ma21 * 100
+            if abs(distance_ma21) <= 1
+            else distance_ma21
+        )
+
+        ma21_score = max(
+            0,
+            min(
+                100,
+                50 + distance_percent * 5,
+            ),
+        )
+
+    # ------------------------------------------------------
+    # PRICE VS MA200
+    # ------------------------------------------------------
+
+    distance_ma200 = safe_float(
+        indicators.get(
+            "distance_ma200"
+        )
+    )
+
+    if distance_ma200 is None:
+
+        ma200_score = 50
+
+    else:
+
+        distance_percent = (
+            distance_ma200 * 100
+            if abs(distance_ma200) <= 1
+            else distance_ma200
+        )
+
+        ma200_score = max(
+            0,
+            min(
+                100,
+                50 + distance_percent * 3,
+            ),
+        )
+
+    # ------------------------------------------------------
+    # VOLUME
+    # ------------------------------------------------------
+
+    relative_volume = safe_float(
+        indicators.get(
+            "relative_volume"
+        )
+    )
+
+    if relative_volume is None:
+
+        volume_score = 50
+
+    elif relative_volume >= 1.5:
+
+        volume_score = 85
+
+    elif relative_volume >= 1:
+
+        volume_score = 70
+
+    elif relative_volume >= 0.7:
+
+        volume_score = 50
+
+    else:
+
+        volume_score = 35
+
+    # ------------------------------------------------------
+    # RANGE POSITION
+    # ------------------------------------------------------
+
+    range_position = safe_float(
+        indicators.get(
+            "range_position"
+        )
+    )
+
+    if range_position is None:
+
+        range_score = 50
+
+    else:
+
+        if 0 <= range_position <= 1:
+            range_score = range_position * 100
+        else:
+            range_score = max(
+                0,
+                min(
+                    100,
+                    range_position,
+                ),
+            )
+
+    labels = [
+        "RSI",
+        "MA21",
+        "MA200",
+        "Volume",
+        "Posição",
+    ]
+
+    values = [
+        rsi_score,
+        ma21_score,
+        ma200_score,
+        volume_score,
+        range_score,
+    ]
+
+    labels_closed = (
+        labels
+        + [labels[0]]
+    )
+
+    values_closed = (
+        values
+        + [values[0]]
+    )
+
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Scatterpolar(
+            r=values_closed,
+            theta=labels_closed,
+            fill="toself",
+            name="Técnico",
+            hovertemplate=(
+                "<b>%{theta}</b>"
+                "<br>"
+                "Score: %{r:.1f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    figure.update_layout(
+        title="Panorama Técnico",
+        template="plotly_white",
+        height=420,
+        margin={
+            "l": 50,
+            "r": 50,
+            "t": 60,
+            "b": 40,
+        },
+        showlegend=False,
+        polar={
+            "radialaxis": {
+                "visible": True,
+                "range": [
+                    0,
+                    100,
+                ],
+            },
+        },
+    )
+
+    return figure
+
+
+# ==========================================================
+# FUNDAMENTAL OVERVIEW
+# ==========================================================
+
+def create_fundamental_chart(
+    fundamentals,
+):
+    """
+    Creates a fundamental overview chart.
+
+    The chart only includes numeric metrics
+    available in the fundamental data.
+    """
+
+    if not isinstance(
+        fundamentals,
+        dict,
+    ):
+
+        return create_empty_figure(
+            "Dados fundamentalistas não disponíveis.",
+            height=400,
+        )
+
+    metrics = []
+
+    metric_map = {
+
+        "trailingPE": "P/L",
+
+        "forwardPE": "P/L Futuro",
+
+        "priceToBook": "P/VP",
+
+        "returnOnEquity": "ROE",
+
+        "profitMargins": "Margem",
+
+        "operatingMargins": "Margem Operacional",
+
+        "revenueGrowth": "Crescimento Receita",
+
+        "earningsGrowth": "Crescimento Lucro",
+
+        "debtToEbitda": "Dívida/EBITDA",
+
+        "dividendYield": "Dividend Yield",
+    }
+
+    for key, label in metric_map.items():
+
+        value = safe_float(
+            fundamentals.get(
+                key
+            )
+        )
+
+        if value is None:
+            continue
+
+        # --------------------------------------------------
+        # NORMALIZATION FOR VISUALIZATION
+        # --------------------------------------------------
+
+        if key in (
+            "returnOnEquity",
+            "profitMargins",
+            "operatingMargins",
+            "revenueGrowth",
+            "earningsGrowth",
+            "dividendYield",
+        ):
+
+            if abs(value) <= 1:
+                normalized_value = value * 100
+            else:
+                normalized_value = value
+
+        else:
+
+            normalized_value = value
+
+        metrics.append(
+            (
+                label,
+                normalized_value,
+            )
+        )
+
+    if not metrics:
+
+        return create_empty_figure(
+            "Não há indicadores fundamentalistas numéricos disponíveis.",
+            height=400,
+        )
+
+    labels = [
+        item[0]
+        for item in metrics
+    ]
+
+    values = [
+        item[1]
+        for item in metrics
+    ]
+
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Bar(
+            x=labels,
+            y=values,
+            hovertemplate=(
+                "<b>%{x}</b>"
+                "<br>"
+                "Valor: %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    figure.update_layout(
+        title="Indicadores Fundamentalistas",
+        template="plotly_white",
+        height=400,
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 80,
+        },
+        showlegend=False,
+    )
+
+    return figure
+
+
+# ==========================================================
+# PRICE PERFORMANCE
+# ==========================================================
+
+def create_price_performance_chart(
+    data,
+    asset=None,
+):
+    """
+    Creates a normalized price-performance chart.
+
+    The first available price becomes the 100 base.
+    """
+
+    history = prepare_history(
+        data
+    )
+
+    if history.empty:
+
+        return create_empty_figure(
+            "Histórico de desempenho não disponível.",
+            height=350,
+        )
+
+    close = history[
+        "__close__"
+    ].dropna()
+
+    if close.empty:
+
+        return create_empty_figure(
+            "Dados insuficientes para calcular desempenho.",
+            height=350,
+        )
+
+    first_price = safe_float(
+        close.iloc[0]
+    )
+
+    if (
+        first_price is None
+        or first_price == 0
+    ):
+
+        return create_empty_figure(
+            "Não foi possível normalizar os preços.",
+            height=350,
+        )
+
+    normalized = (
+        close
+        / first_price
+        * 100
+    )
+
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Scatter(
+            x=normalized.index,
+            y=normalized,
+            mode="lines",
+            name="Desempenho",
+            line={
+                "width": 2,
+            },
+            hovertemplate=(
+                "<b>Data:</b> %{x|%d/%m/%Y}"
+                "<br>"
+                "<b>Índice:</b> %{y:.2f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    figure.add_hline(
+        y=100,
+        line_dash="dash",
+    )
+
+    title = "Desempenho Acumulado"
+
+    if asset:
+        title = f"Desempenho Acumulado — {asset}"
+
+    figure.update_layout(
+        title=title,
+        template="plotly_white",
+        height=350,
+        margin={
+            "l": 40,
+            "r": 30,
+            "t": 60,
+            "b": 40,
+        },
+        showlegend=False,
+    )
+
+    figure.update_yaxes(
+        title="Base 100",
+    )
+
+    return figure
+
+
+# ==========================================================
+# DASHBOARD FIGURES
 # ==========================================================
 
 def create_dashboard_charts(
     prepared_data,
+    indicators,
+    analysis,
     asset=None,
-    technical_score=None,
-    fundamental_score=None,
-    integrated_score=None,
 ):
     """
-    Cria todos os gráficos principais do dashboard.
+    Creates all main charts used by the dashboard.
 
-    Retorna um dicionário contendo:
+    Returns a dictionary containing Plotly figures.
+    """
 
-    {
-        "price_chart": Figure,
-        "technical_chart": Figure,
-        "volume_chart": Figure,
-        "score_chart": Figure,
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+
+        indicators = {}
+
+    if not isinstance(
+        analysis,
+        dict,
+    ):
+
+        analysis = {}
+
+    fundamentals = analysis.get(
+        "fundamentals",
+        {}
+    )
+
+    if not isinstance(
+        fundamentals,
+        dict,
+    ):
+
+        fundamentals = {}
+
+    return {
+
+        "price": create_price_chart(
+            data=prepared_data,
+            asset=asset,
+        ),
+
+        "volume": create_volume_chart(
+            data=prepared_data,
+            asset=asset,
+        ),
+
+        "rsi": create_rsi_chart(
+            data=prepared_data,
+            asset=asset,
+        ),
+
+        "scores": create_score_chart(
+            analysis=analysis,
+        ),
+
+        "technical": create_technical_overview_chart(
+            indicators=indicators,
+        ),
+
+        "fundamentals": create_fundamental_chart(
+            fundamentals=fundamentals,
+        ),
+
+        "performance": create_price_performance_chart(
+            data=prepared_data,
+            asset=asset,
+        ),
     }
-    """
-
-    charts = {}
-
-    try:
-
-        charts[
-            "price_chart"
-        ] = create_price_chart(
-            prepared_data,
-            asset,
-        )
-
-    except Exception:
-
-        charts[
-            "price_chart"
-        ] = empty_figure(
-            "Erro no gráfico de preço."
-        )
-
-    try:
-
-        charts[
-            "technical_chart"
-        ] = create_technical_chart(
-            prepared_data,
-            asset,
-        )
-
-    except Exception:
-
-        charts[
-            "technical_chart"
-        ] = empty_figure(
-            "Erro no gráfico técnico."
-        )
-
-    try:
-
-        charts[
-            "volume_chart"
-        ] = create_volume_chart(
-            prepared_data,
-            asset,
-        )
-
-    except Exception:
-
-        charts[
-            "volume_chart"
-        ] = empty_figure(
-            "Erro no gráfico de volume."
-        )
-
-    try:
-
-        charts[
-            "score_chart"
-        ] = create_score_chart(
-            technical_score,
-            fundamental_score,
-            integrated_score,
-        )
-
-    except Exception:
-
-        charts[
-            "score_chart"
-        ] = empty_figure(
-            "Erro no gráfico dos Scores."
-        )
-
-    return charts
 
 
 # ==========================================================
-# COMPATIBILIDADE COM VERSÕES ANTERIORES
+# TEST
 # ==========================================================
 
-def plot_price_chart(
-    data,
-    asset=None,
-):
-    """
-    Alias para create_price_chart().
-    """
+if __name__ == "__main__":
 
-    return create_price_chart(
-        data,
-        asset,
+    import numpy as np
+
+    print("=" * 60)
+    print("InvestIA PRO")
+    print("Charts.py")
+    print("Phase 3.0.7")
+    print("=" * 60)
+
+    dates = pd.date_range(
+        end=pd.Timestamp.today(),
+        periods=250,
+        freq="B",
     )
 
-
-def plot_technical_chart(
-    data,
-    asset=None,
-):
-    """
-    Alias para create_technical_chart().
-    """
-
-    return create_technical_chart(
-        data,
-        asset,
+    prices = (
+        30
+        + np.cumsum(
+            np.random.normal(
+                0,
+                0.8,
+                len(dates),
+            )
+        )
     )
 
-
-def plot_volume_chart(
-    data,
-    asset=None,
-):
-    """
-    Alias para create_volume_chart().
-    """
-
-    return create_volume_chart(
-        data,
-        asset,
+    history = pd.DataFrame(
+        {
+            "Close": prices,
+            "Volume": np.random.randint(
+                500000,
+                5000000,
+                len(dates),
+            ),
+        },
+        index=dates,
     )
 
+    test_indicators = {
 
-def plot_score_chart(
-    technical_score=None,
-    fundamental_score=None,
-    integrated_score=None,
-):
-    """
-    Alias para create_score_chart().
-    """
+        "rsi": 58.4,
 
-    return create_score_chart(
-        technical_score,
-        fundamental_score,
-        integrated_score,
+        "distance_ma21": 0.03,
+
+        "distance_ma200": 0.10,
+
+        "relative_volume": 1.20,
+
+        "range_position": 0.72,
+    }
+
+    test_analysis = {
+
+        "technical_score": 68,
+
+        "fundamental_score": 74,
+
+        "integrated_score": 71,
+
+        "fundamentals": {
+
+            "trailingPE": 8.5,
+
+            "priceToBook": 1.2,
+
+            "returnOnEquity": 0.18,
+
+            "profitMargins": 0.15,
+
+            "revenueGrowth": 0.12,
+
+            "debtToEbitda": 1.8,
+
+            "dividendYield": 0.06,
+        },
+    }
+
+    charts = create_dashboard_charts(
+        prepared_data={
+            "history": history
+        },
+        indicators=test_indicators,
+        analysis=test_analysis,
+        asset="TESTE.SA",
     )
+
+    print()
+
+    for chart_name in charts:
+
+        print(
+            f"✓ Chart generated: {chart_name}"
+        )
+
+    print()
+    print("Charts module test completed successfully.")
