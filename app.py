@@ -1,5 +1,5 @@
 """
-InvestIA PRO — Aplicação Principal Streamlit (Fase 3.0.7)
+InvestIA PRO — Aplicação Principal Streamlit (Fase 3.0.7 - Scanner Expandido)
 """
 import streamlit as st
 import pandas as pd
@@ -7,19 +7,19 @@ import time
 import sys
 from pathlib import Path
 
-# Adiciona o diretório atual ao sys.path para evitar ImportError em subpastas no Streamlit Cloud
+# Garantia de path para subpastas no Streamlit Cloud
 current_dir = Path(__file__).parent.resolve()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
 try:
-    from config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
+    from config import APP_TITLE, PAGE_ICON
     from market import fetch_asset_data
     from analysis import analyze_asset
     from charts import create_price_chart, create_scanner_summary_chart
     from utils import format_currency, format_percent
 except ImportError:
-    from .config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
+    from .config import APP_TITLE, PAGE_ICON
     from .market import fetch_asset_data
     from .analysis import analyze_asset
     from .charts import create_price_chart, create_scanner_summary_chart
@@ -32,10 +32,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("📈 InvestIA PRO — Análise de Mercado & Scanner")
-st.caption("Fase 3.0.7 — Integração de Dashboard Executivo e Scanner Multi-Ativos")
+# Listas Pré-configuradas para Varredura Completa do Mercado
+PRESET_LISTS = {
+    "🔥 Principais Ações B3 (Top 30 Liquidez)": [
+        "PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "PRIO3", "RENT3", "SUZB3",
+        "B3SA3", "EQTL3", "ELET3", "RADL3", "RDOR3", "VBBR3", "VAMO3", "GGBR4", "CSAN3", "RAIZ4",
+        "HAPV3", "CPLE6", "CMIG4", "UGPA3", "SANB11", "KLBN11", "EMBR3", "ALOS3", "MULT3", "TOTS3"
+    ],
+    "🏢 Fundos Imobiliários (FIIs)": [
+        "HGLG11", "KNCR11", "MXRF11", "XPML11", "BTLG11", "VISC11", "TGAR11", "KNR111", "CPTS11", "IRDM11"
+    ],
+    "🇺🇸 BDRs / Big Techs EUA": [
+        "AAPL34", "MSFT34", "GOGL34", "AMZO34", "NVDC34", "TSLA34", "MELI34"
+    ]
+}
 
-# Sidebar - Navegação
+st.title("📈 InvestIA PRO — Análise de Mercado & Scanner")
+st.caption("Fase 3.0.7 — Scanner Automático do Mercado (Ações, FIIs e BDRs)")
+
 menu = st.sidebar.radio("Navegação", ["Dashboard Executivo", "Scanner de Mercado", "Sobre o Projeto"])
 
 if menu == "Dashboard Executivo":
@@ -58,7 +72,6 @@ if menu == "Dashboard Executivo":
             else:
                 res = analyze_asset(mkt_data)
                 
-                # Metric Cards
                 c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("Preço Atual", format_currency(res["price"]), delta=format_percent(res["change_percent"]))
                 c2.metric("Score InvestIA", f"{res['score']} / 100", delta=res["signal"])
@@ -68,7 +81,6 @@ if menu == "Dashboard Executivo":
 
                 st.markdown("---")
 
-                # Resumo Executivo & Recomendações
                 col_left, col_right = st.columns([1, 1])
 
                 with col_left:
@@ -94,27 +106,32 @@ if menu == "Dashboard Executivo":
                     st.write(f"• **Volatilidade Anual:** {res['volatility']:.2f}%")
 
                 st.markdown("---")
-
-                # Gráfico
                 st.plotly_chart(create_price_chart(res), use_container_width=True)
 
 elif menu == "Scanner de Mercado":
     st.subheader("🎯 Scanner de Oportunidades Automático")
-    st.write("Análise em lote de ativos selecionados para identificação rápida das melhores pontuações.")
+    st.write("Varra o mercado em busca dos ativos com melhor Score InvestIA em tempo real.")
 
-    selected_assets = st.multiselect(
-        "Selecione a lista de ativos para escanear:",
-        options=["PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "PRIO3", "RENT3", "SUZB3"],
-        default=["PETR4", "VALE3", "ITUB4", "BBAS3", "WEGE3"]
-    )
+    # Filtros do Scanner
+    col_sel1, col_sel2 = st.columns([2, 1])
+    with col_sel1:
+        preset_choice = st.selectbox("Selecione o Grupo de Ativos para Varredura:", list(PRESET_LISTS.keys()))
+        selected_preset = PRESET_LISTS[preset_choice]
+    
+    with col_sel2:
+        top_n = st.slider("Exibir Top N Melhores:", min_value=5, max_value=len(selected_preset), value=10)
 
-    if st.button("INICIAR SCANNER", type="primary"):
+    # Permitir personalização manual da lista se o usuário quiser
+    with st.expander("🛠️ Personalizar Lista de Ativos do Scan"):
+        assets_to_scan = st.multiselect("Ativos incluídos na varredura:", options=selected_preset, default=selected_preset)
+
+    if st.button("🚀 INICIAR VARREDURA DO MERCADO", type="primary"):
         results_list = []
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        for i, symbol in enumerate(selected_assets):
-            status_text.text(f"Escaneando {symbol} ({i+1}/{len(selected_assets)})...")
+        for i, symbol in enumerate(assets_to_scan):
+            status_text.text(f"Analisando {symbol} ({i+1}/{len(assets_to_scan)})...")
             m_data = fetch_asset_data(symbol)
             if m_data["is_valid"]:
                 analysis = analyze_asset(m_data)
@@ -129,21 +146,22 @@ elif menu == "Scanner de Mercado":
                     "Risco": analysis["risk"],
                     "RSI": analysis["rsi"]
                 })
-            progress_bar.progress((i + 1) / len(selected_assets))
-            time.sleep(0.1)
+            progress_bar.progress((i + 1) / len(assets_to_scan))
+            time.sleep(0.05)  # Pequena pausa estratégica
 
-        status_text.text("Scan concluído com sucesso!")
+        status_text.text("Varredura concluída com sucesso!")
         
         if results_list:
             df_res = pd.DataFrame(results_list)
             df_res = df_res.sort_values(by="Score", ascending=False).reset_index(drop=True)
+            df_top = df_res.head(top_n)
 
-            st.markdown("### 🏆 Ranking de Oportunidades")
-            st.dataframe(df_res, use_container_width=True)
+            st.markdown(f"### 🏆 Top {top_n} Maiores Pontuações no Mercado")
+            st.dataframe(df_top, use_container_width=True)
 
-            st.plotly_chart(create_scanner_summary_chart(df_res), use_container_width=True)
+            st.plotly_chart(create_scanner_summary_chart(df_top), use_container_width=True)
         else:
-            st.warning("Nenhum ativo pôde ser escaneado com sucesso.")
+            st.warning("Não foi possível coletar dados para a lista selecionada.")
 
 elif menu == "Sobre o Projeto":
     st.subheader("🚀 Sobre o InvestIA PRO")
