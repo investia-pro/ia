@@ -2,24 +2,32 @@
 InvestIA PRO
 Aplicação Principal
 
-Versão: v0.7.1
-Fase: 3.0.6
+Versão: v0.7.3
+Fase: 3.0.7
 
 Dashboard Integrado:
 - Score Técnico
 - Score Fundamentalista
 - Score Integrado
-- Indicadores Técnicos
-- Gráficos de Mercado
-- Decisão Executiva
-- Explicabilidade
+- Gráficos de mercado
+- Gráficos técnicos
+- Gráficos fundamentalistas
+- Comparação dos Scores
+- Diagnóstico técnico seguro
+
+Compatível com:
+- market.py Fase 3.0.7
+- indicators.py Fase 3.0.7
+- score.py Fase 3.0.7
+- analysis.py Fase 3.0.7
+- charts.py Fase 3.0.7
 
 IMPORTANTE:
-Os módulos são importados somente após o usuário
-solicitar uma análise.
+Os módulos do projeto são importados somente
+quando o usuário solicita uma análise.
 
-Isso evita que falhas em módulos secundários
-deixem a aplicação inteira em tela branca.
+Isso evita que uma falha em outro módulo
+deixe a aplicação inteira em tela branca.
 """
 
 import streamlit as st
@@ -48,15 +56,16 @@ st.markdown(
     <style>
 
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.5rem;
         padding-bottom: 2rem;
-        max-width: 1400px;
+        max-width: 1600px;
     }
 
     .investia-title {
-        font-size: 2.2rem;
+        font-size: 2.4rem;
         font-weight: 800;
         margin-bottom: 0.2rem;
+        color: #0f172a;
     }
 
     .investia-subtitle {
@@ -66,28 +75,30 @@ st.markdown(
     }
 
     .section-title {
-        font-size: 1.25rem;
-        font-weight: 700;
+        font-size: 1.3rem;
+        font-weight: 750;
         margin-top: 1.5rem;
         margin-bottom: 0.8rem;
+        color: #0f172a;
     }
 
     .score-card {
         padding: 1.2rem;
-        border-radius: 12px;
+        border-radius: 14px;
         background-color: white;
         border: 1px solid #e2e8f0;
-        min-height: 155px;
+        min-height: 160px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
     }
 
     .score-label {
         color: #64748b;
-        font-size: 0.9rem;
-        font-weight: 600;
+        font-size: 0.95rem;
+        font-weight: 700;
     }
 
     .score-value {
-        font-size: 2.2rem;
+        font-size: 2.4rem;
         font-weight: 800;
         margin-top: 0.3rem;
         color: #0f172a;
@@ -96,15 +107,26 @@ st.markdown(
     .score-description {
         color: #475569;
         font-size: 0.9rem;
-        margin-top: 0.3rem;
+        margin-top: 0.35rem;
     }
 
     .executive-card {
         background-color: white;
         padding: 1.2rem;
-        border-radius: 12px;
+        border-radius: 14px;
         border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        color: #334155;
         line-height: 1.6;
+    }
+
+    .analysis-status {
+        padding: 0.9rem 1rem;
+        border-radius: 10px;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        margin-bottom: 1rem;
     }
 
     </style>
@@ -118,14 +140,20 @@ st.markdown(
 # ==========================================================
 
 def safe_float(value, default=None):
-    """Converte um valor para float com segurança."""
+    """
+    Converte um valor para float com segurança.
+    """
 
     if value is None:
         return default
 
     try:
         value = float(value)
-    except (TypeError, ValueError):
+
+    except (
+        TypeError,
+        ValueError,
+    ):
         return default
 
     if pd.isna(value):
@@ -135,9 +163,14 @@ def safe_float(value, default=None):
 
 
 def format_currency(value):
-    """Formata valor em Real brasileiro."""
+    """
+    Formata valor em Real brasileiro.
+    """
 
-    value = safe_float(value, 0)
+    value = safe_float(
+        value,
+        0,
+    )
 
     formatted = f"{value:,.2f}"
 
@@ -151,8 +184,13 @@ def format_currency(value):
     return f"R$ {formatted}"
 
 
-def format_number(value, decimals=2):
-    """Formata número no padrão brasileiro."""
+def format_number(
+    value,
+    decimals=2,
+):
+    """
+    Formata número no padrão brasileiro.
+    """
 
     value = safe_float(value)
 
@@ -170,7 +208,9 @@ def format_number(value, decimals=2):
 
 
 def format_percent(value):
-    """Formata percentual."""
+    """
+    Formata percentual.
+    """
 
     value = safe_float(value)
 
@@ -178,13 +218,26 @@ def format_percent(value):
         return "N/D"
 
     if abs(value) <= 1:
-        value *= 100
+        value = value * 100
 
-    return f"{value:.2f}%".replace(".", ",")
+    return (
+        f"{value:.2f}%"
+        .replace(".", ",")
+    )
 
 
 def normalize_asset_input(asset):
-    """Normaliza o código informado pelo usuário."""
+    """
+    Normaliza o código do ativo.
+
+    Exemplos:
+
+    PETR4 -> PETR4.SA
+    VALE3 -> VALE3.SA
+    AAPL  -> AAPL
+    BTC-USD -> BTC-USD
+    ^BVSP -> ^BVSP
+    """
 
     if asset is None:
         return None
@@ -207,14 +260,23 @@ def normalize_asset_input(asset):
         return asset
 
     # Ações brasileiras
-    if len(asset) in (5, 6) and asset[-1].isdigit():
+    if (
+        len(asset) in (5, 6)
+        and asset[-1].isdigit()
+    ):
         return f"{asset}.SA"
 
     return asset
 
 
-def find_price(prepared_data, indicators):
-    """Localiza o preço atual em diferentes estruturas."""
+def find_price(
+    prepared_data,
+    indicators,
+):
+    """
+    Procura o preço atual em diferentes
+    estruturas utilizadas pelo projeto.
+    """
 
     possible_keys = [
         "price",
@@ -223,25 +285,45 @@ def find_price(prepared_data, indicators):
         "last_price",
     ]
 
+    # ------------------------------------------------------
+    # INDICADORES
+    # ------------------------------------------------------
+
     if isinstance(indicators, dict):
 
         for key in possible_keys:
 
-            value = safe_float(indicators.get(key))
+            value = safe_float(
+                indicators.get(key)
+            )
 
             if value is not None:
                 return value
+
+    # ------------------------------------------------------
+    # DADOS PREPARADOS
+    # ------------------------------------------------------
 
     if isinstance(prepared_data, dict):
 
         for key in possible_keys:
 
-            value = safe_float(prepared_data.get(key))
+            value = safe_float(
+                prepared_data.get(key)
+            )
 
             if value is not None:
                 return value
 
-        history = prepared_data.get("history")
+    # ------------------------------------------------------
+    # HISTÓRICO
+    # ------------------------------------------------------
+
+    if isinstance(prepared_data, dict):
+
+        history = prepared_data.get(
+            "history"
+        )
 
         if (
             history is not None
@@ -249,12 +331,14 @@ def find_price(prepared_data, indicators):
             and not history.empty
         ):
 
-            for column in [
+            possible_columns = [
                 "Close",
                 "Adj Close",
                 "close",
                 "adj_close",
-            ]:
+            ]
+
+            for column in possible_columns:
 
                 if column in history.columns:
 
@@ -274,12 +358,33 @@ def display_score_card(
     classification,
     signal,
 ):
-    """Exibe um card de Score."""
+    """
+    Exibe um card de Score.
+    """
 
-    score = safe_float(score, 0)
+    score = safe_float(
+        score,
+        0,
+    )
 
-    classification = classification or "N/D"
-    signal = signal or "N/D"
+    # Garante Score entre 0 e 100
+    score = max(
+        0,
+        min(
+            100,
+            score,
+        ),
+    )
+
+    classification = (
+        classification
+        or "N/D"
+    )
+
+    signal = (
+        signal
+        or "N/D"
+    )
 
     st.markdown(
         f"""
@@ -294,11 +399,11 @@ def display_score_card(
             </div>
 
             <div class="score-description">
-                Classificação: {classification}
+                Classificação: <b>{classification}</b>
             </div>
 
             <div class="score-description">
-                Sinal: {signal}
+                Sinal: <b>{signal}</b>
             </div>
 
         </div>
@@ -307,75 +412,221 @@ def display_score_card(
     )
 
 
-def display_breakdown(breakdown):
-    """Exibe o detalhamento de um Score."""
+def display_breakdown(
+    breakdown,
+):
+    """
+    Exibe detalhamento de um Score.
+    """
 
-    if not isinstance(breakdown, dict):
+    if not isinstance(
+        breakdown,
+        dict,
+    ):
 
-        st.info("Detalhamento não disponível.")
+        st.info(
+            "Detalhamento não disponível."
+        )
+
         return
 
     rows = []
 
     for key, item in breakdown.items():
 
-        if not isinstance(item, dict):
+        # Alguns breakdowns possuem valores simples
+        if not isinstance(
+            item,
+            dict,
+        ):
             continue
 
-        if key in (
+        # Campos-resumo não devem aparecer
+        if key.lower() in (
             "base",
             "score",
             "raw_score",
             "final_score",
+            "total",
         ):
             continue
 
+        points = item.get(
+            "points",
+            item.get(
+                "score",
+                item.get(
+                    "value",
+                    0,
+                ),
+            ),
+        )
+
+        signal = item.get(
+            "signal",
+            item.get(
+                "status",
+                "N/D",
+            ),
+        )
+
+        reason = item.get(
+            "reason",
+            item.get(
+                "description",
+                item.get(
+                    "analysis",
+                    "N/D",
+                ),
+            ),
+        )
+
         rows.append(
             {
-                "Indicador": str(key).upper(),
-                "Pontos": item.get("points", 0),
-                "Sinal": item.get("signal", "N/D"),
-                "Análise": item.get("reason", "N/D"),
+                "Indicador": str(
+                    key
+                ).replace(
+                    "_",
+                    " "
+                ).upper(),
+
+                "Pontos": points,
+
+                "Sinal": signal,
+
+                "Análise": reason,
             }
         )
 
     if not rows:
 
         st.info(
-            "Não há dados disponíveis para detalhar o Score."
+            "Não há dados disponíveis para detalhar este Score."
         )
+
         return
 
+    dataframe = pd.DataFrame(
+        rows
+    )
+
     st.dataframe(
-        pd.DataFrame(rows),
+        dataframe,
         use_container_width=True,
         hide_index=True,
     )
 
 
-def render_chart(chart):
+def render_chart(
+    figure,
+    message="Gráfico não disponível.",
+    height=None,
+):
     """
-    Renderiza um gráfico com segurança.
-
-    Uma falha individual não interrompe o dashboard.
+    Renderiza um gráfico Plotly com segurança.
     """
 
-    if chart is None:
-        st.info("Gráfico não disponível.")
+    if figure is None:
+
+        st.info(message)
+
         return
 
     try:
 
         st.plotly_chart(
-            chart,
+            figure,
             use_container_width=True,
+            theme="streamlit",
         )
 
     except Exception as error:
 
         st.warning(
-            f"Não foi possível exibir este gráfico: {error}"
+            message
         )
+
+        with st.expander(
+            "Ver erro do gráfico"
+        ):
+
+            st.code(
+                traceback.format_exc()
+            )
+
+
+def clean_fundamental_value(
+    key,
+    value,
+):
+    """
+    Formata valores fundamentalistas para exibição.
+    """
+
+    numeric_value = safe_float(value)
+
+    if numeric_value is None:
+        return str(value)
+
+    percentage_keys = [
+        "yield",
+        "margin",
+        "growth",
+        "return",
+        "roe",
+        "roa",
+        "beta",
+    ]
+
+    key_lower = str(key).lower()
+
+    if any(
+        term in key_lower
+        for term in percentage_keys
+    ):
+
+        if (
+            "beta"
+            not in key_lower
+        ):
+
+            return format_percent(
+                numeric_value
+            )
+
+    currency_keys = [
+        "marketcap",
+        "market_cap",
+        "enterprisevalue",
+        "revenue",
+        "income",
+        "cash",
+        "debt",
+        "ebitda",
+    ]
+
+    if any(
+        term in key_lower
+        for term in currency_keys
+    ):
+
+        if abs(numeric_value) >= 1_000_000_000:
+            return (
+                f"R$ "
+                f"{numeric_value / 1_000_000_000:.2f} Bi"
+                .replace(".", ",")
+            )
+
+        if abs(numeric_value) >= 1_000_000:
+            return (
+                f"R$ "
+                f"{numeric_value / 1_000_000:.2f} Mi"
+                .replace(".", ",")
+            )
+
+    return format_number(
+        numeric_value
+    )
 
 
 # ==========================================================
@@ -384,11 +635,19 @@ def render_chart(chart):
 
 with st.sidebar:
 
-    st.title("📈 InvestIA PRO")
+    st.title(
+        "📈 InvestIA PRO"
+    )
 
-    st.caption("Fase 3.0.6")
+    st.caption(
+        "Fase 3.0.7"
+    )
 
     st.divider()
+
+    st.subheader(
+        "⚙️ Configurações"
+    )
 
     period = st.selectbox(
         "Período de análise",
@@ -403,7 +662,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("Score Integrado")
+    st.subheader(
+        "🎯 Score Integrado"
+    )
 
     technical_weight_percent = st.slider(
         "Peso Técnico (%)",
@@ -414,7 +675,8 @@ with st.sidebar:
     )
 
     fundamental_weight_percent = (
-        100 - technical_weight_percent
+        100
+        - technical_weight_percent
     )
 
     st.write(
@@ -428,6 +690,13 @@ with st.sidebar:
 
     fundamental_weight = (
         fundamental_weight_percent / 100
+    )
+
+    st.divider()
+
+    st.caption(
+        "Os pesos definem a composição "
+        "do Score Integrado."
     )
 
 
@@ -453,7 +722,9 @@ st.markdown(
 # ENTRADA
 # ==========================================================
 
-input_col, button_col = st.columns([4, 1])
+input_col, button_col = st.columns(
+    [4, 1]
+)
 
 with input_col:
 
@@ -461,12 +732,13 @@ with input_col:
         "Código do ativo",
         value="PETR4",
         placeholder=(
-            "Ex.: PETR4, VALE3, ITUB4 ou AAPL"
+            "Ex.: PETR4, VALE3, ITUB4, AAPL ou BTC-USD"
         ),
     )
 
 with button_col:
 
+    st.write("")
     st.write("")
 
     analyze_button = st.button(
@@ -486,23 +758,57 @@ if not analyze_button:
 
     st.info(
         "Digite o código de um ativo e clique em "
-        "**Analisar**."
+        "**Analisar** para iniciar."
     )
 
-    st.markdown(
-        """
-        ### Recursos disponíveis
-
-        - 📊 Score Técnico
-        - 🏢 Score Fundamentalista
-        - 🚀 Score Integrado
-        - 📈 Indicadores técnicos
-        - 📉 Gráficos de mercado
-        - 🧭 Tendência e recomendação
-        - ⚠️ Gestão de risco
-        - 🔬 Explicabilidade dos Scores
-        """
+    feature_col1, feature_col2, feature_col3 = (
+        st.columns(3)
     )
+
+    with feature_col1:
+
+        st.markdown(
+            """
+            ### 📊 Análise Técnica
+
+            - Preço
+            - MA21
+            - MA200
+            - RSI
+            - Volume
+            - Tendência
+            """
+        )
+
+    with feature_col2:
+
+        st.markdown(
+            """
+            ### 🏢 Análise Fundamentalista
+
+            - P/L
+            - P/VP
+            - ROE
+            - Margens
+            - Crescimento
+            - Endividamento
+            """
+        )
+
+    with feature_col3:
+
+        st.markdown(
+            """
+            ### 🚀 Inteligência Integrada
+
+            - Score Técnico
+            - Score Fundamentalista
+            - Score Integrado
+            - Recomendação
+            - Gestão de Risco
+            - Explicabilidade
+            """
+        )
 
     st.stop()
 
@@ -511,11 +817,16 @@ if not analyze_button:
 # NORMALIZAÇÃO
 # ==========================================================
 
-asset = normalize_asset_input(asset_input)
+asset = normalize_asset_input(
+    asset_input
+)
 
 if not asset:
 
-    st.error("Informe um ativo válido.")
+    st.error(
+        "Informe um ativo válido."
+    )
+
     st.stop()
 
 
@@ -525,7 +836,20 @@ if not asset:
 
 st.divider()
 
-st.subheader(f"📊 Analisando: {asset}")
+st.markdown(
+    f"""
+    <div class="analysis-status">
+        🔎 Ativo em análise: <b>{asset}</b>
+        &nbsp; | &nbsp;
+        Período: <b>{period}</b>
+        &nbsp; | &nbsp;
+        Técnico: <b>{technical_weight_percent}%</b>
+        &nbsp; | &nbsp;
+        Fundamentalista: <b>{fundamental_weight_percent}%</b>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ==========================================================
@@ -547,33 +871,24 @@ try:
         analyze_asset,
     )
 
-    # charts.py é opcional para não derrubar
-    # a análise caso tenha algum problema.
-    try:
+    from charts import (
+        create_dashboard_charts,
+    )
 
-        from charts import (
-            create_dashboard_charts,
-        )
-
-        charts_module_available = True
-
-    except Exception:
-
-        create_dashboard_charts = None
-        charts_module_available = False
 
 except Exception:
 
     st.error(
-        "❌ Erro ao carregar os módulos principais "
-        "do InvestIA PRO."
+        "❌ Erro ao carregar os módulos do InvestIA PRO."
     )
-
-    st.code(traceback.format_exc())
 
     st.warning(
         "Verifique os arquivos: market.py, "
-        "indicators.py e analysis.py."
+        "indicators.py, analysis.py e charts.py."
+    )
+
+    st.code(
+        traceback.format_exc()
     )
 
     st.stop()
@@ -586,7 +901,7 @@ except Exception:
 try:
 
     with st.spinner(
-        f"Buscando dados de {asset}..."
+        f"Buscando dados de mercado de {asset}..."
     ):
 
         market_data = get_market_data(
@@ -602,11 +917,16 @@ try:
 
         st.stop()
 
+
 except Exception:
 
-    st.error("❌ Erro ao buscar dados de mercado.")
+    st.error(
+        "❌ Erro ao buscar dados de mercado."
+    )
 
-    st.code(traceback.format_exc())
+    st.code(
+        traceback.format_exc()
+    )
 
     st.stop()
 
@@ -617,24 +937,74 @@ except Exception:
 
 try:
 
-    prepared_data = prepare_market_data(market_data)
+    with st.spinner(
+        "Preparando dados..."
+    ):
 
-    if not isinstance(prepared_data, dict):
-
-        st.error(
-            "prepare_market_data() não retornou "
-            "um dicionário."
+        prepared_data = prepare_market_data(
+            market_data
         )
 
-        st.write(type(prepared_data))
+    if not isinstance(
+        prepared_data,
+        dict,
+    ):
+
+        st.error(
+            "prepare_market_data() não retornou um dicionário."
+        )
+
+        st.write(
+            "Tipo retornado:",
+            type(prepared_data)
+        )
 
         st.stop()
 
+
 except Exception:
 
-    st.error("❌ Erro ao preparar os dados.")
+    st.error(
+        "❌ Erro ao preparar os dados."
+    )
 
-    st.code(traceback.format_exc())
+    st.code(
+        traceback.format_exc()
+    )
+
+    st.stop()
+
+
+# ==========================================================
+# VALIDAÇÃO DO HISTÓRICO
+# ==========================================================
+
+history = prepared_data.get(
+    "history"
+)
+
+if history is None:
+
+    st.error(
+        "❌ Os dados preparados não possuem histórico de preços."
+    )
+
+    st.write(
+        "Chaves disponíveis:",
+        list(prepared_data.keys())
+    )
+
+    st.stop()
+
+
+if hasattr(
+    history,
+    "empty"
+) and history.empty:
+
+    st.error(
+        "❌ O histórico de preços está vazio."
+    )
 
     st.stop()
 
@@ -645,30 +1015,46 @@ except Exception:
 
 try:
 
-    indicators = calculate_indicators(prepared_data)
+    with st.spinner(
+        "Calculando indicadores técnicos..."
+    ):
 
-    if not isinstance(indicators, dict):
-
-        st.error(
-            "calculate_indicators() não retornou "
-            "um dicionário."
+        indicators = calculate_indicators(
+            prepared_data
         )
 
-        st.write(type(indicators))
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+
+        st.error(
+            "calculate_indicators() não retornou um dicionário."
+        )
+
+        st.write(
+            "Tipo retornado:",
+            type(indicators)
+        )
 
         st.stop()
 
+
 except Exception:
 
-    st.error("❌ Erro ao calcular os indicadores.")
+    st.error(
+        "❌ Erro ao calcular os indicadores."
+    )
 
-    st.code(traceback.format_exc())
+    st.code(
+        traceback.format_exc()
+    )
 
     st.stop()
 
 
 # ==========================================================
-# PREÇO
+# PREÇO ATUAL
 # ==========================================================
 
 current_price = find_price(
@@ -682,17 +1068,15 @@ if current_price is None:
         "❌ Não foi possível identificar o preço atual."
     )
 
-    with st.expander("🔧 Diagnóstico do preço"):
+    st.write(
+        "Dados preparados:",
+        list(prepared_data.keys())
+    )
 
-        st.write(
-            "Dados preparados:",
-            list(prepared_data.keys()),
-        )
-
-        st.write(
-            "Indicadores:",
-            list(indicators.keys()),
-        )
+    st.write(
+        "Indicadores:",
+        list(indicators.keys())
+    )
 
     st.stop()
 
@@ -703,10 +1087,13 @@ if current_price is None:
 
 fundamentals = prepared_data.get(
     "fundamentals",
-    {},
+    {}
 )
 
-if not isinstance(fundamentals, dict):
+if not isinstance(
+    fundamentals,
+    dict,
+):
     fundamentals = {}
 
 
@@ -720,48 +1107,102 @@ analysis_data = {
 
     "price": current_price,
 
-    "ma21": indicators.get("ma21"),
+    "current_price": current_price,
 
-    "ma200": indicators.get("ma200"),
+    "ma21": indicators.get(
+        "ma21"
+    ),
 
-    "rsi": indicators.get("rsi"),
+    "ma200": indicators.get(
+        "ma200"
+    ),
 
-    "volatility": indicators.get("volatility"),
+    "rsi": indicators.get(
+        "rsi"
+    ),
+
+    "volatility": indicators.get(
+        "volatility"
+    ),
+
+    "relative_volume": indicators.get(
+        "relative_volume"
+    ),
+
+    "distance_ma21": indicators.get(
+        "distance_ma21"
+    ),
+
+    "distance_ma200": indicators.get(
+        "distance_ma200"
+    ),
+
+    "range_position": indicators.get(
+        "range_position"
+    ),
 
     "fundamentals": fundamentals,
 }
 
 
 # ==========================================================
-# MOTOR DE ANÁLISE
+# ANÁLISE
 # ==========================================================
 
 try:
 
-    analysis = analyze_asset(
-        analysis_data,
-        asset=asset,
-        technical_weight=technical_weight,
-        fundamental_weight=fundamental_weight,
-    )
+    with st.spinner(
+        "Executando motor de análise InvestIA..."
+    ):
 
-    if not isinstance(analysis, dict):
+        analysis = analyze_asset(
+            analysis_data,
+            asset=asset,
+            technical_weight=technical_weight,
+            fundamental_weight=fundamental_weight,
+        )
+
+    if not isinstance(
+        analysis,
+        dict,
+    ):
 
         st.error(
             "analyze_asset() não retornou um dicionário."
         )
 
-        st.write(type(analysis))
+        st.write(
+            "Tipo retornado:",
+            type(analysis)
+        )
 
         st.stop()
 
+
 except Exception:
 
-    st.error("❌ Erro no motor de análise.")
+    st.error(
+        "❌ Erro no motor de análise."
+    )
 
-    st.code(traceback.format_exc())
+    st.code(
+        traceback.format_exc()
+    )
 
     st.stop()
+
+
+# ==========================================================
+# GARANTE FUNDAMENTOS NO RESULTADO
+# ==========================================================
+
+if not isinstance(
+    analysis.get(
+        "fundamentals"
+    ),
+    dict,
+):
+    analysis["fundamentals"] = fundamentals
 
 
 # ==========================================================
@@ -775,12 +1216,18 @@ technical_score = analysis.get(
 
 technical_classification = analysis.get(
     "technical_classification",
-    "N/D",
+    analysis.get(
+        "classification",
+        "N/D",
+    ),
 )
 
 technical_signal = analysis.get(
     "technical_signal",
-    "N/D",
+    analysis.get(
+        "signal",
+        "N/D",
+    ),
 )
 
 
@@ -802,23 +1249,41 @@ fundamental_signal = analysis.get(
 
 integrated_score = analysis.get(
     "integrated_score",
-    analysis.get("score", 0),
+    analysis.get(
+        "score",
+        0,
+    ),
 )
 
 integrated_classification = analysis.get(
     "integrated_classification",
-    analysis.get("classification", "N/D"),
+    analysis.get(
+        "classification",
+        "N/D",
+    ),
 )
 
 integrated_signal = analysis.get(
     "integrated_signal",
-    analysis.get("signal", "N/D"),
+    analysis.get(
+        "signal",
+        "N/D",
+    ),
 )
 
 
-trend = analysis.get("trend", "N/D")
+trend = analysis.get(
+    "trend",
+    indicators.get(
+        "trend",
+        "N/D",
+    ),
+)
 
-risk = analysis.get("risk", "N/D")
+risk = analysis.get(
+    "risk",
+    "N/D",
+)
 
 recommendation = analysis.get(
     "recommendation",
@@ -827,12 +1292,12 @@ recommendation = analysis.get(
 
 executive_summary = analysis.get(
     "executive_summary",
-    "Resumo não disponível.",
+    "Resumo executivo não disponível.",
 )
 
 qualified_signal = analysis.get(
     "qualified_signal",
-    "N/D",
+    integrated_signal,
 )
 
 signal_icon = analysis.get(
@@ -847,7 +1312,10 @@ reasons = analysis.get(
 
 technical_breakdown = analysis.get(
     "technical_breakdown",
-    analysis.get("breakdown", {}),
+    analysis.get(
+        "breakdown",
+        {},
+    ),
 )
 
 fundamental_breakdown = analysis.get(
@@ -857,56 +1325,107 @@ fundamental_breakdown = analysis.get(
 
 
 # ==========================================================
+# GRÁFICOS
+# ==========================================================
+
+try:
+
+    charts = create_dashboard_charts(
+        prepared_data=prepared_data,
+        indicators=indicators,
+        analysis=analysis,
+        asset=asset,
+    )
+
+
+except Exception:
+
+    charts = {}
+
+    st.warning(
+        "⚠️ A análise foi concluída, mas ocorreu um "
+        "erro ao gerar parte dos gráficos."
+    )
+
+    with st.expander(
+        "Ver diagnóstico dos gráficos"
+    ):
+
+        st.code(
+            traceback.format_exc()
+        )
+
+
+# ==========================================================
 # INDICADORES PRINCIPAIS
 # ==========================================================
 
 st.divider()
 
-st.subheader("📌 Indicadores Principais")
+st.markdown(
+    """
+    <div class="section-title">
+        📌 Indicadores Principais
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 metric_col1, metric_col2, metric_col3, metric_col4 = (
     st.columns(4)
 )
 
+
 with metric_col1:
 
     st.metric(
         "Preço Atual",
-        format_currency(current_price),
+        format_currency(
+            current_price
+        ),
     )
+
 
 with metric_col2:
 
-    ma21 = indicators.get("ma21")
+    ma21 = indicators.get(
+        "ma21"
+    )
 
     st.metric(
         "MA21",
         (
             format_currency(ma21)
-            if ma21 is not None
+            if safe_float(ma21) is not None
             else "N/D"
         ),
     )
 
+
 with metric_col3:
 
-    ma200 = indicators.get("ma200")
+    ma200 = indicators.get(
+        "ma200"
+    )
 
     st.metric(
         "MA200",
         (
             format_currency(ma200)
-            if ma200 is not None
+            if safe_float(ma200) is not None
             else "N/D"
         ),
     )
+
 
 with metric_col4:
 
     st.metric(
         "RSI",
         format_number(
-            indicators.get("rsi")
+            indicators.get(
+                "rsi"
+            )
         ),
     )
 
@@ -924,7 +1443,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-score_col1, score_col2, score_col3 = st.columns(3)
+score_col1, score_col2, score_col3 = (
+    st.columns(3)
+)
+
 
 with score_col1:
 
@@ -935,6 +1457,7 @@ with score_col1:
         technical_signal,
     )
 
+
 with score_col2:
 
     display_score_card(
@@ -944,6 +1467,7 @@ with score_col2:
         fundamental_signal,
     )
 
+
 with score_col3:
 
     display_score_card(
@@ -951,97 +1475,6 @@ with score_col3:
         integrated_score,
         integrated_classification,
         integrated_signal,
-    )
-
-
-# ==========================================================
-# GRÁFICOS
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        📈 Análise Gráfica
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-if (
-    charts_module_available
-    and create_dashboard_charts is not None
-):
-
-    try:
-
-        charts = create_dashboard_charts(
-            prepared_data=prepared_data,
-            asset=asset,
-            technical_score=technical_score,
-            fundamental_score=fundamental_score,
-            integrated_score=integrated_score,
-        )
-
-        if not isinstance(charts, dict):
-
-            st.warning(
-                "O módulo de gráficos não retornou "
-                "uma estrutura válida."
-            )
-
-        else:
-
-            chart_tab1, chart_tab2, chart_tab3 = st.tabs(
-                [
-                    "📈 Análise Técnica",
-                    "📊 Volume",
-                    "🎯 Scores",
-                ]
-            )
-
-            with chart_tab1:
-
-                render_chart(
-                    charts.get("technical_chart")
-                )
-
-                with st.expander(
-                    "Ver gráfico simples de preço"
-                ):
-
-                    render_chart(
-                        charts.get("price_chart")
-                    )
-
-            with chart_tab2:
-
-                render_chart(
-                    charts.get("volume_chart")
-                )
-
-            with chart_tab3:
-
-                render_chart(
-                    charts.get("score_chart")
-                )
-
-    except Exception:
-
-        st.warning(
-            "⚠️ Não foi possível gerar os gráficos."
-        )
-
-        with st.expander(
-            "🔧 Detalhes do erro dos gráficos"
-        ):
-
-            st.code(traceback.format_exc())
-
-else:
-
-    st.info(
-        "Módulo de gráficos indisponível. "
-        "A análise principal continua funcionando."
     )
 
 
@@ -1062,12 +1495,14 @@ decision_col1, decision_col2, decision_col3 = (
     st.columns(3)
 )
 
+
 with decision_col1:
 
     st.metric(
         "Recomendação",
         f"{signal_icon} {recommendation}",
     )
+
 
 with decision_col2:
 
@@ -1076,12 +1511,14 @@ with decision_col2:
         trend,
     )
 
+
 with decision_col3:
 
     st.metric(
         "Risco",
         risk,
     )
+
 
 st.caption(
     f"Qualificação do sinal: {qualified_signal}"
@@ -1112,76 +1549,225 @@ st.markdown(
 
 
 # ==========================================================
+# DASHBOARD GRÁFICO
+# ==========================================================
+
+st.markdown(
+    """
+    <div class="section-title">
+        📈 Dashboard de Mercado
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+chart_tab1, chart_tab2, chart_tab3 = st.tabs(
+    [
+        "📈 Mercado",
+        "🎯 Scores e Técnico",
+        "🏢 Fundamentalista",
+    ]
+)
+
+
+# ==========================================================
+# ABA MERCADO
+# ==========================================================
+
+with chart_tab1:
+
+    price_chart = charts.get(
+        "price"
+    )
+
+    render_chart(
+        price_chart,
+        "Gráfico de preços não disponível.",
+    )
+
+    market_col1, market_col2 = st.columns(2)
+
+    with market_col1:
+
+        volume_chart = charts.get(
+            "volume"
+        )
+
+        render_chart(
+            volume_chart,
+            "Gráfico de volume não disponível.",
+        )
+
+    with market_col2:
+
+        rsi_chart = charts.get(
+            "rsi"
+        )
+
+        render_chart(
+            rsi_chart,
+            "Gráfico de RSI não disponível.",
+        )
+
+    performance_chart = charts.get(
+        "performance"
+    )
+
+    render_chart(
+        performance_chart,
+        "Gráfico de desempenho não disponível.",
+    )
+
+
+# ==========================================================
+# ABA SCORES E TÉCNICO
+# ==========================================================
+
+with chart_tab2:
+
+    technical_col1, technical_col2 = st.columns(2)
+
+    with technical_col1:
+
+        score_chart = charts.get(
+            "scores"
+        )
+
+        render_chart(
+            score_chart,
+            "Comparação dos Scores não disponível.",
+        )
+
+    with technical_col2:
+
+        technical_chart = charts.get(
+            "technical"
+        )
+
+        render_chart(
+            technical_chart,
+            "Panorama técnico não disponível.",
+        )
+
+
+# ==========================================================
+# ABA FUNDAMENTALISTA
+# ==========================================================
+
+with chart_tab3:
+
+    fundamental_chart = charts.get(
+        "fundamentals"
+    )
+
+    render_chart(
+        fundamental_chart,
+        "Gráfico fundamentalista não disponível.",
+    )
+
+    st.markdown(
+        """
+        <div class="section-title">
+            📋 Dados Fundamentalistas
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    fundamental_rows = []
+
+    if isinstance(
+        fundamentals,
+        dict,
+    ):
+
+        for key, value in fundamentals.items():
+
+            if value is None:
+                continue
+
+            if isinstance(
+                value,
+                (
+                    dict,
+                    list,
+                    tuple,
+                ),
+            ):
+                continue
+
+            fundamental_rows.append(
+                {
+                    "Indicador": str(
+                        key
+                    ),
+
+                    "Valor": clean_fundamental_value(
+                        key,
+                        value,
+                    ),
+                }
+            )
+
+    if fundamental_rows:
+
+        fundamental_dataframe = pd.DataFrame(
+            fundamental_rows
+        )
+
+        st.dataframe(
+            fundamental_dataframe,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+
+        st.info(
+            "Dados fundamentalistas não disponíveis "
+            "para este ativo."
+        )
+
+
+# ==========================================================
 # PRINCIPAIS FATORES
 # ==========================================================
 
 st.markdown(
     """
     <div class="section-title">
-        🔎 Principais Fatores
+        🔎 Principais Fatores da Análise
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-if isinstance(reasons, list) and reasons:
+
+if isinstance(
+    reasons,
+    list,
+) and reasons:
 
     for reason in reasons:
 
-        st.write(f"• {reason}")
+        if reason is None:
+            continue
+
+        st.write(
+            f"• {reason}"
+        )
+
 
 else:
 
     st.info(
-        "Nenhum fator adicional disponível."
+        "Nenhum fator adicional foi retornado pelo "
+        "motor de análise."
     )
 
 
 # ==========================================================
-# DADOS FUNDAMENTALISTAS
-# ==========================================================
-
-st.markdown(
-    """
-    <div class="section-title">
-        🏢 Dados Fundamentalistas
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-fundamental_rows = []
-
-for key, value in fundamentals.items():
-
-    if value is None:
-        continue
-
-    fundamental_rows.append(
-        {
-            "Indicador": str(key),
-            "Valor": value,
-        }
-    )
-
-if fundamental_rows:
-
-    st.dataframe(
-        pd.DataFrame(fundamental_rows),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-else:
-
-    st.info(
-        "Dados fundamentalistas não disponíveis "
-        "para este ativo."
-    )
-
-
-# ==========================================================
-# EXPLICABILIDADE
+# EXPLICABILIDADE DOS SCORES
 # ==========================================================
 
 st.markdown(
@@ -1193,20 +1779,22 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab1, tab2 = st.tabs(
+explain_tab1, explain_tab2 = st.tabs(
     [
         "📊 Score Técnico",
         "🏢 Score Fundamentalista",
     ]
 )
 
-with tab1:
+
+with explain_tab1:
 
     display_breakdown(
         technical_breakdown
     )
 
-with tab2:
+
+with explain_tab2:
 
     display_breakdown(
         fundamental_breakdown
@@ -1214,7 +1802,55 @@ with tab2:
 
 
 # ==========================================================
-# DIAGNÓSTICO
+# DETALHES ADICIONAIS
+# ==========================================================
+
+with st.expander(
+    "📊 Ver dados técnicos completos"
+):
+
+    technical_rows = []
+
+    for key, value in indicators.items():
+
+        if isinstance(
+            value,
+            (
+                dict,
+                list,
+                tuple,
+                pd.DataFrame,
+                pd.Series,
+            ),
+        ):
+            continue
+
+        technical_rows.append(
+            {
+                "Indicador": str(key),
+                "Valor": value,
+            }
+        )
+
+    if technical_rows:
+
+        st.dataframe(
+            pd.DataFrame(
+                technical_rows
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+
+        st.info(
+            "Não há indicadores adicionais disponíveis."
+        )
+
+
+# ==========================================================
+# DIAGNÓSTICO TÉCNICO
 # ==========================================================
 
 with st.expander(
@@ -1222,32 +1858,92 @@ with st.expander(
 ):
 
     st.write(
-        "Ativo analisado:",
+        "### Informações da execução"
+    )
+
+    st.write(
+        "Ativo:",
         asset,
     )
 
     st.write(
-        "Módulo de gráficos:",
-        (
-            "Disponível"
-            if charts_module_available
-            else "Indisponível"
-        ),
+        "Período:",
+        period,
+    )
+
+    st.write(
+        "Peso técnico:",
+        f"{technical_weight_percent}%"
+    )
+
+    st.write(
+        "Peso fundamentalista:",
+        f"{fundamental_weight_percent}%"
+    )
+
+    st.divider()
+
+    st.write(
+        "### Estruturas carregadas"
     )
 
     st.write(
         "Dados preparados:",
-        list(prepared_data.keys()),
+        list(prepared_data.keys())
     )
 
     st.write(
-        "Indicadores disponíveis:",
-        list(indicators.keys()),
+        "Indicadores:",
+        list(indicators.keys())
     )
 
     st.write(
         "Resultado da análise:",
-        list(analysis.keys()),
+        list(analysis.keys())
+    )
+
+    st.write(
+        "Gráficos disponíveis:",
+        list(charts.keys())
+    )
+
+    st.divider()
+
+    st.write(
+        "### Status dos dados"
+    )
+
+    st.write(
+        "Preço identificado:",
+        current_price is not None,
+    )
+
+    st.write(
+        "Histórico disponível:",
+        (
+            history is not None
+            and not history.empty
+        ),
+    )
+
+    st.write(
+        "Fundamentos disponíveis:",
+        len(fundamentals),
+    )
+
+    st.write(
+        "Score Técnico:",
+        technical_score,
+    )
+
+    st.write(
+        "Score Fundamentalista:",
+        fundamental_score,
+    )
+
+    st.write(
+        "Score Integrado:",
+        integrated_score,
     )
 
 
@@ -1258,8 +1954,7 @@ with st.expander(
 st.divider()
 
 st.caption(
-    "InvestIA PRO • Fase 3.0.6 • "
+    "InvestIA PRO • Fase 3.0.7 • "
     "Análise educacional e informativa. "
-    "Não constitui recomendação individual "
-    "de investimento."
+    "Não constitui recomendação individual de investimento."
 )
