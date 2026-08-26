@@ -4,12 +4,26 @@ InvestIA PRO — Aplicação Principal Streamlit (Fase 3.0.7)
 import streamlit as st
 import pandas as pd
 import time
+import sys
+from pathlib import Path
 
-from config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
-from market import fetch_asset_data
-from analysis import analyze_asset
-from charts import create_price_chart, create_scanner_summary_chart
-from utils import format_currency, format_percent
+# Adiciona o diretório atual ao sys.path para evitar ImportError em subpastas no Streamlit Cloud
+current_dir = Path(__file__).parent.resolve()
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
+
+try:
+    from config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
+    from market import fetch_asset_data
+    from analysis import analyze_asset
+    from charts import create_price_chart, create_scanner_summary_chart
+    from utils import format_currency, format_percent
+except ImportError:
+    from .config import DEFAULT_ASSETS, APP_TITLE, PAGE_ICON
+    from .market import fetch_asset_data
+    from .analysis import analyze_asset
+    from .charts import create_price_chart, create_scanner_summary_chart
+    from .utils import format_currency, format_percent
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -116,7 +130,7 @@ elif menu == "Scanner de Mercado":
                     "RSI": analysis["rsi"]
                 })
             progress_bar.progress((i + 1) / len(selected_assets))
-            time.sleep(0.1) # Evita sobrecarga imediata de requisições
+            time.sleep(0.1)
 
         status_text.text("Scan concluído com sucesso!")
         
@@ -127,7 +141,6 @@ elif menu == "Scanner de Mercado":
             st.markdown("### 🏆 Ranking de Oportunidades")
             st.dataframe(df_res, use_container_width=True)
 
-            # Gráfico do Scanner
             st.plotly_chart(create_scanner_summary_chart(df_res), use_container_width=True)
         else:
             st.warning("Nenhum ativo pôde ser escaneado com sucesso.")
@@ -136,13 +149,4 @@ elif menu == "Sobre o Projeto":
     st.subheader("🚀 Sobre o InvestIA PRO")
     st.markdown("""
     O **InvestIA PRO** é um sistema modular em desenvolvimento para análise quantitativa e qualitativa do mercado financeiro.
-    
-    **Arquitetura Atual (Fase 3.0.7):**
-    - `config.py`: Parâmetros e pesos do Score.
-    - `market.py`: Interface robusta com provedores de dados.
-    - `indicators.py`: Cálculo de médias móveis, RSI e volatilidade.
-    - `score.py`: Algoritmo de decisão e pontuação.
-    - `analysis.py`: Consolidação qualitativa e resumos executivos.
-    - `charts.py`: Visualizações interativas via Plotly.
-    - `app.py`: Dashboard e Scanner de Mercado via Streamlit.
     """)
