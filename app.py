@@ -7,23 +7,17 @@ import time
 import sys
 from pathlib import Path
 
-# Garantia de path para subpastas no Streamlit Cloud
+# Adiciona o diretório atual ao sys.path para garantir importações diretas no Streamlit Cloud
 current_dir = Path(__file__).parent.resolve()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-try:
-    from config import APP_TITLE, PAGE_ICON
-    from market import fetch_asset_data
-    from analysis import analyze_asset
-    from charts import create_price_chart, create_scanner_summary_chart
-    from utils import format_currency, format_percent
-except ImportError:
-    from .config import APP_TITLE, PAGE_ICON
-    from .market import fetch_asset_data
-    from .analysis import analyze_asset
-    from .charts import create_price_chart, create_scanner_summary_chart
-    from .utils import format_currency, format_percent
+# Importações absolutas (sem o ponto inicial para evitar ImportError no Streamlit Cloud)
+from config import APP_TITLE, PAGE_ICON
+from market import fetch_asset_data
+from analysis import analyze_asset
+from charts import create_price_chart, create_scanner_summary_chart
+from utils import format_currency, format_percent
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -49,7 +43,7 @@ PRESET_LISTS = {
         "HAPV3", "CPLE6", "CMIG4", "UGPA3", "SANB11", "KLBN11", "EMBR3", "ALOS3", "MULT3", "TOTS3"
     ],
     "🏢 Fundos Imobiliários (FIIs)": [
-        "HGLG11", "KNCR11", "MXRF11", "XPML11", "BTLG11", "VISC11", "TGAR11", "KNR111", "CPTS11", "IRDM11"
+        "HGLG11", "KNCR11", "MXRF11", "XPML11", "BTLG11", "VISC11", "TGAR11", "KNRI11", "CPTS11", "IRDM11"
     ],
     "🇺🇸 BDRs / Big Techs EUA": [
         "AAPL34", "MSFT34", "GOGL34", "AMZO34", "NVDC34", "TSLA34", "MELI34"
