@@ -7,24 +7,25 @@ import time
 import sys
 from pathlib import Path
 
+# Configuração da página
+st.set_page_config(
+    page_title="InvestIA PRO",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Adiciona o diretório atual ao sys.path para garantir importações diretas no Streamlit Cloud
 current_dir = Path(__file__).parent.resolve()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-# Importações absolutas (sem o ponto inicial para evitar ImportError no Streamlit Cloud)
+# Importações absolutas
 from config import APP_TITLE, PAGE_ICON
 from market import fetch_asset_data
 from analysis import analyze_asset
 from charts import create_price_chart, create_scanner_summary_chart
 from utils import format_currency, format_percent
-
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon=PAGE_ICON,
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Injeção de CSS Customizado Profissional
 def load_css():
@@ -34,6 +35,19 @@ def load_css():
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css()
+
+# Forçar tema escuro padronizado na barra lateral
+st.markdown("""
+<style>
+    section[data-testid="stSidebar"] {
+        background-color: #161922 !important;
+        border-right: 1px solid #2a2e3d !important;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #e0e6ed !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Listas Pré-configuradas para Varredura Completa do Mercado
 PRESET_LISTS = {
@@ -80,6 +94,10 @@ if menu == "Dashboard Executivo":
             else:
                 res = analyze_asset(mkt_data)
                 
+                # Garante o repasse seguro do histórico de preços para a geração do gráfico
+                if "historical_data" not in res and "df" in mkt_data:
+                    res["historical_data"] = mkt_data["df"]
+                
                 # Cards Financeiros Estilizados
                 c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("Preço Atual", format_currency(res["price"]), delta=format_percent(res["change_percent"]))
@@ -123,7 +141,12 @@ if menu == "Dashboard Executivo":
                     st.markdown("</div>", unsafe_allow_html=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.plotly_chart(create_price_chart(res), use_container_width=True)
+                
+                # Exibição do gráfico com verificação
+                if "historical_data" in res and res["historical_data"] is not None:
+                    st.plotly_chart(create_price_chart(res), use_container_width=True)
+                else:
+                    st.warning("Histórico de preços indisponível para exibição do gráfico.")
 
 elif menu == "Scanner de Mercado":
     st.subheader("🎯 Scanner de Oportunidades Automático")
