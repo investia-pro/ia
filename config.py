@@ -1,19 +1,27 @@
-"""InvestIA PRO - Configuração Global | Versão Final 3.1.3"""
-APP_NAME="InvestIA PRO"
-VERSION="3.1.3 Final"
-PAGE_TITLE=APP_NAME
-PAGE_ICON="📈"
-LAYOUT="wide"
-DEFAULT_PERIOD="1y"
-CACHE_TTL=300
-MARKET_SUFFIX=".SA"
-RSI_PERIOD=14
-SHORT_MA=21
-LONG_MA=200
-VOLATILITY_WINDOW=21
-RSI_OVERSOLD=30
-RSI_OVERBOUGHT=70
-MAX_HISTORY=500
-SHOW_VOLUME=True
-SHOW_GRID=True
-THEME="plotly_white"
+"""
+InvestIA PRO - Módulo de Configurações Globais
+"""
+
+DEFAULT_ASSETS = ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBAS3.SA", "BBDC4.SA", "ABEV3.SA", "WEGE3.SA", "PRIO3.SA", "RENT3.SA", "SUZB3.SA"]
+
+APP_TITLE = "InvestIA PRO — Análise Inteligente de Ativos"
+PAGE_ICON = "📈"
+
+SCORE_WEIGHTS = {
+    "trend": 40,
+    "rsi": 35,
+    "volatility": 25
+}
+
+SECTOR_MAPPING = {
+    "PETR4.SA": "Petróleo & Gás",
+    "VALE3.SA": "Mineração",
+    "ITUB4.SA": "Financeiro",
+    "BBAS3.SA": "Financeiro",
+    "BBDC4.SA": "Financeiro",
+    "ABEV3.SA": "Bens de Consumo",
+    "WEGE3.SA": "Bens de Capital",
+    "PRIO3.SA": "Petróleo & Gás",
+    "RENT3.SA": "Serviços",
+    "SUZB3.SA": "Papel & Celulose"
+}
