@@ -1,99 +1,19 @@
-/* InvestIA PRO - Theme Styling */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+/* Configuração Global Dark Theme */
+[data-testid="stAppViewContainer"] {
+    background-color: #0e1117 !important;
+    color: #e0e6ed !important;
 }
 
-/* Background gradient styling */
-.stApp {
-    background-color: #0e1117;
-    color: #e0e6ed;
+/* Sidebar Dark Theme */
+[data-testid="stSidebar"] {
+    background-color: #161922 !important;
+    border-right: 1px solid #2a2e3d !important;
 }
 
-/* Top Bar and Header styling */
-header[data-testid="stHeader"] {
-    background: rgba(14, 17, 23, 0.8) !important;
-    backdrop-filter: blur(10px);
+[data-testid="stSidebar"] * {
+    color: #e0e6ed !important;
 }
 
-/* Custom Card Container */
-.metric-card {
-    background: #1e222d;
-    border: 1px solid #2a2e3d;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-    transition: transform 0.2s ease, border-color 0.2s ease;
-}
-
-.metric-card:hover {
-    border-color: #00f2fe;
-    transform: translateY(-2px);
-}
-
-/* Titles */
-h1, h2, h3 {
-    letter-spacing: -0.5px;
-    color: #ffffff !important;
-}
-
-/* Streamlit Button Overrides */
-div.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #0052D4 0%, #4364F7 50%, #6FB1FC 100%) !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    padding: 0.6rem 1.2rem !important;
-    box-shadow: 0 4px 15px rgba(67, 100, 247, 0.4) !important;
-    transition: all 0.3s ease !important;
-}
-
-div.stButton > button[kind="primary"]:hover {
-    box-shadow: 0 6px 20px rgba(67, 100, 247, 0.6) !important;
-    transform: translateY(-1px);
-}
-
-/* Dataframe styling */
-[data-testid="stDataFrame"] {
-    border: 1px solid #2a2e3d;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-/* Metric styling */
-[data-testid="stMetricValue"] {
-    font-weight: 700 !important;
-    font-size: 1.8rem !important;
-}
-
-/* Custom Badges */
-.badge-buy {
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-.badge-sell {
-    background-color: rgba(239, 68, 68, 0.15);
-    color: #EF4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-.badge-neutral {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
+[data-testid="stHeader"] {
+    background-color: rgba(14, 17, 23, 0.8) !important;
 }
