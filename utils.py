@@ -1,35 +1,36 @@
-"""
-InvestIA PRO - Funções Utilitárias e Padronização de Formatação
-"""
-import datetime
+"""InvestIA PRO - Utilitários | Versão Final 3.1.3"""
+import math
 
-def format_ticker(ticker: str) -> str:
-    """Padroniza o ticker para inclusão do sufixo .SA caso seja brasileiro e não contenha ponto."""
-    if not ticker:
-        return ""
-    clean_ticker = ticker.strip().upper()
-    if not "." in clean_ticker:
-        return f"{clean_ticker}.SA"
-    return clean_ticker
+def safe_float(value, default=None):
+    try:
+        if value is None or isinstance(value,bool): return default
+        value=float(value)
+        return value if math.isfinite(value) else default
+    except (TypeError,ValueError): return default
 
-def format_currency(val: float) -> str:
-    """Formata valor numérico para Moeda Brasileira (R$)."""
-    if val is None or val != val:
-        return "N/D"
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def safe_int(value, default=None):
+    value=safe_float(value)
+    return default if value is None else int(value)
 
-def format_percent(val: float) -> str:
-    """Formata valor numérico para Porcentagem (%)."""
-    if val is None or val != val:
-        return "N/D"
-    return f"{val:+.2f}%".replace(".", ",")
+def clamp(value, minimum=0, maximum=100):
+    value=safe_float(value, minimum)
+    return max(minimum,min(maximum,value))
 
-def safe_get(dictionary, keys, default=None):
-    """Navegação segura em dicionários aninhados para evitar KeyError."""
-    curr = dictionary
-    for k in keys:
-        if isinstance(curr, dict) and k in curr:
-            curr = curr[k]
-        else:
-            return default
-    return curr
+def normalize_percent(value, default=None):
+    value=safe_float(value, default)
+    if value is None:return default
+    return value*100 if abs(value)<=1 else value
+
+def format_currency(value):
+    value=safe_float(value)
+    if value is None:return "N/D"
+    return "R$ "+f"{value:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+def format_number(value, decimals=2):
+    value=safe_float(value)
+    if value is None:return "N/D"
+    return f"{value:,.{decimals}f}".replace(",","X").replace(".",",").replace("X",".")
+
+def format_percent(value, decimals=2):
+    value=normalize_percent(value)
+    return "N/D" if value is None else format_number(value,decimals)+"%"
