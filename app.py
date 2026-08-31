@@ -1,5 +1,5 @@
 """
-InvestIA PRO — Aplicação Principal Streamlit (Fase Pro UI)
+InvestIA PRO — Aplicação Principal Streamlit
 """
 import streamlit as st
 import pandas as pd
@@ -7,7 +7,7 @@ import time
 import sys
 from pathlib import Path
 
-# Configuração da página
+# Configuração da página (DEVE ser a PRIMEIRA instrução Streamlit)
 st.set_page_config(
     page_title="InvestIA PRO",
     page_icon="📈",
@@ -15,19 +15,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Adiciona o diretório atual ao sys.path para garantir importações diretas no Streamlit Cloud
+# Ajuste de path para importação no Streamlit Cloud
 current_dir = Path(__file__).parent.resolve()
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-# Importações absolutas
+# Importações dos módulos do projeto
 from config import APP_TITLE, PAGE_ICON
 from market import fetch_asset_data
 from analysis import analyze_asset
 from charts import create_price_chart, create_scanner_summary_chart
 from utils import format_currency, format_percent
 
-# Injeção de CSS Customizado Profissional
+# Carregar CSS externo
 def load_css():
     css_path = current_dir / "style.css"
     if css_path.exists():
@@ -36,7 +36,7 @@ def load_css():
 
 load_css()
 
-# Forçar tema escuro padronizado na barra lateral
+# Forçar tema escuro na sidebar para eliminar a barra branca lateral
 st.markdown("""
 <style>
     section[data-testid="stSidebar"] {
@@ -46,10 +46,14 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: #e0e6ed !important;
     }
+    [data-testid="stAppViewContainer"] {
+        background-color: #0e1117 !important;
+        color: #e0e6ed !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Listas Pré-configuradas para Varredura Completa do Mercado
+# Listas Pré-configuradas para o Scanner
 PRESET_LISTS = {
     "🔥 Principais Ações B3 (Top 30 Liquidez)": [
         "PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "ABEV3", "WEGE3", "PRIO3", "RENT3", "SUZB3",
@@ -64,7 +68,7 @@ PRESET_LISTS = {
     ]
 }
 
-# Header Principal Estilizado
+# Cabeçalho Principal
 st.markdown("""
 <div style="background: linear-gradient(90deg, #1e222d 0%, #141722 100%); padding: 24px; border-radius: 12px; border: 1px solid #2a2e3d; margin-bottom: 24px;">
     <h1 style="margin: 0; font-size: 2rem; color: #ffffff;">📈 InvestIA PRO</h1>
@@ -87,66 +91,64 @@ if menu == "Dashboard Executivo":
 
     if btn_analyze or ticker_input:
         with st.spinner(f"Coletando dados e analisando {ticker_input}..."):
-            mkt_data = fetch_asset_data(ticker_input)
-            
-            if not mkt_data["is_valid"]:
-                st.error(f"Erro: {mkt_data['error']}")
-            else:
-                res = analyze_asset(mkt_data)
+            try:
+                # Chamada segura conforme o módulo de mercado
+                df_data, info_data = fetch_asset_data(ticker_input)
                 
-                # Garante o repasse seguro do histórico de preços para a geração do gráfico
-                if "historical_data" not in res and "df" in mkt_data:
-                    res["historical_data"] = mkt_data["df"]
-                
-                # Cards Financeiros Estilizados
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Preço Atual", format_currency(res["price"]), delta=format_percent(res["change_percent"]))
-                c2.metric("Score InvestIA", f"{res['score']} / 100", delta=res["signal"])
-                c3.metric("Classificação", res["classification"])
-                c4.metric("Tendência", res["trend"])
-                c5.metric("Nível de Risco", res["risk"])
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                col_left, col_right = st.columns([1, 1])
-
-                with col_left:
-                    st.markdown("""
-                    <div style="background: #1e222d; padding: 20px; border-radius: 10px; border: 1px solid #2a2e3d; height: 100%;">
-                        <h3 style="margin-top:0;">📋 Resumo Executivo</h3>
-                    """, unsafe_allow_html=True)
-                    st.info(res["executive_summary"])
-                    st.markdown(f"**Recomendação:** `{res['recommendation']}`")
-
-                    st.markdown("#### Justificativas do Sinal:")
-                    for r in res["reasons"]:
-                        st.write(f"• {r}")
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                with col_right:
-                    st.markdown("""
-                    <div style="background: #1e222d; padding: 20px; border-radius: 10px; border: 1px solid #2a2e3d; height: 100%;">
-                        <h3 style="margin-top:0;">📊 Decomposição do Score</h3>
-                    """, unsafe_allow_html=True)
-                    b = res["breakdown"]
-                    st.write(f"• **Tendência:** {b['trend_score']} / 40 pts")
-                    st.write(f"• **RSI:** {b['rsi_score']} / 35 pts")
-                    st.write(f"• **Volatilidade/Risco:** {b['volatility_score']} / 25 pts")
-                    
-                    st.markdown("#### Detalhes Técnicos:")
-                    st.write(f"• **RSI (14):** {res['rsi']} ({res['rsi_status']})")
-                    st.write(f"• **MA 21:** {format_currency(res['ma21'])}")
-                    st.write(f"• **MA 200:** {format_currency(res['ma200'])}")
-                    st.write(f"• **Volatilidade Anual:** {res['volatility']:.2f}%")
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                # Exibição do gráfico com verificação
-                if "historical_data" in res and res["historical_data"] is not None:
-                    st.plotly_chart(create_price_chart(res), use_container_width=True)
+                if df_data is None or df_data.empty:
+                    st.error(f"Erro: Não foi possível obter dados para o ticker '{ticker_input}'.")
                 else:
-                    st.warning("Histórico de preços indisponível para exibição do gráfico.")
+                    res = analyze_asset(df_data, info_data)
+                    res["historical_data"] = df_data
+                    
+                    # Cards Financeiros
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("Preço Atual", format_currency(res.get("price", 0)), delta=format_percent(res.get("change_percent", 0)))
+                    c2.metric("Score InvestIA", f"{res.get('score', 0)} / 100", delta=res.get("signal", ""))
+                    c3.metric("Classificação", res.get("classification", "-"))
+                    c4.metric("Tendência", res.get("trend", "-"))
+                    c5.metric("Nível de Risco", res.get("risk", "-"))
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    col_left, col_right = st.columns([1, 1])
+
+                    with col_left:
+                        st.markdown("""
+                        <div style="background: #1e222d; padding: 20px; border-radius: 10px; border: 1px solid #2a2e3d; height: 100%;">
+                            <h3 style="margin-top:0;">📋 Resumo Executivo</h3>
+                        """, unsafe_allow_html=True)
+                        st.info(res.get("executive_summary", "Análise realizada com sucesso."))
+                        st.markdown(f"**Recomendação:** `{res.get('recommendation', 'N/A')}`")
+
+                        st.markdown("#### Justificativas do Sinal:")
+                        for r in res.get("reasons", []):
+                            st.write(f"• {r}")
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    with col_right:
+                        st.markdown("""
+                        <div style="background: #1e222d; padding: 20px; border-radius: 10px; border: 1px solid #2a2e3d; height: 100%;">
+                            <h3 style="margin-top:0;">📊 Decomposição do Score</h3>
+                        """, unsafe_allow_html=True)
+                        b = res.get("breakdown", {})
+                        st.write(f"• **Tendência:** {b.get('trend_score', 0)} / 40 pts")
+                        st.write(f"• **RSI:** {b.get('rsi_score', 0)} / 35 pts")
+                        st.write(f"• **Volatilidade/Risco:** {b.get('volatility_score', 0)} / 25 pts")
+                        
+                        st.markdown("#### Detalhes Técnicos:")
+                        st.write(f"• **RSI (14):** {res.get('rsi', 0)} ({res.get('rsi_status', '-')})")
+                        st.write(f"• **MA 21:** {format_currency(res.get('ma21', 0))}")
+                        st.write(f"• **MA 200:** {format_currency(res.get('ma200', 0))}")
+                        st.write(f"• **Volatilidade Anual:** {res.get('volatility', 0):.2f}%")
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    if res.get("historical_data") is not None:
+                        st.plotly_chart(create_price_chart(res), use_container_width=True)
+            except Exception as e:
+                st.error(f"Ocorreu um erro durante o processamento: {str(e)}")
 
 elif menu == "Scanner de Mercado":
     st.subheader("🎯 Scanner de Oportunidades Automático")
@@ -170,20 +172,23 @@ elif menu == "Scanner de Mercado":
 
         for i, symbol in enumerate(assets_to_scan):
             status_text.text(f"Analisando {symbol} ({i+1}/{len(assets_to_scan)})...")
-            m_data = fetch_asset_data(symbol)
-            if m_data["is_valid"]:
-                analysis = analyze_asset(m_data)
-                results_list.append({
-                    "Ativo": analysis["asset"],
-                    "Preço (R$)": analysis["price"],
-                    "Var. (%)": analysis["change_percent"],
-                    "Score": analysis["score"],
-                    "Sinal": f"{analysis['signal_icon']} {analysis['signal']}",
-                    "Classificação": analysis["classification"],
-                    "Tendência": analysis["trend"],
-                    "Risco": analysis["risk"],
-                    "RSI": analysis["rsi"]
-                })
+            try:
+                df_mkt, info_mkt = fetch_asset_data(symbol)
+                if df_mkt is not None and not df_mkt.empty:
+                    analysis = analyze_asset(df_mkt, info_mkt)
+                    results_list.append({
+                        "Ativo": analysis.get("asset", symbol),
+                        "Preço (R$)": analysis.get("price", 0),
+                        "Var. (%)": analysis.get("change_percent", 0),
+                        "Score": analysis.get("score", 0),
+                        "Sinal": f"{analysis.get('signal_icon', '')} {analysis.get('signal', '')}",
+                        "Classificação": analysis.get("classification", "-"),
+                        "Tendência": analysis.get("trend", "-"),
+                        "Risco": analysis.get("risk", "-"),
+                        "RSI": analysis.get("rsi", 0)
+                    })
+            except Exception:
+                pass
             progress_bar.progress((i + 1) / len(assets_to_scan))
             time.sleep(0.03)
 
